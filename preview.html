@@ -34,6 +34,7 @@
       --accent: #3f7f2c;
       --accent-ink: #fff;
       --warn: #a85d00;
+      --grid: rgba(0, 0, 0, 0.12);
     }
   }
   * { box-sizing: border-box; }
@@ -44,15 +45,18 @@
     padding: 24px 28px;
     overflow: hidden;
     display: grid;
-    grid-template-columns: 290px minmax(0, 1fr) 310px;
-    gap: 36px;
+    grid-template-columns: 280px minmax(0, 1fr) 290px;
+    gap: 28px;
     background: var(--ground);
     color: var(--text);
     font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     user-select: none;
   }
   /* A narrow window gives its width to the map first. */
-  @media (max-width: 1150px) { body { grid-template-columns: 230px minmax(0, 1fr) 250px; gap: 24px; padding: 20px; } }
+  @media (max-width: 1150px) {
+    body { grid-template-columns: 230px minmax(0, 1fr) 250px; gap: 24px; padding: 20px; }
+    .setting small { display: none; }
+  }
   h2 {
     margin: 0 0 8px;
     font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
@@ -87,7 +91,9 @@
   .setting output { font-weight: 600; }
   .setting output.changed { color: var(--accent); }
   .setting output span { margin-right: 8px; font-weight: 400; color: var(--muted); }
-  .setting input { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: var(--accent); }
+  /* A slider is grey; green is kept for the ones that left the pack's value. */
+  .setting input { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: var(--muted); }
+  .setting input.changed { accent-color: var(--accent); }
   .setting small { grid-column: 1 / -1; }
   #generate { padding: 11px; font-weight: 600; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
   #generate:hover:not(:disabled) { filter: brightness(1.1); }
@@ -103,7 +109,7 @@
   #frame > canvas, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
   #relief canvas { display: block; width: 100%; height: 100%; }
   #map { image-rendering: pixelated; cursor: crosshair; transition: opacity 200ms; }
-  #frame.busy #map, #frame.busy #relief { opacity: 0.3; }
+  #frame.busy #map, #frame.busy #relief, #frame.busy #grid { opacity: 0.3; }
   /* One square of the grid is 1024 blocks. */
   #grid {
     pointer-events: none;
@@ -124,7 +130,6 @@
   #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
   #legend { display: flex; flex-wrap: wrap; gap: 4px 14px; min-height: 18px; }
   #legend span { display: inline-flex; align-items: center; gap: 6px; }
-  #legend i { width: 12px; height: 12px; border-radius: 2px; }
   #probe { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Right: the numbers. */
@@ -133,14 +138,19 @@
   .figures .value { font-weight: 600; text-align: right; }
   .figures .goal { font-size: 18px; }
   .figures .before { color: var(--muted); text-align: right; }
+  /* On the figures of the goal, what moved is the answer: it reads as strongly as the value. */
+  .figures .goal-change { color: var(--text); font-weight: 600; }
   .figures .rule { grid-column: 1 / -1; height: 1px; margin: 6px 0; background: var(--line); }
   .biome {
     width: 100%; display: grid; grid-template-columns: 12px 1fr auto auto; gap: 8px; align-items: center;
     padding: 4px 0; text-align: left; font-size: 13px;
   }
   .biome:hover .name { text-decoration: underline; }
-  .biome[aria-pressed=true] { box-shadow: inset 0 -2px var(--accent); border-radius: 0; }
-  .biome i { width: 12px; height: 12px; border-radius: 2px; }
+  /* The list mirrors the map: the biome shown alone stays lit, the others step back. */
+  .biome[aria-pressed=true] .name { font-weight: 600; }
+  #biomes.isolating .biome[aria-pressed=false] { opacity: 0.45; }
+  /* A thin edge, so a white or pale swatch does not vanish on the light ground. */
+  .biome i, #legend i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
   .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .biome .width { color: var(--muted); min-width: 8ch; text-align: right; }
   .biome .share { min-width: 6ch; text-align: right; }
@@ -197,12 +207,13 @@
     seed: 'Graine',
     generate: 'Générer l’aperçu',
     upToDate: 'La carte montre ces réglages',
-    running: s => `Calcul… ${s} s sur environ 45`,
+    running: s => `Calcul… ${s} s sur environ 35`,
     figures: 'En chiffres',
-    now: 'maintenant',
-    change: 'depuis avant',
+    change: 'écart',
     was: v => `avant : ${v}`,
     same: '=',
+    close: '≈',
+    points: ' pt',
     biomes: 'Biomes',
     isolateHint: 'Clique un biome pour le voir seul.',
     colBiome: 'biome',
@@ -215,8 +226,8 @@
       vegetation_scale:       ['Échelle de la végétation', 'Plus bas : zones sèches et humides plus larges.'],
       temperature_multiplier: ['Amplitude des températures', 'Plus bas : déserts et glaces plus rares.'],
       temperature_offset:     ['Décalage du climat', 'Plus haut : monde plus chaud.'],
-      vertical_scale:         ['Échelle verticale', 'Plus haut : montagnes plus hautes, pentes plus raides.'],
-      flat_terrain_skew:      ['Plat contre plateaux', 'Plus haut : plus de terrain plat, moins de plateaux.'],
+      vertical_scale:         ['Échelle verticale', 'Plus haut : relief plus haut et plus raide.'],
+      flat_terrain_skew:      ['Plat contre plateaux', 'Plus haut : plus de plat, moins de plateaux.'],
       erosion_scale:          ['Échelle de l’érosion', 'Plus bas : massifs plus larges, plaines plus vastes.'],
       ridge_scale:            ['Échelle des crêtes', 'Plus bas : rivières plus larges, vallées plus amples.'],
       continents_scale:       ['Échelle des continents', 'Plus bas : continents et océans plus grands.'],
@@ -236,10 +247,10 @@
     area: (blocks, square) => `${blocks} × ${blocks} blocs, nord en haut. Un carreau : ${square} blocs. Croix : 0,0.`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
-      flat:    ['Terres plates', '', 'Part des terres. Plat : le sol bouge de 2 blocs au plus jusqu’aux points voisins, à 16 blocs de là.'],
-      expanse: ['Plus grande zone plate', '', 'Largeur d’un carré de même surface que la plus grande zone plate d’un seul tenant.'],
-      typical: ['Largeur d’un biome', '', 'Largeur de la zone où tombe un point pris au hasard sur les terres.'],
-      ocean:   ['Mer', '', 'Part de toute la zone.'],
+      flat:    ['Terres plates', '', 'Part des terres. Plat : le sol bouge de 2 blocs au plus jusqu’aux points voisins, à 16 blocs de là. Un point plat isolé ne compte pas.'],
+      expanse: ['Zone plate type', '', 'Largeur de la zone plate où tombe un point plat pris au hasard. Une rivière ne coupe pas une zone.'],
+      typical: ['Biome type', '', 'Largeur de la zone de biome où tombe un point pris au hasard sur les terres.'],
+      ocean:   ['Mer', '', 'Part de toute la zone sous le niveau de la mer, rivières et lacs compris.'],
       high:    ['Terres hautes', '', 'Part des terres dont l’altitude dépasse 150.'],
       top:     ['Plus haut sommet', '', ''],
       count:   ['Biomes présents', '', ''],
@@ -247,7 +258,7 @@
     goalFigures: ['flat', 'expanse', 'typical'],
     altitude: v => `altitude ${v}`,
     legend: {
-      flat: ['plat', 'pentes', 'mer'],
+      flat: ['plat', 'pentes', 'eau'],
       altitude: 'altitude',
       sea: 'mer',
       temperature: ['gelé', 'froid', 'tempéré', 'chaud', 'brûlant'],
@@ -312,6 +323,7 @@
         const changed = Math.abs(input.value - packValues[key]) > 1e-9;
         // A changed value turns green and keeps the pack's value beside it, to know how far it went.
         output.classList.toggle('changed', changed);
+        input.classList.toggle('changed', changed);
         output.replaceChildren(fr(+input.value, digits));
         if (changed) {
           const pack = document.createElement('span');
@@ -344,13 +356,15 @@
     [/warm_ocean|lukewarm/, [190, 60, 45]],
     [/cold_ocean/, [215, 35, 45]],
     [/ocean|river/, [212, 55, 42]],
+    [/snowy_taiga|snowy.*(spruce|pine)/, [175, 18, 74]],
     [/ice|frozen|glacial|snowy|wintry|siberian|frostfire/, [200, 25, 88]],
     [/alpine|grove|shield|taiga|spruce|pine/, [158, 32, 34]],
-    [/oasis/, [84, 50, 62]],
+    [/oasis/, [150, 50, 62]],
     [/beach|shore/, [48, 45, 80]],
     [/badlands|mesa|canyon|bryce|painted|red_|scarlet/, [18, 62, 50]],
     [/desert|sands|dune/, [44, 62, 68]],
-    [/savanna|shrubland|steppe|arid|brushland|ashen/, [62, 38, 50]],
+    [/arid|steppe/, [38, 40, 46]],
+    [/savanna|shrubland|brushland|ashen/, [62, 38, 50]],
     [/jungle|tropical|rainforest|bamboo/, [112, 62, 34]],
     [/swamp|marsh|mangrove/, [150, 30, 28]],
     [/cherry|sakura|lavender|blooming|moonlight|amethyst|orchid|mushroom|warped/, [300, 40, 66]],
@@ -403,10 +417,10 @@
   const quietWater = hslToRgb(212, 22, 20);
   const css = c => `rgb(${c})`;
 
+  // The name alone: which mod a biome comes from does not help to judge the world. The id stays on hover.
   const pretty = id => {
-    const [space, name] = id.split(':');
-    const words = name.replaceAll('_', ' ');
-    return words[0].toUpperCase() + words.slice(1) + (space === 'minecraft' ? '' : ` (${space})`);
+    const words = id.split(':')[1].replaceAll('_', ' ');
+    return words[0].toUpperCase() + words.slice(1);
   };
 
   // ---------- the data and what we measure on it ----------
@@ -472,8 +486,7 @@
     // Width of a square of that typical area, in blocks.
     const widths = Array.from(cells, (c, b) => c ? Math.sqrt(weighted[b] / c) * meta.step : 0);
 
-    // 1 where the land is flat, 0 elsewhere: the map draws it, the figures count it.
-    const flatAt = new Uint8Array(total);
+    const level = new Uint8Array(total);
     let ocean = 0, land = 0, flat = 0, high = 0, top = -999;
     for (let i = 0; i < total; i++) {
       const y = heights[i];
@@ -482,21 +495,40 @@
       land++;
       if (y > 150) high++;
       const x = i % n;
-      // Flat: the ground moves by 2 blocks at most to each neighbour point, one step away.
-      const d = Math.max(
-        x > 0 ? Math.abs(y - heights[i - 1]) : 0, x < n - 1 ? Math.abs(y - heights[i + 1]) : 0,
-        i >= n ? Math.abs(y - heights[i - n]) : 0, i < total - n ? Math.abs(y - heights[i + n]) : 0);
-      if (d <= 2) { flat++; flatAt[i] = 1; }
+      // Level: the ground moves by 2 blocks at most to each neighbour point, one step away.
+      // A neighbour under water does not count: a river bed would make every bank a slope.
+      const gap = j => heights[j] >= sea ? Math.abs(y - heights[j]) : 0;
+      const d = Math.max(x > 0 ? gap(i - 1) : 0, x < n - 1 ? gap(i + 1) : 0, i >= n ? gap(i - n) : 0, i < total - n ? gap(i + n) : 0);
+      if (d <= 2) level[i] = 1;
     }
-    let widest = 0;
-    zones(flatAt, n, (isFlat, size) => { if (isFlat && size > widest) widest = size; });
+    // 1 where the land is flat, 0 elsewhere: the map draws it, the figures count it.
+    // Flat is level ground among level ground: at least 5 of the 9 points around. One level point
+    // on a slope is not a place a player would call flat, and one bump does not end a plain.
+    const flatAt = new Uint8Array(total);
+    for (let i = 0; i < total; i++) {
+      if (heights[i] < sea) continue;
+      const x = i % n;
+      let around = 0;
+      for (let dz = -n; dz <= n; dz += n) for (let dx = -1; dx <= 1; dx++) {
+        const j = i + dz + dx;
+        if (j >= 0 && j < total && x + dx >= 0 && x + dx < n) around += level[j];
+      }
+      if (around >= 5) { flat++; flatAt[i] = 1; }
+    }
+    // The flat zone a random flat point sits in, as for the biomes. A river runs through a plain
+    // without ending it, so river water joins the zones on its two banks.
+    const river = meta.biomes.map(b => /river/.test(b.id));
+    const plain = Uint8Array.from(flatAt);
+    for (let i = 0; i < total; i++) if (heights[i] < sea && river[biomeAt[i]]) plain[i] = 1;
+    let plainCells = 0, plainWeighted = 0;
+    zones(plain, n, (isPlain, size) => { if (isPlain) { plainCells += size; plainWeighted += size * size; } });
     let landCells = 0, landWeighted = 0;
     meta.biomes.forEach((b, i) => { if (!isWater(b.id)) { landCells += cells[i]; landWeighted += cells[i] * widths[i]; } });
     return {
       cells, widths, flatAt,
       figures: {
         ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
-        expanse: Math.sqrt(widest) * meta.step,
+        expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
         count: meta.biomes.length, typical: landWeighted / landCells,
       },
     };
@@ -530,7 +562,7 @@
         const g = stepBack[water ? 0 : 1];
         c = [g, g, g]; shade = clamp(1 + slope * 0.004, 0.9, 1.1);
       } else if (view === 'height') {
-        c = heightColour(y, sea); shade = clamp(1 + slope * 0.012, 0.55, 1.4);
+        c = heightColour(y, sea); shade = clamp(1 + slope * 0.012, 0.75, 1.25);
       } else if (view === 'temperature') {
         c = water ? quietWater : temperatureColour(world.biomes[biome].temperature);
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
@@ -541,9 +573,10 @@
         // Here the lightness says which biome it is, so the relief may only touch it lightly.
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
         // A dark line where the biome changes: two neighbours of one colour family stay two zones.
+        // Lighter on a pale biome, where it would turn into a heavy grey maze; stronger on a dark one.
         // Not between two kinds of sea, which would only add noise.
         const right = x < n - 1 ? i + 1 : i, below = i < total - n ? i + n : i;
-        if ((at[right] !== biome && !(water && h[right] < sea)) || (at[below] !== biome && !(water && h[below] < sea))) shade *= 0.6;
+        if ((at[right] !== biome && !(water && h[right] < sea)) || (at[below] !== biome && !(water && h[below] < sea))) shade *= c[0] + c[1] + c[2] > 420 ? 0.75 : 0.5;
       }
       px[i * 4] = c[0] * shade; px[i * 4 + 1] = c[1] * shade; px[i * 4 + 2] = c[2] * shade; px[i * 4 + 3] = 255;
     }
@@ -576,8 +609,12 @@
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
     const change = key => {
       const [step, digits] = grain[key];
-      const moved = (Math.round(f[key] / step) - Math.round(b[key] / step)) * step;
-      return moved === 0 ? text.same : (moved > 0 ? '+' : '−') + fr(Math.abs(moved), digits);
+      const steps = Math.round(f[key] / step) - Math.round(b[key] / step);
+      if (steps === 0) return text.same;
+      // A width is rounded to 50 blocks: one step of it is not a change worth a number.
+      if (step === 50 && Math.abs(steps) === 1) return text.close;
+      // Two shares differ by points, not by percent.
+      return (steps > 0 ? '+' : '−') + fr(Math.abs(steps) * step, digits) + (step === 0.1 ? text.points : '');
     };
     const cell = (content, className) => {
       const span = document.createElement('span');
@@ -586,7 +623,7 @@
     };
     const rows = [];
     // The second column needs a name only once there is something in it.
-    if (b) rows.push(cell('', ''), cell(text.now, 'head'), cell(text.change, 'head'));
+    if (b) rows.push(cell('', ''), cell('', ''), cell(text.change, 'head'));
     for (const key of Object.keys(text.figureNames)) {
       const [name, base, definition] = text.figureNames[key];
       const goal = text.goalFigures.includes(key);
@@ -595,7 +632,7 @@
       const label = cell(name, '');
       if (base) { const note = document.createElement('small'); note.textContent = ` ${base}`; label.append(note); }
       if (definition) label.title = definition;
-      const moved = cell(b && b[key] != null ? change(key) : '', 'before');
+      const moved = cell(b && b[key] != null ? change(key) : '', goal ? 'before goal-change' : 'before');
       if (moved.textContent) moved.title = text.was(format[key](b[key]));
       rows.push(label, cell(format[key](f[key]), goal ? 'value goal' : 'value'), moved);
     }
@@ -605,6 +642,7 @@
   function showBiomes() {
     const total = world.samples ** 2;
     const order = world.biomes.map((_, i) => i).sort((a, b) => world.cells[b] - world.cells[a]);
+    $('biomes').classList.toggle('isolating', isolated >= 0);
     $('biomes').replaceChildren(...order.map(i => {
       const row = document.createElement('button');
       row.className = 'biome num';
@@ -612,6 +650,7 @@
       row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
       row.children[0].style.background = css(world.colours[i]);
       row.children[1].textContent = pretty(world.biomes[i].id);
+      row.title = world.biomes[i].id;
       row.children[2].textContent = blocks(world.widths[i]);
       row.children[3].textContent = percent(100 * world.cells[i] / total);
       row.addEventListener('click', () => { isolated = isolated === i ? -1 : i; showBiomes(); paint(); });
@@ -652,7 +691,7 @@
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(50, 1, 10, 80000);
         // Far and high enough to hold the whole square, its near edge included.
-        camera.position.set(0, 6500, 11000);
+        camera.position.set(0, 9000, 8200);
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.maxPolarAngle = Math.PI / 2 - 0.02;
         controls.enableDamping = true;
