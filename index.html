@@ -14,22 +14,26 @@
     --text: #e8e6e1;
     --muted: #8d9197;
     --accent: #7fb069;
+    --accent-ink: #10140e;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    padding: 28px 24px 20px;
+    padding: 24px;
+    overflow: hidden;               /* one screen, never a scrollbar */
     display: flex;
     flex-direction: column;
-    gap: 12px;
     background: var(--ground);
     color: var(--text);
     font: 15px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     user-select: none;
   }
+  [hidden] { display: none !important; }
+  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+  header { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 4px; }
   h1 {
-    margin: 0 0 8px;
+    margin: 0;
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.08em;
@@ -46,87 +50,199 @@
     transition: background 120ms, border-color 120ms;
   }
   button:hover { background: var(--surface-hover); }
-  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: default; }
-  #profiles { display: flex; flex-direction: column; gap: 12px; }
+  svg { width: 18px; height: 18px; display: block; fill: currentColor; }
+  .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
+  .icon:hover { color: var(--text); }
+
+  /* A profile: its name and memory, then play, then settings. */
   .profile {
-    padding: 20px;
-    text-align: left;
-    font-size: 20px;
-    font-weight: 600;
-  }
-  .profile:hover { border-color: var(--accent); }
-  footer {
-    margin-top: auto;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
+    padding: 14px 14px 14px 18px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
   }
-  #status { color: var(--muted); font-size: 13px; }
-  #account { padding: 6px 12px; font-size: 13px; color: var(--muted); }
+  .profile .who { flex: 1; min-width: 0; }
+  .profile .name { font-size: 18px; font-weight: 600; }
+  .profile .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .play { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .play:hover { background: #93c47c; color: var(--accent-ink); }
+
+  /* Settings of one profile. */
+  label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field { display: flex; flex-direction: column; }
+  .memory { display: flex; align-items: center; gap: 14px; }
+  .memory output { min-width: 5ch; text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  textarea {
+    width: 100%;
+    height: 84px;
+    resize: none;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font: 13px/1.5 "Cascadia Mono", Consolas, monospace;
+    user-select: text;
+  }
+  .folder { display: flex; align-items: center; gap: 8px; }
+  .folder code {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 13px "Cascadia Mono", Consolas, monospace;
+    user-select: text;
+  }
+  .folder button { padding: 6px 12px; font-size: 13px; }
+  #status { margin-top: auto; min-height: 20px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
-  <h1 id="title"></h1>
-  <div id="profiles"></div>
-  <footer>
-    <span id="status" role="status"></span>
-    <button id="account"></button>
-  </footer>
+  <section class="view" id="list-view">
+    <header><h1 data-text="title"></h1></header>
+    <div class="view" id="profiles"></div>
+  </section>
+
+  <section class="view" id="settings-view" hidden>
+    <header>
+      <button class="icon" id="back"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
+      <h1 id="settings-name"></h1>
+    </header>
+    <div class="field">
+      <label for="memory" data-text="memory"></label>
+      <div class="memory">
+        <input type="range" id="memory" min="2" step="1">
+        <output id="memory-value" for="memory"></output>
+      </div>
+    </div>
+    <div class="field">
+      <label for="java-args" data-text="javaArgs"></label>
+      <textarea id="java-args" spellcheck="false"></textarea>
+    </div>
+    <div class="field">
+      <span class="label" data-text="folder"></span>
+      <div class="folder"><code id="folder-path"></code><button id="open-folder" data-text="open"></button></div>
+    </div>
+  </section>
+
+  <div id="status" role="status"></div>
 
 <script>
   // Every sentence the page shows, in one place.
   const text = {
     title: 'Minecraft',
-    account: 'Compte et skin',
+    play: name => `Jouer à ${name}`,
+    settings: name => `Régler ${name}`,
+    back: 'Retour',
+    memory: 'Mémoire',
+    gigabytes: n => `${n} Go`,
+    javaArgs: 'Arguments Java',
+    folder: 'Dossier du jeu',
+    open: 'Ouvrir',
     starting: name => `${name} démarre…`,
-    accountOpening: 'Prism s’ouvre…',
-    failed: 'Le lancement a échoué.',
+    saved: 'Enregistré.',
+    refused: 'Réglage refusé, rien n’a changé.',
+    failed: 'La demande a échoué.',
     serverGone: 'Le lanceur s’est arrêté. Ferme cette fenêtre et rouvre-le.',
   };
+  const icons = {
+    play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    settings: '<svg viewBox="0 0 24 24"><path d="M3 6h10v2H3zm14 0h4v2h-4zM3 16h4v2H3zm8 0h10v2H11z"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></svg>',
+  };
 
-  const status = document.getElementById('status');
-  const profiles = document.getElementById('profiles');
-  const account = document.getElementById('account');
-  document.getElementById('title').textContent = text.title;
-  account.textContent = text.account;
+  const $ = id => document.getElementById(id);
+  for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
+  $('back').setAttribute('aria-label', text.back);
 
-  async function ask(path) {
-    const reply = await fetch(path, { method: 'POST' });
+  let current = null;   // the profile whose settings are open
+
+  async function post(path, body) {
+    const reply = await fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
     if (!reply.ok) throw new Error(reply.status);
   }
+  const say = sentence => { $('status').textContent = sentence; };
 
-  async function launch(profile) {
-    for (const b of document.querySelectorAll('button')) b.disabled = true;
-    status.textContent = text.starting(profile.name);
-    try {
-      await ask(`/api/launch/${profile.id}`);
-      // The game takes over from here; this window has nothing left to show.
-      setTimeout(() => window.close(), 2500);
-    } catch {
-      status.textContent = text.failed;
-      for (const b of document.querySelectorAll('button')) b.disabled = false;
-    }
+  function iconButton(kind, label, onClick) {
+    const b = document.createElement('button');
+    b.className = `icon ${kind}`;
+    b.innerHTML = icons[kind];
+    b.setAttribute('aria-label', label);
+    b.title = label;
+    b.addEventListener('click', onClick);
+    return b;
   }
 
-  account.addEventListener('click', async () => {
-    status.textContent = text.accountOpening;
-    try { await ask('/api/prism'); } catch { status.textContent = text.failed; }
-  });
+  function show(view) {
+    $('list-view').hidden = view !== 'list';
+    $('settings-view').hidden = view !== 'settings';
+    say('');
+  }
 
-  fetch('/api/profiles').then(r => r.json()).then(list => {
-    for (const profile of list) {
-      const b = document.createElement('button');
-      b.className = 'profile';
-      b.textContent = profile.name;
-      b.addEventListener('click', () => launch(profile));
-      profiles.append(b);
-    }
+  async function play(profile) {
+    say(text.starting(profile.name));
+    try {
+      await post(`/api/launch/${profile.id}`);
+      // The game takes over from here; this window has nothing left to show.
+      setTimeout(() => window.close(), 2500);
+    } catch { say(text.failed); }
+  }
+
+  function openSettings(profile) {
+    current = profile;
+    $('settings-name').textContent = profile.name;
+    $('memory').value = Math.round(profile.memoryMb / 1024);
+    $('memory-value').textContent = text.gigabytes($('memory').value);
+    $('java-args').value = profile.javaArgs;
+    $('folder-path').textContent = profile.gameDir;
+    show('settings');
+  }
+
+  // Saved as soon as a field is left or the slider released: no Save button to forget.
+  async function save() {
+    const next = { memoryMb: $('memory').value * 1024, javaArgs: $('java-args').value.trim() };
+    try {
+      await post(`/api/settings/${current.id}`, next);
+      Object.assign(current, next);
+      say(text.saved);
+    } catch (e) { say(e.message === '400' ? text.refused : text.failed); }
+  }
+
+  function render(profiles) {
+    $('profiles').replaceChildren(...profiles.map(profile => {
+      const row = document.createElement('div');
+      row.className = 'profile';
+      const who = document.createElement('div');
+      who.className = 'who';
+      who.innerHTML = '<div class="name"></div><div class="meta"></div>';
+      who.children[0].textContent = profile.name;
+      who.children[1].textContent = text.gigabytes(Math.round(profile.memoryMb / 1024));
+      row.append(who,
+        iconButton('play', text.play(profile.name), () => play(profile)),
+        iconButton('settings', text.settings(profile.name), () => openSettings(profile)));
+      return row;
+    }));
+  }
+
+  let profiles = [];
+  $('back').addEventListener('click', () => { render(profiles); show('list'); });
+  $('memory').addEventListener('input', () => { $('memory-value').textContent = text.gigabytes($('memory').value); });
+  $('memory').addEventListener('change', save);
+  $('java-args').addEventListener('change', save);
+  $('open-folder').addEventListener('click', () => post(`/api/folder/${current.id}`).catch(() => say(text.failed)));
+
+  fetch('/api/profiles').then(r => r.json()).then(data => {
+    profiles = data.profiles;
+    // Leave the system a quarter of the machine's memory.
+    $('memory').max = Math.floor(data.machineMb / 1024 * 0.75);
+    render(profiles);
   });
 
   // The server stops by itself when these pings stop, that is, when this window closes.
-  setInterval(() => fetch('/api/ping').catch(() => { status.textContent = text.serverGone; }), 10000);
+  setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
 </script>
 </body>
 </html>
