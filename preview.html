@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aperçu du monde</title>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #15171a;
+    --surface: #1f2226;
+    --surface-hover: #2a2e33;
+    --line: #33383e;
+    --text: #e8e6e1;
+    --muted: #8d9197;
+    --accent: #7fb069;
+    --accent-ink: #10140e;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    padding: 20px;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 320px;
+    gap: 20px;
+    background: var(--ground);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+  }
+  h2 {
+    margin: 0 0 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .column { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  .muted { color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  button, input[type=text] {
+    font: inherit; color: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  }
+  button { cursor: pointer; transition: background 120ms, border-color 120ms; }
+  button:hover { background: var(--surface-hover); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Left: what to try. */
+  input[type=text] { width: 100%; padding: 8px 10px; user-select: text; }
+  .setting { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
+  .setting label { font-size: 13px; }
+  .setting output { font-weight: 600; }
+  .setting output.changed { color: var(--accent); }
+  .setting input { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: var(--accent); }
+  .setting small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+  /* The only part allowed to scroll, and only when the window is too short for ten sliders. */
+  #settings { flex: 1; min-height: 0; overflow-y: auto; margin-right: -8px; padding-right: 8px;
+              display: flex; flex-direction: column; gap: 9px; }
+  #settings h2 { margin-top: 6px; }
+  #generate {
+    padding: 12px; font-weight: 600;
+    background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  }
+  #generate:hover { background: #93c47c; }
+  #status { min-height: 36px; font-size: 13px; color: var(--muted); }
+
+  /* Middle: the map. */
+  .tabs { display: flex; gap: 6px; }
+  .tabs button { padding: 6px 14px; }
+  .tabs button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+  /* The map is the largest square that fits the middle column, whichever side is the short one. */
+  #stage { flex: 1; min-height: 0; display: grid; place-items: center; container-type: size; }
+  #frame { position: relative; width: min(100cqw, 100cqh); height: min(100cqw, 100cqh); }
+  #frame canvas, #frame > div { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 6px; }
+  #map { image-rendering: pixelated; cursor: crosshair; }
+  #probe { min-height: 20px; font-size: 13px; }
+
+  /* Right: the numbers. */
+  .figures { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; }
+  .figures .value { font-weight: 600; text-align: right; }
+  .figures .before { color: var(--muted); text-align: right; min-width: 5ch; }
+  #biomes { flex: 1; min-height: 0; overflow-y: auto; margin-right: -8px; padding-right: 8px; }
+  .biome {
+    width: 100%; display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; align-items: center;
+    padding: 5px 8px; border: 1px solid transparent; background: none; text-align: left; font-size: 13px;
+  }
+  .biome[aria-pressed=true] { border-color: var(--accent); background: var(--surface); }
+  .biome i { width: 14px; height: 14px; border-radius: 3px; }
+  .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .biome .width { color: var(--muted); min-width: 7ch; text-align: right; }
+  .biome .share { min-width: 5ch; text-align: right; }
+  .legend { display: grid; grid-template-columns: 14px 1fr auto auto; gap: 8px; padding: 0 8px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <section class="column">
+    <div>
+      <h2 data-text="seed"></h2>
+      <input type="text" id="seed" maxlength="64" spellcheck="false">
+    </div>
+    <div id="settings"></div>
+    <button id="generate" data-text="generate"></button>
+    <div id="status" role="status"></div>
+  </section>
+
+  <section class="column">
+    <div class="tabs" id="tabs"></div>
+    <div id="stage"><div id="frame"><canvas id="map"></canvas><div id="relief" hidden></div></div></div>
+    <div id="probe" class="num muted"></div>
+  </section>
+
+  <section class="column">
+    <div>
+      <h2 data-text="figures"></h2>
+      <div class="figures num" id="figures"></div>
+    </div>
+    <div class="column" style="flex:1; gap:6px">
+      <h2 data-text="biomes" style="margin:0"></h2>
+      <div class="legend"><span></span><span data-text="colBiome"></span><span data-text="colWidth"></span><span data-text="colShare"></span></div>
+      <div id="biomes"></div>
+    </div>
+  </section>
+
+<script type="module">
+  // Every sentence the page shows, in one place.
+  const text = {
+    seed: 'Graine',
+    generate: 'Générer l’aperçu',
+    figures: 'En chiffres',
+    biomes: 'Biomes',
+    colBiome: 'Clique pour isoler',
+    colWidth: 'largeur type',
+    colShare: 'part',
+    groups: { biomes: 'Taille et climat des biomes', relief: 'Relief', continents: 'Continents et océans' },
+    settings: {
+      temperature_scale:      ['Échelle des températures', 'Plus bas : zones chaudes et froides plus larges.'],
+      vegetation_scale:       ['Échelle de la végétation', 'Plus bas : zones sèches et humides plus larges.'],
+      temperature_multiplier: ['Amplitude des températures', 'Sous 1 : extrêmes plus rares. Au-dessus : plus fréquents.'],
+      temperature_offset:     ['Décalage du climat', 'Positif : monde plus chaud. Négatif : plus froid.'],
+      vertical_scale:         ['Échelle verticale', 'Étire le relief au-dessus de la mer.'],
+      flat_terrain_skew:      ['Plat contre plateaux', 'Positif : plus de terrain plat. Négatif : plus de plateaux.'],
+      erosion_scale:          ['Échelle de l’érosion', 'Plus bas : chaînes plus épaisses, plus d’espace entre elles.'],
+      ridge_scale:            ['Échelle des crêtes', 'Plus bas : rivières plus larges, terrain plus ample autour.'],
+      continents_scale:       ['Échelle des continents', 'Plus bas : continents et océans plus grands.'],
+      ocean_offset:           ['Part d’océan', 'Plus bas : plus d’océan.'],
+    },
+    views: { biomes: 'Biomes', height: 'Relief', temperature: 'Température', relief3d: '3D' },
+    running: s => `Calcul en cours… ${s} s (compte environ 45 s)`,
+    done: s => `Aperçu prêt en ${s} s.`,
+    failed: 'Le calcul a échoué.',
+    refused: 'Graine ou valeur refusée.',
+    noPreview: 'Aucun aperçu encore. Choisis une graine et lance le calcul.',
+    no3d: 'La vue 3D n’a pas pu se charger (il lui faut internet la première fois).',
+    probe: (x, z, y, biome) => `x ${x}   z ${z}   altitude ${y}   ${biome}`,
+    area: (blocks, step) => `Zone de ${blocks} × ${blocks} blocs autour de 0,0, un point tous les ${step} blocs.`,
+    figureNames: {
+      ocean: 'Mer',
+      flat: 'Terres plates',
+      high: 'Terres au-dessus de 150',
+      top: 'Plus haut sommet',
+      count: 'Biomes présents',
+      typical: 'Largeur type d’un biome',
+    },
+    percent: v => `${v.toFixed(1)} %`,
+    blocks: v => `${Math.round(v / 10) * 10} blocs`,
+    serverGone: 'Le lanceur s’est arrêté. Ferme cette fenêtre et rouvre-le.',
+  };
+
+  // What each slider may explore. The starting values come from the pack.
+  const ranges = {
+    biomes:     { temperature_scale: [0.03, 0.5, 0.01], vegetation_scale: [0.03, 0.5, 0.01],
+                  temperature_multiplier: [0.5, 1.5, 0.05], temperature_offset: [-0.5, 0.5, 0.05] },
+    relief:     { vertical_scale: [0.5, 2, 0.025], flat_terrain_skew: [-0.5, 0.5, 0.05],
+                  erosion_scale: [0.05, 0.5, 0.01], ridge_scale: [0.05, 0.5, 0.01] },
+    continents: { continents_scale: [0.03, 0.3, 0.01], ocean_offset: [-1, -0.2, 0.05] },
+  };
+
+  const $ = id => document.getElementById(id);
+  for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
+  const say = sentence => { $('status').textContent = sentence; };
+
+  // ---------- the settings column ----------
+
+  const packValues = await fetch('/api/preview/config').then(r => r.json());
+  const inputs = {};
+  for (const [group, keys] of Object.entries(ranges)) {
+    const title = document.createElement('h2');
+    title.textContent = text.groups[group];
+    $('settings').append(title);
+    for (const [key, [min, max, step]] of Object.entries(keys)) {
+      const [label, hint] = text.settings[key];
+      const row = document.createElement('div');
+      row.className = 'setting';
+      row.innerHTML = `<label for="${key}"></label><output class="num" for="${key}"></output>
+        <input type="range" id="${key}" min="${min}" max="${max}" step="${step}"><small></small>`;
+      row.querySelector('label').textContent = label;
+      row.querySelector('small').textContent = hint;
+      const input = row.querySelector('input');
+      const output = row.querySelector('output');
+      input.value = packValues[key];
+      const show = () => {
+        output.textContent = (+input.value).toFixed(step < 0.05 ? (step < 0.01 ? 3 : 2) : 2);
+        // Green marks a value that differs from what the pack ships.
+        output.classList.toggle('changed', Math.abs(input.value - packValues[key]) > 1e-9);
+      };
+      input.addEventListener('input', show);
+      // Double-click a slider to put it back to the pack's value.
+      input.addEventListener('dblclick', () => { input.value = packValues[key]; show(); });
+      show();
+      inputs[key] = input;
+      $('settings').append(row);
+    }
+  }
+  $('seed').value = 'cap-1';
+
+  // ---------- colours ----------
+
+  // A biome's colour comes from its name: families share a hue, and each member gets its own shade
+  // so that neighbours stay distinct. [hue, saturation, lightness].
+  const families = [
+    [/frozen_ocean|frozen_river/, [200, 35, 78]],
+    [/deep.*ocean/, [222, 55, 30]],
+    [/warm_ocean|lukewarm/, [190, 60, 45]],
+    [/cold_ocean/, [215, 35, 45]],
+    [/ocean|river/, [212, 55, 42]],
+    [/ice|frozen|glacial|snowy|wintry|siberian|frostfire/, [200, 25, 88]],
+    [/alpine|grove|shield|taiga|spruce|pine/, [158, 32, 34]],
+    [/badlands|mesa|canyon|bryce|painted|red_|scarlet|warped/, [18, 62, 50]],
+    [/desert|sands|dune|oasis|beach|shore/, [44, 62, 68]],
+    [/savanna|shrubland|steppe|arid|brushland|ashen/, [62, 38, 50]],
+    [/jungle|tropical|rainforest|bamboo/, [112, 62, 34]],
+    [/swamp|marsh|mangrove/, [150, 30, 28]],
+    [/cherry|sakura|lavender|blooming|moonlight|amethyst|orchid|mushroom/, [300, 40, 66]],
+    [/volcanic|caldera|crater|basalt|yellowstone/, [10, 20, 26]],
+    [/peaks|mountain|cliffs|spires|stony|rocky|windswept|granite|haze|emerald|yosemite|highlands/, [30, 8, 56]],
+    [/forest|birch|woodland|cloud/, [128, 42, 36]],
+    [/plains|meadow|valley|lowlands|field|clearing|lush/, [92, 45, 56]],
+  ];
+  function hashOf(string) {
+    let h = 2166136261;
+    for (let i = 0; i < string.length; i++) h = Math.imul(h ^ string.charCodeAt(i), 16777619);
+    return (h >>> 0) / 4294967296;
+  }
+  function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = n => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+    return [f(0), f(8), f(4)];
+  }
+  function biomeColour(id) {
+    const name = id.split(':')[1];
+    const family = families.find(([pattern]) => pattern.test(name));
+    const [h, s, l] = family ? family[1] : [100, 20, 50];
+    const vary = hashOf(id);
+    return hslToRgb((h + (vary - 0.5) * 22 + 360) % 360, s, Math.max(12, Math.min(92, l + (hashOf(id + '!') - 0.5) * 16)));
+  }
+  const isWater = id => /ocean|river/.test(id);
+  // Height above the sea: lowland green, then ochre, rock, snow. Below: deeper is darker.
+  function heightColour(y, sea) {
+    if (y < sea) { const d = Math.min(1, (sea - y) / 60); return hslToRgb(212, 55, 46 - d * 26); }
+    const stops = [[0, [110, 40, 42]], [40, [80, 40, 50]], [90, [40, 38, 48]], [150, [25, 20, 45]], [210, [0, 0, 70]], [260, [0, 0, 96]]];
+    const up = y - sea;
+    for (let i = 1; i < stops.length; i++) {
+      if (up <= stops[i][0]) {
+        const [a, ca] = stops[i - 1], [b, cb] = stops[i], t = (up - a) / (b - a);
+        return hslToRgb(ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t);
+      }
+    }
+    return [245, 245, 245];
+  }
+  // Biome base temperature, from -0.7 (frozen) to 2 (desert).
+  const temperatureColour = t => hslToRgb(240 - Math.max(0, Math.min(1, (t + 0.7) / 2.7)) * 240, 60, 50);
+
+  const pretty = id => {
+    const [space, name] = id.split(':');
+    const words = name.replaceAll('_', ' ');
+    return words[0].toUpperCase() + words.slice(1) + (space === 'minecraft' ? '' : ` (${space})`);
+  };
+
+  // ---------- the data and what we measure on it ----------
+
+  let world = null;       // the current preview
+  let before = null;      // the figures of the previous one, to compare
+  let view = 'biomes';
+  let isolated = -1;      // index of the biome shown alone, or -1
+
+  async function loadWorld() {
+    const meta = await fetch('/preview/data/preview.json').then(r => r.ok ? r.json() : null);
+    if (!meta) return null;
+    const [heights, biomes] = await Promise.all([
+      fetch('/preview/data/heights.bin').then(r => r.arrayBuffer()).then(b => new Int16Array(b)),
+      fetch('/preview/data/biomes.bin').then(r => r.arrayBuffer()).then(b => new Uint16Array(b)),
+    ]);
+    // Put the seed and the sliders back to what this preview was made with.
+    const run = await fetch('/preview/data/run.json').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (run) {
+      $('seed').value = run.seed;
+      for (const [key, input] of Object.entries(inputs)) {
+        input.value = run.tectonic[key] ?? packValues[key];
+        input.dispatchEvent(new Event('input'));
+      }
+    }
+    const colours = meta.biomes.map(b => biomeColour(b.id));
+    return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes) };
+  }
+
+  function measure(meta, heights, biomeAt) {
+    const n = meta.samples, total = n * n, sea = meta.seaLevel;
+    const cells = new Float64Array(meta.biomes.length);
+    // Sum of (zone area)² per biome: divided by the biome's area, it gives the size of the zone
+    // a random point of that biome sits in. Small scattered patches weigh little, as they should.
+    const weighted = new Float64Array(meta.biomes.length);
+    const seen = new Uint8Array(total);
+    const stack = new Int32Array(total);
+    for (let start = 0; start < total; start++) {
+      if (seen[start]) continue;
+      const biome = biomeAt[start];
+      let size = 0, top = 0;
+      stack[top++] = start; seen[start] = 1;
+      while (top) {
+        const i = stack[--top]; size++;
+        const x = i % n;
+        if (x > 0 && !seen[i - 1] && biomeAt[i - 1] === biome) { seen[i - 1] = 1; stack[top++] = i - 1; }
+        if (x < n - 1 && !seen[i + 1] && biomeAt[i + 1] === biome) { seen[i + 1] = 1; stack[top++] = i + 1; }
+        if (i >= n && !seen[i - n] && biomeAt[i - n] === biome) { seen[i - n] = 1; stack[top++] = i - n; }
+        if (i < total - n && !seen[i + n] && biomeAt[i + n] === biome) { seen[i + n] = 1; stack[top++] = i + n; }
+      }
+      cells[biome] += size;
+      weighted[biome] += size * size;
+    }
+    // Width of a square of that typical area, in blocks.
+    const widths = Array.from(cells, (c, b) => c ? Math.sqrt(weighted[b] / c) * meta.step : 0);
+
+    let ocean = 0, land = 0, flat = 0, high = 0, top = -999;
+    for (let i = 0; i < total; i++) {
+      const y = heights[i];
+      if (y > top) top = y;
+      if (y < sea) { ocean++; continue; }
+      land++;
+      if (y > 150) high++;
+      const x = i % n;
+      // Flat: the ground moves by 2 blocks at most to each neighbour point, one step away.
+      const d = Math.max(
+        x > 0 ? Math.abs(y - heights[i - 1]) : 0, x < n - 1 ? Math.abs(y - heights[i + 1]) : 0,
+        i >= n ? Math.abs(y - heights[i - n]) : 0, i < total - n ? Math.abs(y - heights[i + n]) : 0);
+      if (d <= 2) flat++;
+    }
+    let landCells = 0, landWeighted = 0;
+    meta.biomes.forEach((b, i) => { if (!isWater(b.id)) { landCells += cells[i]; landWeighted += cells[i] * widths[i]; } });
+    return {
+      cells, widths,
+      figures: {
+        ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
+        count: meta.biomes.length, typical: landWeighted / landCells,
+      },
+    };
+  }
+
+  // ---------- drawing ----------
+
+  const map = $('map');
+  const pen = map.getContext('2d');
+
+  function paint() {
+    if (!world) return;
+    const n = world.samples, h = world.heights, sea = world.seaLevel;
+    map.width = map.height = n;
+    const image = pen.createImageData(n, n), px = image.data;
+    for (let i = 0; i < n * n; i++) {
+      const biome = world.biomeAt[i], y = h[i];
+      let c = view === 'height' ? heightColour(y, sea)
+            : view === 'temperature' ? temperatureColour(world.biomes[biome].temperature)
+            : world.colours[biome];
+      // Light from the north-west: slopes facing it are brighter. Water stays flat.
+      let shade = 1;
+      if (y >= sea) {
+        const x = i % n;
+        const west = x > 0 ? h[i - 1] : y, east = x < n - 1 ? h[i + 1] : y;
+        const north = i >= n ? h[i - n] : y, south = i < n * n - n ? h[i + n] : y;
+        shade = Math.max(0.55, Math.min(1.4, 1 + ((east - west) + (south - north)) * 0.012));
+      }
+      if (isolated >= 0 && biome !== isolated) { const g = (c[0] + c[1] + c[2]) / 3 * 0.28; c = [g, g, g]; shade = 1; }
+      px[i * 4] = c[0] * shade; px[i * 4 + 1] = c[1] * shade; px[i * 4 + 2] = c[2] * shade; px[i * 4 + 3] = 255;
+    }
+    pen.putImageData(image, 0, 0);
+    if (!$('relief').hidden) refresh3d();
+  }
+
+  function showFigures() {
+    const f = world.figures, b = before;
+    const format = { ocean: text.percent, flat: text.percent, high: text.percent, top: v => `y ${v}`, count: v => `${v}`, typical: text.blocks };
+    $('figures').replaceChildren(...Object.keys(text.figureNames).flatMap(key => {
+      const cellsOf = [text.figureNames[key], format[key](f[key]), b ? format[key](b[key]) : ''];
+      return cellsOf.map((content, i) => {
+        const span = document.createElement('span');
+        span.textContent = content;
+        span.className = ['', 'value', 'before'][i];
+        return span;
+      });
+    }));
+  }
+
+  function showBiomes() {
+    const total = world.samples ** 2;
+    const order = world.biomes.map((_, i) => i).sort((a, b) => world.cells[b] - world.cells[a]);
+    $('biomes').replaceChildren(...order.map(i => {
+      const row = document.createElement('button');
+      row.className = 'biome num';
+      row.setAttribute('aria-pressed', i === isolated);
+      row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
+      row.children[0].style.background = `rgb(${world.colours[i]})`;
+      row.children[1].textContent = pretty(world.biomes[i].id);
+      row.children[2].textContent = text.blocks(world.widths[i]);
+      row.children[3].textContent = text.percent(100 * world.cells[i] / total);
+      row.addEventListener('click', () => { isolated = isolated === i ? -1 : i; showBiomes(); paint(); });
+      return row;
+    }));
+  }
+
+  function showWorld() {
+    isolated = -1;
+    paint(); showFigures(); showBiomes();
+    $('probe').textContent = text.area(world.samples * world.step, world.step);
+  }
+
+  map.addEventListener('mousemove', event => {
+    if (!world) return;
+    const box = map.getBoundingClientRect(), n = world.samples;
+    const col = Math.min(n - 1, Math.floor((event.clientX - box.left) / box.width * n));
+    const row = Math.min(n - 1, Math.floor((event.clientY - box.top) / box.height * n));
+    const i = row * n + col;
+    $('probe').textContent = text.probe(world.originX + col * world.step, world.originZ + row * world.step,
+      world.heights[i], pretty(world.biomes[world.biomeAt[i]].id));
+  });
+
+  // ---------- the 3D view: the same map, draped over the real heights ----------
+
+  let scene3d = null;
+  async function refresh3d() {
+    try {
+      if (!scene3d) {
+        const THREE = await import('three');
+        const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+        const host = $('relief');
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(devicePixelRatio);
+        host.append(renderer.domElement);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x15171a);
+        const camera = new THREE.PerspectiveCamera(50, 1, 10, 60000);
+        camera.position.set(0, 2600, 5600);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.maxPolarAngle = Math.PI / 2 - 0.02;
+        controls.enableDamping = true;
+        const draw = () => {
+          if (host.hidden) return;
+          const size = host.clientWidth;
+          renderer.setSize(size, size, false);
+          controls.update();
+          renderer.render(scene, camera);
+          requestAnimationFrame(draw);
+        };
+        scene3d = { THREE, scene, draw, land: null, water: null };
+      }
+      const { THREE, scene } = scene3d;
+      const n = world.samples, width = n * world.step;
+      for (const old of [scene3d.land, scene3d.water]) if (old) { scene.remove(old); old.geometry.dispose(); old.material.dispose(); }
+      // One vertex per sample, at true scale: one unit is one block, heights included.
+      const ground = new THREE.PlaneGeometry(width, width, n - 1, n - 1).rotateX(-Math.PI / 2);
+      const at = ground.attributes.position;
+      for (let i = 0; i < n * n; i++) at.setY(i, world.heights[i]);
+      const texture = new THREE.CanvasTexture(map);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.magFilter = THREE.NearestFilter;
+      scene3d.land = new THREE.Mesh(ground, new THREE.MeshBasicMaterial({ map: texture }));
+      scene3d.water = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, width).rotateX(-Math.PI / 2).translate(0, world.seaLevel, 0),
+        new THREE.MeshBasicMaterial({ color: 0x2f5c9e, transparent: true, opacity: 0.6 }));
+      scene.add(scene3d.land, scene3d.water);
+      scene3d.draw();
+    } catch { say(text.no3d); }
+  }
+
+  // ---------- tabs ----------
+
+  for (const [key, label] of Object.entries(text.views)) {
+    const tab = document.createElement('button');
+    tab.textContent = label;
+    tab.dataset.view = key;
+    tab.setAttribute('aria-pressed', key === view);
+    tab.addEventListener('click', () => {
+      const is3d = key === 'relief3d';
+      // The 3D view keeps the colours of the last flat view.
+      if (!is3d) view = key;
+      $('relief').hidden = !is3d;
+      map.style.visibility = is3d ? 'hidden' : 'visible';
+      for (const other of $('tabs').children) other.setAttribute('aria-pressed', other === tab);
+      paint();
+    });
+    $('tabs').append(tab);
+  }
+
+  // ---------- generating ----------
+
+  $('generate').addEventListener('click', async () => {
+    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+    $('generate').disabled = true;
+    const started = Date.now();
+    const seconds = () => Math.round((Date.now() - started) / 1000);
+    const clock = setInterval(() => say(text.running(seconds())), 1000);
+    say(text.running(0));
+    try {
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed: $('seed').value.trim(), tectonic }) });
+      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : (await reply.json().catch(() => ({}))).error || text.failed);
+      before = world && world.figures;
+      world = await loadWorld();
+      showWorld();
+      say(text.done(seconds()));
+    } catch (e) { say(e.message || text.failed); }
+    clearInterval(clock);
+    $('generate').disabled = false;
+  });
+
+  world = await loadWorld();
+  if (world) showWorld();
+  else say(text.noPreview);
+
+  setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
+</script>
+</body>
+</html>

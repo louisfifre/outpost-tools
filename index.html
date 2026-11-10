@@ -98,13 +98,16 @@
     user-select: text;
   }
   .folder button { padding: 6px 12px; font-size: 13px; }
-  #status { margin-top: auto; min-height: 20px; color: var(--muted); font-size: 13px; }
+  #world { padding: 12px 18px; text-align: left; color: var(--muted); }
+  #world:hover { color: var(--text); }
+  #status { margin-top: 12px; min-height: 20px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
   <section class="view" id="list-view">
     <header><h1 data-text="title"></h1></header>
     <div class="view" id="profiles"></div>
+    <button id="world" data-text="world"></button>
   </section>
 
   <section class="view" id="settings-view" hidden>
@@ -135,6 +138,7 @@
   // Every sentence the page shows, in one place.
   const text = {
     title: 'Minecraft',
+    world: 'Aperçu du monde',
     play: name => `Jouer à ${name}`,
     settings: name => `Régler ${name}`,
     back: 'Retour',
@@ -229,6 +233,8 @@
 
   let profiles = [];
   $('back').addEventListener('click', () => { render(profiles); show('list'); });
+  // The preview needs room for a map, so it opens in its own, larger window.
+  $('world').addEventListener('click', () => post('/api/preview/open').catch(() => say(text.failed)));
   $('memory').addEventListener('input', () => { $('memory-value').textContent = text.gigabytes($('memory').value); });
   $('memory').addEventListener('change', save);
   $('java-args').addEventListener('change', save);
