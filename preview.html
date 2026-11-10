@@ -533,6 +533,13 @@
   if (world) showWorld();
   else say(text.noPreview);
 
+  // The address can ask for a state, so a capture gets any view without a click:
+  // /preview?view=height,relief3d&biome=minecraft:desert
+  const asked = new URLSearchParams(location.search);
+  const askedBiome = world ? world.biomes.findIndex(b => b.id === asked.get('biome')) : -1;
+  if (askedBiome >= 0) { isolated = askedBiome; showBiomes(); paint(); }
+  for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
+
   setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
 </script>
 </body>
