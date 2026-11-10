@@ -197,8 +197,11 @@
       <input type="text" id="seed" maxlength="64" spellcheck="false">
     </div>
     <div>
-      <h2 data-text="span"></h2>
-      <div id="span" class="choice num"></div>
+      <div class="setting">
+        <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
+        <input type="range" id="area" min="256" max="2048" step="256">
+        <small id="areaHint"></small>
+      </div>
     </div>
     <div>
       <h2 data-text="profiles"></h2>
@@ -247,10 +250,12 @@
     seed: 'Graine',
     seedRandom: 'au hasard',
     span: 'Zone scannée',
-    spanUnit: 'blocs',
+    spanValue: v => `${v} blocs`,
+    spanHint: wait => `Calcul : environ ${wait}.`,
+    duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60}` : ''}`,
     generate: 'Générer l’aperçu',
     upToDate: 'La carte montre ces réglages.',
-    running: (s, about) => `Calcul… ${s} s sur environ ${about}`,
+    running: (elapsed, about) => `Calcul… ${elapsed} sur environ ${about}`,
     figures: 'En chiffres',
     change: 'écart',
     was: v => `avant : ${v}`,
@@ -349,9 +354,11 @@
   let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
   let trouble = '';       // what went wrong; it stays until the next attempt
-  // Grid points per side, one every 16 blocks: [points, seconds a run takes, about].
-  const spans = [[256, 25], [512, 35], [1024, 90]];
+  // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
   let samples = 512;
+  // Seconds a run takes, about: the server starts, then every point costs the same (measured on
+  // 512, 1024 and 2048 points a side). Four times the area is four times the wait.
+  const about = points => Math.round((16 + points * points * 68e-6) / 5) * 5;
 
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
@@ -365,18 +372,17 @@
   }
   const say = sentence => { trouble = sentence; showButton(); };
 
+  // The width is a slider like the others, from 4096 to 32768 blocks. Its value says the wait it costs.
+  const area = $('area');
+  area.style.setProperty('--pack', (512 - area.min) / (area.max - area.min));
   function showSpan() {
-    for (const button of $('span').querySelectorAll('button')) button.setAttribute('aria-pressed', +button.dataset.samples === samples);
+    area.value = samples;
+    $('areaValue').textContent = text.spanValue(fr(samples * 16));
+    $('areaHint').textContent = text.spanHint(text.duration(about(samples)));
     showButton();
   }
-  for (const [points] of spans) {
-    const button = document.createElement('button');
-    button.textContent = fr(points * 16);
-    button.dataset.samples = points;
-    button.addEventListener('click', () => { samples = points; showSpan(); });
-    $('span').append(button);
-  }
-  $('span').append(Object.assign(document.createElement('small'), { textContent: text.spanUnit }));
+  area.addEventListener('input', () => { samples = +area.value; showSpan(); });
+  area.addEventListener('dblclick', () => { samples = 512; showSpan(); });
 
   // Sets of slider values kept under a name by the browser, to come back to a try in one click.
   // "Pack" is always there: it puts every slider back.
@@ -942,9 +948,9 @@
     $('frame').classList.add('busy');
     const started = Date.now();
     const seconds = () => Math.round((Date.now() - started) / 1000);
-    const about = spans.find(([points]) => points === samples)[1];
+    const wait = text.duration(about(samples));
     // Said twice: above the button, and on the dimmed map, where the eye is.
-    const tick = () => { $('status').textContent = $('note').textContent = text.running(seconds(), about); };
+    const tick = () => { $('status').textContent = $('note').textContent = text.running(text.duration(seconds()), wait); };
     const clock = setInterval(tick, 1000);
     tick();
     let done = false;
