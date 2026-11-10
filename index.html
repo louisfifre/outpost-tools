@@ -5,36 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Minecraft</title>
 <style>
+  /* The same two grounds as the preview page: pure black, or a white that is almost white. */
   :root {
     color-scheme: dark;
-    --ground: #15171a;
-    --surface: #1f2226;
-    --surface-hover: #2a2e33;
-    --line: #33383e;
-    --text: #e8e6e1;
-    --muted: #8d9197;
-    --accent: #7fb069;
-    --accent-ink: #10140e;
+    --ground: #000;
+    --line: #2a2a2a;
+    --text: #ececec;
+    --muted: #8a8a8a;
+    --accent: #8cc474;
+    --accent-ink: #0b1208;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --ground: #fafaf8;
+      --line: #deded9;
+      --text: #171717;
+      --muted: #707070;
+      --accent: #3f7f2c;
+      --accent-ink: #fff;
+    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    padding: 24px;
+    padding: 24px 28px;
     overflow: hidden;               /* one screen, never a scrollbar */
     display: flex;
     flex-direction: column;
     background: var(--ground);
     color: var(--text);
-    font: 15px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     user-select: none;
   }
   [hidden] { display: none !important; }
-  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #settings-view { gap: 16px; }
   header { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 4px; }
   h1 {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -44,33 +55,30 @@
     font: inherit;
     color: inherit;
     cursor: pointer;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
-    transition: background 120ms, border-color 120ms;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    transition: color 120ms, filter 120ms;
   }
-  button:hover { background: var(--surface-hover); }
   button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: default; }
   svg { width: 18px; height: 18px; display: block; fill: currentColor; }
   .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
   .icon:hover { color: var(--text); }
 
-  /* A profile: its name and memory, then play, then settings. */
+  /* A row: a name and a line about it, then what can be done with it. Rows are set apart by a line. */
   .profile {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 14px 14px 14px 18px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--surface);
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
   }
   .profile .who { flex: 1; min-width: 0; }
   .profile .name { font-size: 18px; font-weight: 600; }
   .profile .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .play { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  .play:hover { background: #93c47c; color: var(--accent-ink); }
+  .play:hover { filter: brightness(1.1); color: var(--accent-ink); }
 
   /* Settings of one profile. */
   label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
@@ -84,8 +92,8 @@
     resize: none;
     padding: 10px 12px;
     border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
+    border-radius: 6px;
+    background: none;
     color: var(--text);
     font: 13px/1.5 "Cascadia Mono", Consolas, monospace;
     user-select: text;
@@ -97,9 +105,10 @@
     font: 13px "Cascadia Mono", Consolas, monospace;
     user-select: text;
   }
-  .folder button { padding: 6px 12px; font-size: 13px; }
-  #world { padding: 12px 18px; text-align: left; color: var(--muted); }
-  #world:hover { color: var(--text); }
+  .folder button { padding: 6px 12px; font-size: 13px; border: 1px solid var(--line); }
+  /* The preview is a tool, not a profile: same row, but the whole row is the button, and no line under the last one. */
+  #world { width: 100%; text-align: left; border-bottom: 0; border-radius: 0; }
+  #world:hover .icon { color: var(--text); }
   #status { margin-top: 12px; min-height: 20px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -107,7 +116,10 @@
   <section class="view" id="list-view">
     <header><h1 data-text="title"></h1></header>
     <div class="view" id="profiles"></div>
-    <button id="world" data-text="world"></button>
+    <button id="world" class="profile">
+      <span class="who"><span class="name" data-text="world" style="display:block"></span><span class="meta" data-text="worldAbout"></span></span>
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4h6v6h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H14zM5 6h6v2H6v10h10v-5h2v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/></svg></span>
+    </button>
   </section>
 
   <section class="view" id="settings-view" hidden>
@@ -139,6 +151,7 @@
   const text = {
     title: 'Minecraft',
     world: 'Aperçu du monde',
+    worldAbout: 'Essayer une graine et des réglages, sans jouer',
     play: name => `Jouer à ${name}`,
     settings: name => `Régler ${name}`,
     back: 'Retour',
@@ -245,6 +258,8 @@
     // Leave the system a quarter of the machine's memory.
     $('memory').max = Math.floor(data.machineMb / 1024 * 0.75);
     render(profiles);
+    // Tells a capture that the page is drawn (see scripts/capture.ps1).
+    document.documentElement.dataset.ready = '1';
   });
 
   // The server stops by itself when these pings stop, that is, when this window closes.
