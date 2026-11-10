@@ -23,6 +23,7 @@
     --accent-ink: #0b1208;
     --warn: #e5a44e;
     --grid: rgba(255, 255, 255, 0.16);
+    --track: #4a4a4a;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -35,6 +36,7 @@
       --accent-ink: #fff;
       --warn: #a85d00;
       --grid: rgba(0, 0, 0, 0.12);
+      --track: #bdbdb8;
     }
   }
   * { box-sizing: border-box; }
@@ -57,11 +59,8 @@
     body { grid-template-columns: 230px minmax(0, 1fr) 250px; gap: 24px; padding: 20px; }
     .setting small { display: none; }
   }
-  h2 {
-    margin: 0 0 8px;
-    font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--muted);
-  }
+  /* A title is the same text as the rest, only heavier: no capitals, no second colour. */
+  h2 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
   .column { min-height: 0; display: flex; flex-direction: column; gap: 16px; }
   .muted { color: var(--muted); }
   .num { font-variant-numeric: tabular-nums; }
@@ -73,6 +72,7 @@
   /* A list that may scroll fades out at its bottom edge, so a cut row reads as "there is more". */
   .scroll {
     flex: 1; min-height: 0; overflow-y: auto; margin-right: -10px; padding: 0 10px 28px 0;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
             mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
   }
@@ -83,25 +83,45 @@
     font-size: 16px; user-select: text;
   }
   input[type=text]:focus { outline: none; border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  /* A choice among a few: words in a row, the current one underlined. The view tabs are the same thing. */
+  .choice { display: flex; gap: 20px; align-items: baseline; }
+  .choice button { padding: 4px 0; border-radius: 0; color: var(--muted); border-bottom: 2px solid transparent; }
+  .choice button:hover { color: var(--text); }
+  .choice button[aria-pressed=true] { color: var(--text); border-color: var(--accent); }
   #settings { display: flex; flex-direction: column; gap: 8px; }
-  #settings h2 { margin: 8px 0 0; }
-  #settings h2:first-child { margin-top: 0; }
+  /* A line sets each group apart, so its title needs no other mark. */
+  #settings h2 { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+  #settings h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
   .setting { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
   .setting label { font-size: 13px; }
   .setting output { font-weight: 600; }
   .setting output.changed { color: var(--accent); }
   .setting output span { margin-right: 8px; font-weight: 400; color: var(--muted); }
-  /* A slider is grey; green is kept for the ones that left the pack's value. */
-  .setting input { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: var(--muted); }
-  .setting input.changed { accent-color: var(--accent); }
+  /* A slider is a hairline and a small mark to move. A notch stays where the pack's value is.
+     The mark is green only once it left that value. */
+  .setting input {
+    grid-column: 1 / -1; width: 100%; height: 18px; margin: 0; cursor: pointer;
+    -webkit-appearance: none; appearance: none; --mark: var(--text);
+    background:
+      linear-gradient(var(--muted), var(--muted)) calc(5px + (100% - 10px) * var(--pack)) 50% / 1px 7px no-repeat,
+      linear-gradient(var(--track), var(--track)) 0 50% / 100% 1px no-repeat;
+  }
+  .setting input.changed { --mark: var(--accent); }
+  .setting input::-webkit-slider-runnable-track { height: 18px; background: none; }
+  /* Wider than what it shows, so it stays easy to catch. */
+  .setting input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 11px; height: 18px; border: 0; border-radius: 0;
+    background: linear-gradient(var(--mark), var(--mark)) center / 2px 14px no-repeat;
+  }
   .setting small { grid-column: 1 / -1; }
+  /* The button always says what it does. When there is nothing to compute it is greyed,
+     and the line above it says why. */
+  #status { min-height: 18px; font-size: 13px; color: var(--muted); }
+  #status.trouble { color: var(--warn); }
   #generate { padding: 11px; font-weight: 600; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
   #generate:hover:not(:disabled) { filter: brightness(1.1); }
-  /* Quiet when the map already shows these settings: nothing new to compute. */
-  #generate.quiet { background: none; color: var(--muted); border-color: var(--line); font-weight: 400; }
-  #generate.running { background: none; color: var(--text); border-color: var(--line); }
-  #status { font-size: 13px; color: var(--warn); }
-  #status:empty { display: none; }
+  #generate:disabled { background: none; color: var(--muted); border-color: var(--line); }
 
   /* Middle: the map. Tabs, map, legend and readout hang off one square, so they stay one block. */
   #stage { flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
@@ -122,10 +142,7 @@
     filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
   }
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
-  #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); display: flex; gap: 20px; }
-  #tabs button { padding: 4px 0; border-radius: 0; color: var(--muted); border-bottom: 2px solid transparent; }
-  #tabs button:hover { color: var(--text); }
-  #tabs button[aria-pressed=true] { color: var(--text); border-color: var(--accent); }
+  #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
   #tabs .apart { margin-left: auto; }
   #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
   #legend { display: flex; flex-wrap: wrap; gap: 4px 14px; min-height: 18px; }
@@ -146,9 +163,15 @@
     padding: 4px 0; text-align: left; font-size: 13px;
   }
   .biome:hover .name { text-decoration: underline; }
-  /* The list mirrors the map: the biome shown alone stays lit, the others step back. */
+  /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
   .biome[aria-pressed=true] .name { font-weight: 600; }
-  #biomes.isolating .biome[aria-pressed=false] { opacity: 0.45; }
+  #biomes.choosing .biome[aria-pressed=false] { opacity: 0.45; }
+  #biomes.choosing .biome[aria-pressed=false]:hover { opacity: 0.8; }
+  .heading { display: flex; align-items: baseline; gap: 12px; }
+  .heading h2 { margin: 0; flex: 1; }
+  #filter { width: 110px; padding: 2px 0; font-size: 13px; }
+  #pick { display: flex; gap: 10px; align-items: baseline; min-height: 18px; }
+  #pick button { padding: 0; font-size: 12px; color: var(--text); text-decoration: underline; }
   /* A thin edge, so a white or pale swatch does not vanish on the light ground. */
   .biome i, #legend i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
   .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -165,15 +188,19 @@
       <h2 data-text="seed"></h2>
       <input type="text" id="seed" maxlength="64" spellcheck="false">
     </div>
+    <div>
+      <h2 data-text="span"></h2>
+      <div id="span" class="choice num"></div>
+    </div>
     <div id="settings" class="scroll"></div>
-    <button id="generate"></button>
     <div id="status" role="status"></div>
+    <button id="generate" data-text="generate"></button>
   </section>
 
   <section class="column">
     <div id="stage">
       <div id="frame">
-        <div id="tabs"></div>
+        <div id="tabs" class="choice"></div>
         <canvas id="map"></canvas>
         <div id="relief" hidden></div>
         <div id="grid" hidden></div>
@@ -193,8 +220,11 @@
     </div>
     <div class="column" style="flex:1; gap:6px">
       <div>
-        <h2 data-text="biomes" style="margin-bottom:2px"></h2>
-        <small data-text="isolateHint"></small>
+        <div class="heading">
+          <h2 data-text="biomes"></h2>
+          <input type="text" id="filter" spellcheck="false">
+        </div>
+        <small id="pick"></small>
       </div>
       <div class="legend"><span></span><span data-text="colBiome"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
       <div id="biomes" class="scroll"></div>
@@ -205,9 +235,12 @@
   // Every sentence the page shows, in one place.
   const text = {
     seed: 'Graine',
+    seedRandom: 'au hasard',
+    span: 'Zone scannée',
+    spanUnit: 'blocs',
     generate: 'Générer l’aperçu',
-    upToDate: 'La carte montre ces réglages',
-    running: s => `Calcul… ${s} s sur environ 35`,
+    upToDate: 'La carte montre ces réglages.',
+    running: (s, about) => `Calcul… ${s} s sur environ ${about}`,
     figures: 'En chiffres',
     change: 'écart',
     was: v => `avant : ${v}`,
@@ -215,7 +248,10 @@
     close: '≈',
     points: ' pt',
     biomes: 'Biomes',
-    isolateHint: 'Clique un biome pour le voir seul.',
+    pickHint: 'Clique des biomes, ici ou sur la carte.',
+    picked: (count, share) => `${count} ${count > 1 ? 'biomes choisis' : 'biome choisi'} · ${share} de la zone`,
+    pickNone: 'Tout voir',
+    filter: 'Filtrer',
     colBiome: 'biome',
     colWidth: 'largeur type',
     colShare: 'part',
@@ -236,7 +272,7 @@
     packValue: v => `pack ${v}`,
     resetHint: 'Double-clic sur un curseur : valeur du pack.',
     views: { biomes: 'Biomes', flat: 'Plat', height: 'Relief', temperature: 'Température' },
-    view3d: '3D',
+    shapes: { flat2d: '2D', relief3d: '3D' },
     done: s => `Aperçu prêt en ${s} s.`,
     failed: 'Le calcul a échoué. Relance-le ; si ça recommence, regarde last-run.log dans le dossier de l’aperçu.',
     refused: 'Graine refusée : elle accepte lettres, chiffres, espaces et tirets.',
@@ -282,26 +318,45 @@
 
   const $ = id => document.getElementById(id);
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
-  // Trouble goes under the button, in the warning colour; it stays until the next attempt.
-  const say = sentence => { $('status').textContent = sentence; };
+  $('seed').placeholder = text.seedRandom;
+  $('filter').placeholder = text.filter;
   const scheme = matchMedia('(prefers-color-scheme: dark)');
 
   // ---------- the settings column ----------
 
   const packValues = await fetch('/api/preview/config').then(r => r.json());
   const inputs = {};
-  let shown = null;       // the seed and values the map on screen was made with
+  let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
+  let trouble = '';       // what went wrong; it stays until the next attempt
+  // Grid points per side, one every 16 blocks: [points, seconds a run takes, about].
+  const spans = [[256, 25], [512, 35], [1024, 90]];
+  let samples = 512;
 
-  // The button is loud only when there is something new to compute.
+  // The button keeps its name. It is greyed when there is nothing new to compute, and the line
+  // above it says why: the map already shows these settings, or a run is under way.
   function showButton() {
     if (busy) return;
-    const same = !!shown && shown.seed === $('seed').value.trim()
+    const same = !!shown && shown.seed === $('seed').value.trim() && shown.samples === samples
       && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - shown.values[key]) < 1e-9);
-    $('generate').classList.toggle('quiet', same);
-    $('generate').textContent = same ? text.upToDate : text.generate;
     $('generate').disabled = same;
+    $('status').className = trouble ? 'trouble' : '';
+    $('status').textContent = trouble || (same ? text.upToDate : '');
   }
+  const say = sentence => { trouble = sentence; showButton(); };
+
+  function showSpan() {
+    for (const button of $('span').querySelectorAll('button')) button.setAttribute('aria-pressed', +button.dataset.samples === samples);
+    showButton();
+  }
+  for (const [points] of spans) {
+    const button = document.createElement('button');
+    button.textContent = fr(points * 16);
+    button.dataset.samples = points;
+    button.addEventListener('click', () => { samples = points; showSpan(); });
+    $('span').append(button);
+  }
+  $('span').append(Object.assign(document.createElement('small'), { textContent: text.spanUnit }));
 
   for (const [group, keys] of Object.entries(ranges)) {
     const title = document.createElement('h2');
@@ -319,6 +374,7 @@
       const input = row.querySelector('input');
       const output = row.querySelector('output');
       input.value = packValues[key];
+      input.style.setProperty('--pack', (packValues[key] - min) / (max - min));
       const show = () => {
         const changed = Math.abs(input.value - packValues[key]) > 1e-9;
         // A changed value turns green and keeps the pack's value beside it, to know how far it went.
@@ -342,8 +398,9 @@
   const resetHint = document.createElement('small');
   resetHint.textContent = text.resetHint;
   $('settings').append(resetHint);
-  $('seed').value = 'cap-1';
+  // No seed is a seed drawn at random; the one that was drawn is written back once the map is there.
   $('seed').addEventListener('input', showButton);
+  showSpan();
 
   // ---------- colours ----------
 
@@ -428,7 +485,8 @@
   let world = null;       // the current preview
   let view = 'biomes';
   let in3d = false;
-  let isolated = -1;      // index of the biome shown alone, or -1
+  // The biomes shown alone, by id: a choice lives through the next run, to follow a biome from one try to the other.
+  const chosen = new Set();
   // The figures of the run before this one. Kept by the browser, so a reload does not lose them.
   let before = null;
   try { before = JSON.parse(localStorage.getItem('preview.before')); } catch { }
@@ -442,15 +500,17 @@
     ]);
     // Put the seed and the sliders back to what this preview was made with.
     const run = await fetch('/preview/data/run.json').then(r => r.ok ? r.json() : null).catch(() => null);
+    samples = meta.samples;
     if (run) {
       $('seed').value = run.seed;
-      shown = { seed: run.seed, values: {} };
+      shown = { seed: String(run.seed), samples, values: {} };
       for (const [key, input] of Object.entries(inputs)) {
         input.value = run.tectonic[key] ?? packValues[key];
         shown.values[key] = +input.value;
         input.dispatchEvent(new Event('input'));
       }
     }
+    showSpan();
     const colours = meta.biomes.map(b => biomeColour(b.id));
     return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes) };
   }
@@ -530,6 +590,8 @@
         ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
         expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
         count: meta.biomes.length, typical: landWeighted / landCells,
+        // Two runs compare only over the same area: a wider one holds wider zones.
+        span: n * meta.step,
       },
     };
   }
@@ -546,8 +608,10 @@
     const n = world.samples, total = n * n, h = world.heights, sea = world.seaLevel, at = world.biomeAt;
     map.width = map.height = n;
     const image = pen.createImageData(n, n), px = image.data;
-    // What is not the isolated biome steps back towards the ground: water, then land.
+    // What is not a chosen biome steps back towards the ground: water, then land.
     const stepBack = scheme.matches ? [16, 40] : [200, 226];
+    // A chosen biome this world does not have dims nothing.
+    const lit = world.biomes.map(b => chosen.has(b.id)), choosing = lit.includes(true);
     for (let i = 0; i < total; i++) {
       const biome = at[i], y = h[i], x = i % n, water = y < sea;
       // Light from the north-west: slopes facing it are brighter. Water stays flat.
@@ -558,7 +622,7 @@
         slope = (east - west) + (south - north);
       }
       let c, shade = 1;
-      if (isolated >= 0 && biome !== isolated) {
+      if (choosing && !lit[biome]) {
         const g = stepBack[water ? 0 : 1];
         c = [g, g, g]; shade = clamp(1 + slope * 0.004, 0.9, 1.1);
       } else if (view === 'height') {
@@ -603,7 +667,7 @@
   }
 
   function showFigures() {
-    const f = world.figures, b = before;
+    const f = world.figures, b = before && before.span === f.span ? before : null;
     const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => `${v}`, typical: blocks, expanse: blocks };
     // What moved since the run before, counted on the values as they are shown: [rounding step, decimals].
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
@@ -642,34 +706,63 @@
   function showBiomes() {
     const total = world.samples ** 2;
     const order = world.biomes.map((_, i) => i).sort((a, b) => world.cells[b] - world.cells[a]);
-    $('biomes').classList.toggle('isolating', isolated >= 0);
     $('biomes').replaceChildren(...order.map(i => {
       const row = document.createElement('button');
       row.className = 'biome num';
-      row.setAttribute('aria-pressed', i === isolated);
+      row.dataset.id = world.biomes[i].id;
       row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
       row.children[0].style.background = css(world.colours[i]);
       row.children[1].textContent = pretty(world.biomes[i].id);
       row.title = world.biomes[i].id;
       row.children[2].textContent = blocks(world.widths[i]);
       row.children[3].textContent = percent(100 * world.cells[i] / total);
-      row.addEventListener('click', () => { isolated = isolated === i ? -1 : i; showBiomes(); paint(); });
+      row.addEventListener('click', () => choose(world.biomes[i].id));
       return row;
     }));
+    showChoice();
   }
+
+  // Each click adds a biome to the choice or takes it out; the map shows the chosen ones alone.
+  function choose(id) {
+    if (!chosen.delete(id)) chosen.add(id);
+    showChoice(); paint();
+  }
+  // Marks the rows, hides those the filter leaves out, and says what the choice weighs.
+  // The rows are not rebuilt, so the list stays where it was scrolled.
+  function showChoice() {
+    const asked = $('filter').value.trim().toLowerCase();
+    let count = 0, cells = 0;
+    world.biomes.forEach((b, i) => { if (chosen.has(b.id)) { count++; cells += world.cells[i]; } });
+    $('biomes').classList.toggle('choosing', count > 0);
+    for (const row of $('biomes').children) {
+      const on = chosen.has(row.dataset.id);
+      row.setAttribute('aria-pressed', on);
+      // The filter reads the id too, so the name of a mod finds its biomes. A chosen biome stays in sight.
+      row.hidden = !on && !!asked && !row.dataset.id.replaceAll('_', ' ').includes(asked);
+    }
+    if (!count) { $('pick').replaceChildren(text.pickHint); return; }
+    const none = document.createElement('button');
+    none.textContent = text.pickNone;
+    none.addEventListener('click', () => { chosen.clear(); showChoice(); paint(); });
+    $('pick').replaceChildren(text.picked(count, percent(100 * cells / world.samples ** 2)), none);
+  }
+  $('filter').addEventListener('input', () => { if (world) showChoice(); });
 
   const restProbe = () => { if (world) $('probe').textContent = text.area(fr(world.samples * world.step), fr(world.samples * world.step / 8)); };
   function showWorld() {
-    isolated = -1;
     showTabs(); showFigures(); showBiomes(); restProbe(); showButton();
   }
 
-  map.addEventListener('mousemove', event => {
-    if (!world) return;
+  const pointUnder = event => {
     const box = map.getBoundingClientRect(), n = world.samples;
     const col = Math.min(n - 1, Math.floor((event.clientX - box.left) / box.width * n));
     const row = Math.min(n - 1, Math.floor((event.clientY - box.top) / box.height * n));
-    const i = row * n + col;
+    return [col, row, row * n + col];
+  };
+  map.addEventListener('click', event => { if (world) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
+  map.addEventListener('mousemove', event => {
+    if (!world) return;
+    const [col, row, i] = pointUnder(event);
     $('probe').textContent = text.probe(fr(world.originX + col * world.step), fr(world.originZ + row * world.step),
       world.heights[i], pretty(world.biomes[world.biomeAt[i]].id));
   });
@@ -689,9 +782,7 @@
         renderer.setPixelRatio(devicePixelRatio);
         host.append(renderer.domElement);
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(50, 1, 10, 80000);
-        // Far and high enough to hold the whole square, its near edge included.
-        camera.position.set(0, 9000, 8200);
+        const camera = new THREE.PerspectiveCamera(50, 1, 10, 200000);
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.maxPolarAngle = Math.PI / 2 - 0.02;
         controls.enableDamping = true;
@@ -703,16 +794,24 @@
           renderer.render(scene, camera);
           requestAnimationFrame(draw);
         };
-        scene3d = { THREE, scene, draw, land: null, water: null, running: false };
+        scene3d = { THREE, scene, camera, controls, draw, land: null, water: null, running: false, width: 0 };
       }
       const { THREE, scene } = scene3d;
       scene.background = new THREE.Color(groundColour());
       const n = world.samples, width = n * world.step;
+      if (scene3d.width !== width) {
+        // Far and high enough to hold the whole square, its near edge included. A new area resets the look.
+        scene3d.camera.position.set(0, width * 1.1, width);
+        scene3d.controls.target.set(0, 0, 0);
+        scene3d.width = width;
+      }
       for (const old of [scene3d.land, scene3d.water]) if (old) { scene.remove(old); old.geometry.dispose(); old.material.dispose(); }
-      // One vertex per sample, at true scale: one unit is one block, heights included.
-      const ground = new THREE.PlaneGeometry(width, width, n - 1, n - 1).rotateX(-Math.PI / 2);
+      // At true scale: one unit is one block, heights included. One vertex per sample up to 512 a side;
+      // a wider grid gives one vertex every other sample, which the eye does not miss at that distance.
+      const skip = Math.ceil(n / 512), m = Math.floor((n - 1) / skip) + 1, side = (m - 1) * skip * world.step;
+      const ground = new THREE.PlaneGeometry(side, side, m - 1, m - 1).rotateX(-Math.PI / 2);
       const at = ground.attributes.position;
-      for (let i = 0; i < n * n; i++) at.setY(i, world.heights[i]);
+      for (let row = 0; row < m; row++) for (let col = 0; col < m; col++) at.setY(row * m + col, world.heights[row * skip * n + col * skip]);
       const texture = new THREE.CanvasTexture(map);
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.magFilter = THREE.NearestFilter;
@@ -725,23 +824,27 @@
     } catch { $('note').textContent = text.no3d; }
   }
 
-  // ---------- tabs: one flat view at a time, and 3D as a switch that drapes it over the relief ----------
+  // ---------- tabs: what the map shows on the left, and its shape on the right, flat or draped over the relief.
+  // Two choices of the same kind, each with one answer always lit: nothing here is a switch to turn off.
 
   function showTabs() {
-    for (const tab of $('tabs').children) tab.setAttribute('aria-pressed', tab.dataset.view === 'relief3d' ? in3d : tab.dataset.view === view);
+    for (const tab of $('tabs').children) {
+      const key = tab.dataset.view;
+      tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
+    }
     $('relief').hidden = !in3d;
     map.style.visibility = in3d ? 'hidden' : 'visible';
     $('grid').hidden = in3d || !world;
     $('note').textContent = world ? '' : text.noPreview;
     paint();
   }
-  for (const [key, label] of [...Object.entries(text.views), ['relief3d', text.view3d]]) {
+  for (const [key, label] of [...Object.entries(text.views), ...Object.entries(text.shapes)]) {
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.dataset.view = key;
-    if (key === 'relief3d') tab.className = 'apart';
+    if (key === 'flat2d') tab.className = 'apart';
     tab.addEventListener('click', () => {
-      if (key === 'relief3d') in3d = !in3d; else view = key;
+      if (key in text.shapes) in3d = key === 'relief3d'; else view = key;
       showTabs();
     });
     $('tabs').append(tab);
@@ -751,20 +854,23 @@
 
   $('generate').addEventListener('click', async () => {
     const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+    // An empty seed is one drawn here, so the run can be named and done again.
+    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
+    trouble = '';
     busy = true;
-    say('');
     $('generate').disabled = true;
-    $('generate').className = 'running';
+    $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
     $('frame').classList.add('busy');
     const started = Date.now();
     const seconds = () => Math.round((Date.now() - started) / 1000);
-    const tick = () => { $('generate').textContent = text.running(seconds()); };
+    const about = spans.find(([points]) => points === samples)[1];
+    const tick = () => { $('status').textContent = text.running(seconds(), about); };
     const clock = setInterval(tick, 1000);
     tick();
     let done = false;
     try {
-      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed: $('seed').value.trim(), tectonic }) });
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
       if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
       if (world) {
         before = world.figures;
@@ -772,10 +878,9 @@
       }
       world = await loadWorld();
       done = true;
-    } catch (e) { say(e instanceof TypeError ? text.serverGone : e.message || text.failed); }
+    } catch (e) { trouble = e instanceof TypeError ? text.serverGone : e.message || text.failed; }
     clearInterval(clock);
     busy = false;
-    $('generate').className = '';
     $('frame').classList.remove('busy');
     if (done) { showWorld(); $('probe').textContent = text.done(seconds()); }
     showButton();
@@ -787,10 +892,10 @@
   scheme.addEventListener('change', paint);
 
   // The address can ask for a state, so a capture gets any view without a click:
-  // /preview?view=height,relief3d&biome=minecraft:desert
+  // /preview?view=height,relief3d&biome=minecraft:desert,minecraft:badlands
   const asked = new URLSearchParams(location.search);
-  const askedBiome = world ? world.biomes.findIndex(b => b.id === asked.get('biome')) : -1;
-  if (askedBiome >= 0) { isolated = askedBiome; showBiomes(); paint(); }
+  for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.add(id);
+  if (world && chosen.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
   await drawing3d;
