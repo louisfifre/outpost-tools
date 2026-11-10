@@ -23,7 +23,7 @@
     --accent-ink: #0b1208;
     --warn: #e5a44e;
     --grid: rgba(255, 255, 255, 0.16);
-    --track: #4a4a4a;
+    --track: #6a6a6a;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -36,7 +36,7 @@
       --accent-ink: #fff;
       --warn: #a85d00;
       --grid: rgba(0, 0, 0, 0.12);
-      --track: #bdbdb8;
+      --track: #9a9a96;
     }
   }
   * { box-sizing: border-box; }
@@ -89,6 +89,12 @@
   .choice button { padding: 4px 0; border-radius: 0; color: var(--muted); border-bottom: 2px solid transparent; }
   .choice button:hover { color: var(--text); }
   .choice button[aria-pressed=true] { color: var(--text); border-color: var(--accent); }
+  /* Beside the choices, what acts on them: quieter, underlined like a link. */
+  .choice button.action { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+  #profiles { flex-wrap: wrap; gap: 0 18px; }
+  #profiles input { width: 130px; padding: 4px 0; font-size: 14px; }
+  .setting output span { cursor: pointer; }
+  .setting output span:hover { color: var(--text); text-decoration: underline; }
   #settings { display: flex; flex-direction: column; gap: 8px; }
   /* A line sets each group apart, so its title needs no other mark. */
   #settings h2 { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -101,17 +107,17 @@
   /* A slider is a hairline and a small mark to move. A notch stays where the pack's value is.
      The mark is green only once it left that value. */
   .setting input {
-    grid-column: 1 / -1; width: 100%; height: 18px; margin: 0; cursor: pointer;
+    grid-column: 1 / -1; width: 100%; height: 22px; margin: 0; cursor: pointer;
     -webkit-appearance: none; appearance: none; --mark: var(--text);
     background:
-      linear-gradient(var(--muted), var(--muted)) calc(5px + (100% - 10px) * var(--pack)) 50% / 1px 7px no-repeat,
+      linear-gradient(var(--muted), var(--muted)) calc(8px + (100% - 16px) * var(--pack)) 50% / 1px 7px no-repeat,
       linear-gradient(var(--track), var(--track)) 0 50% / 100% 1px no-repeat;
   }
   .setting input.changed { --mark: var(--accent); }
-  .setting input::-webkit-slider-runnable-track { height: 18px; background: none; }
+  .setting input::-webkit-slider-runnable-track { height: 22px; background: none; }
   /* Wider than what it shows, so it stays easy to catch. */
   .setting input::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 11px; height: 18px; border: 0; border-radius: 0;
+    -webkit-appearance: none; width: 17px; height: 22px; border: 0; border-radius: 0;
     background: linear-gradient(var(--mark), var(--mark)) center / 2px 14px no-repeat;
   }
   .setting small { grid-column: 1 / -1; }
@@ -142,6 +148,7 @@
     filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
   }
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
+  #frame.busy #note { color: var(--text); font-size: 16px; }
   #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
   #tabs .apart { margin-left: auto; }
   #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -165,13 +172,14 @@
   .biome:hover .name { text-decoration: underline; }
   /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
   .biome[aria-pressed=true] .name { font-weight: 600; }
-  #biomes.choosing .biome[aria-pressed=false] { opacity: 0.45; }
-  #biomes.choosing .biome[aria-pressed=false]:hover { opacity: 0.8; }
-  .heading { display: flex; align-items: baseline; gap: 12px; }
-  .heading h2 { margin: 0; flex: 1; }
-  #filter { width: 110px; padding: 2px 0; font-size: 13px; }
-  #pick { display: flex; gap: 10px; align-items: baseline; min-height: 18px; }
-  #pick button { padding: 0; font-size: 12px; color: var(--text); text-decoration: underline; }
+  #biomes.choosing .biome[aria-pressed=false] { opacity: 0.6; }
+  #biomes.choosing .biome[aria-pressed=false]:hover { opacity: 0.9; }
+  #filter { padding: 4px 0; margin-bottom: 6px; font-size: 13px; border-color: var(--track); }
+  /* Two lines whatever it says, so the first choice does not move the rows under the pointer. */
+  #pick { display: block; height: 36px; overflow: hidden; }
+  #pick button { padding: 0; font-size: 12px; color: var(--text); }
+  #pick button:hover { text-decoration: line-through; }
+  #pick button.none { margin-left: 8px; text-decoration: underline; }
   /* A thin edge, so a white or pale swatch does not vanish on the light ground. */
   .biome i, #legend i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
   .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -191,6 +199,10 @@
     <div>
       <h2 data-text="span"></h2>
       <div id="span" class="choice num"></div>
+    </div>
+    <div>
+      <h2 data-text="profiles"></h2>
+      <div id="profiles" class="choice"></div>
     </div>
     <div id="settings" class="scroll"></div>
     <div id="status" role="status"></div>
@@ -220,10 +232,8 @@
     </div>
     <div class="column" style="flex:1; gap:6px">
       <div>
-        <div class="heading">
-          <h2 data-text="biomes"></h2>
-          <input type="text" id="filter" spellcheck="false">
-        </div>
+        <h2 data-text="biomes"></h2>
+        <input type="text" id="filter" spellcheck="false">
         <small id="pick"></small>
       </div>
       <div class="legend"><span></span><span data-text="colBiome"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
@@ -249,9 +259,11 @@
     points: ' pt',
     biomes: 'Biomes',
     pickHint: 'Clique des biomes, ici ou sur la carte.',
-    picked: (count, share) => `${count} ${count > 1 ? 'biomes choisis' : 'biome choisi'} · ${share} de la zone`,
+    pickedMany: count => `${count} biomes choisis`,
+    pickedShare: share => ` · ${share} de la zone`,
+    pickRemove: name => `Retirer ${name}`,
     pickNone: 'Tout voir',
-    filter: 'Filtrer',
+    filter: 'Filtrer par nom…',
     colBiome: 'biome',
     colWidth: 'largeur type',
     colShare: 'part',
@@ -270,7 +282,15 @@
       ocean_offset:           ['Terres contre océan', 'Plus haut : plus de terres, moins d’océan.'],
     },
     packValue: v => `pack ${v}`,
-    resetHint: 'Double-clic sur un curseur : valeur du pack.',
+    resetOne: 'Revenir à la valeur du pack',
+    resetHint: 'Clic sur « pack… » à côté d’une valeur : elle revient à celle du pack.',
+    profiles: 'Réglages',
+    profilePack: 'Pack',
+    profilePackHint: 'Tout remettre aux valeurs du pack',
+    profileSave: 'Enregistrer',
+    profileDelete: 'Supprimer',
+    profileName: 'Nom',
+    profileDefault: n => `Essai ${n}`,
     views: { biomes: 'Biomes', flat: 'Plat', height: 'Relief', temperature: 'Température' },
     shapes: { flat2d: '2D', relief3d: '3D' },
     done: s => `Aperçu prêt en ${s} s.`,
@@ -358,6 +378,51 @@
   }
   $('span').append(Object.assign(document.createElement('small'), { textContent: text.spanUnit }));
 
+  // Sets of slider values kept under a name by the browser, to come back to a try in one click.
+  // "Pack" is always there: it puts every slider back.
+  let profiles = [];
+  try { profiles = JSON.parse(localStorage.getItem('preview.profiles')) || []; } catch { }
+  let naming = false;
+  const matches = values => Object.entries(inputs).every(([key, input]) => Math.abs(input.value - (values[key] ?? packValues[key])) < 1e-9);
+  function apply(values) {
+    for (const [key, input] of Object.entries(inputs)) { input.value = values[key] ?? packValues[key]; input.dispatchEvent(new Event('input')); }
+  }
+  function showProfiles() {
+    const button = (label, act, pressed) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      if (pressed == null) b.className = 'action'; else b.setAttribute('aria-pressed', pressed);
+      b.addEventListener('click', act);
+      return b;
+    };
+    const active = profiles.find(p => matches(p.values));
+    const pack = button(text.profilePack, () => apply(packValues), matches(packValues));
+    pack.title = text.profilePackHint;
+    const items = [pack, ...profiles.map(p => button(p.name, () => apply(p.values), p === active))];
+    const save = () => { try { localStorage.setItem('preview.profiles', JSON.stringify(profiles)); } catch { } };
+    if (naming) {
+      const name = document.createElement('input');
+      name.type = 'text'; name.maxLength = 24; name.placeholder = text.profileName;
+      name.value = text.profileDefault(profiles.length + 1);
+      const end = keep => {
+        if (!naming) return;
+        naming = false;
+        const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+        if (keep && name.value.trim()) { profiles = [...profiles.filter(p => p.name !== name.value.trim()), { name: name.value.trim(), values }]; save(); }
+        showProfiles();
+      };
+      name.addEventListener('keydown', event => { if (event.key === 'Enter') end(true); if (event.key === 'Escape') end(false); });
+      name.addEventListener('blur', () => end(true));
+      items.push(name);
+      queueMicrotask(() => { name.focus(); name.select(); });
+    } else if (active) {
+      items.push(button(text.profileDelete, () => { profiles = profiles.filter(p => p !== active); save(); showProfiles(); }));
+    } else if (!matches(packValues)) {
+      items.push(button(text.profileSave, () => { naming = true; showProfiles(); }));
+    }
+    $('profiles').replaceChildren(...items);
+  }
+
   for (const [group, keys] of Object.entries(ranges)) {
     const title = document.createElement('h2');
     title.textContent = text.groups[group];
@@ -384,9 +449,12 @@
         if (changed) {
           const pack = document.createElement('span');
           pack.textContent = text.packValue(fr(packValues[key], digits));
+          pack.title = text.resetOne;
+          pack.addEventListener('click', () => { input.value = packValues[key]; show(); });
           output.prepend(pack);
         }
         showButton();
+        if (!naming) showProfiles();
       };
       input.addEventListener('input', show);
       input.addEventListener('dblclick', () => { input.value = packValues[key]; show(); });
@@ -731,8 +799,9 @@
   // The rows are not rebuilt, so the list stays where it was scrolled.
   function showChoice() {
     const asked = $('filter').value.trim().toLowerCase();
+    const names = [];
     let count = 0, cells = 0;
-    world.biomes.forEach((b, i) => { if (chosen.has(b.id)) { count++; cells += world.cells[i]; } });
+    world.biomes.forEach((b, i) => { if (chosen.has(b.id)) { count++; cells += world.cells[i]; names.push(b.id); } });
     $('biomes').classList.toggle('choosing', count > 0);
     for (const row of $('biomes').children) {
       const on = chosen.has(row.dataset.id);
@@ -744,7 +813,16 @@
     const none = document.createElement('button');
     none.textContent = text.pickNone;
     none.addEventListener('click', () => { chosen.clear(); showChoice(); paint(); });
-    $('pick').replaceChildren(text.picked(count, percent(100 * cells / world.samples ** 2)), none);
+    none.className = 'none';
+    // Up to three, the choice is named, since its rows may be far apart in the list. A name takes its biome out.
+    const parts = count > 3 ? [text.pickedMany(count)] : names.flatMap((id, at) => {
+      const name = document.createElement('button');
+      name.textContent = pretty(id);
+      name.title = text.pickRemove(pretty(id));
+      name.addEventListener('click', () => choose(id));
+      return at ? [', ', name] : [name];
+    });
+    $('pick').replaceChildren(...parts, text.pickedShare(percent(100 * cells / world.samples ** 2)), none);
   }
   $('filter').addEventListener('input', () => { if (world) showChoice(); });
 
@@ -865,7 +943,8 @@
     const started = Date.now();
     const seconds = () => Math.round((Date.now() - started) / 1000);
     const about = spans.find(([points]) => points === samples)[1];
-    const tick = () => { $('status').textContent = text.running(seconds(), about); };
+    // Said twice: above the button, and on the dimmed map, where the eye is.
+    const tick = () => { $('status').textContent = $('note').textContent = text.running(seconds(), about); };
     const clock = setInterval(tick, 1000);
     tick();
     let done = false;
@@ -880,6 +959,7 @@
       done = true;
     } catch (e) { trouble = e instanceof TypeError ? text.serverGone : e.message || text.failed; }
     clearInterval(clock);
+    $('note').textContent = world ? '' : text.noPreview;
     busy = false;
     $('frame').classList.remove('busy');
     if (done) { showWorld(); $('probe').textContent = text.done(seconds()); }
