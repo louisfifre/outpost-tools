@@ -46,6 +46,8 @@
     font-size: 14px;
     font-weight: 600;
   }
+  /* Who plays: said once, opposite the title, since it holds for every row. */
+  #account { margin-left: auto; font-size: 13px; color: var(--muted); }
   button {
     font: inherit;
     color: inherit;
@@ -55,7 +57,7 @@
     background: none;
     transition: color 120ms, filter 120ms;
   }
-  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: default; }
   svg { width: 18px; height: 18px; display: block; fill: currentColor; }
   .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
@@ -72,9 +74,12 @@
   .profile .who { flex: 1; min-width: 0; }
   .profile .name { font-size: 18px; font-weight: 600; }
   .profile .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* What a launch is doing is said in the row that was asked, in the text colour: it is the news of the moment. */
+  .profile .meta.now { color: var(--text); }
   /* No colour here either: the button to play is the text colour, filled. */
   .play { background: var(--text); color: var(--ground); }
   .play:hover { opacity: 0.85; color: var(--ground); }
+  .play:disabled:hover { opacity: 0.5; }
 
   /* Settings of one profile. */
   label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
@@ -82,18 +87,19 @@
   .memory { display: flex; align-items: center; gap: 14px; }
   .memory output { min-width: 5ch; text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   input[type=range] { flex: 1; accent-color: var(--text); }
-  textarea {
+  textarea, select, input[type=text] {
     width: 100%;
-    height: 84px;
-    resize: none;
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 6px;
-    background: none;
+    background: var(--ground);
     color: var(--text);
-    font: 13px/1.5 "Cascadia Mono", Consolas, monospace;
-    user-select: text;
+    font: inherit;
   }
+  textarea, input[type=text] { font: 13px/1.5 "Cascadia Mono", Consolas, monospace; user-select: text; }
+  textarea { height: 84px; resize: none; }
+  #server { margin-top: 8px; }
+  :disabled { opacity: 0.5; }
   .folder { display: flex; align-items: center; gap: 8px; }
   .folder code {
     flex: 1; min-width: 0;
@@ -110,7 +116,7 @@
 </head>
 <body>
   <section class="view" id="list-view">
-    <header><h1 data-text="title"></h1></header>
+    <header><h1 data-text="title"></h1><span id="account"></span></header>
     <div class="view" id="profiles"></div>
     <button id="world" class="profile">
       <span class="who"><span class="name" data-text="world" style="display:block"></span><span class="meta" data-text="worldAbout"></span></span>
@@ -123,6 +129,11 @@
       <button class="icon" id="back"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
       <h1 id="settings-name"></h1>
     </header>
+    <div class="field">
+      <label for="open-on" data-text="openOn"></label>
+      <select id="open-on"></select>
+      <input type="text" id="server" spellcheck="false" hidden>
+    </div>
     <div class="field">
       <label for="memory" data-text="memory"></label>
       <div class="memory">
@@ -146,19 +157,42 @@
   // Every sentence the page shows, in one place.
   const text = {
     title: 'Minecraft',
+    noAccount: 'No account: sign in once in Prism',
     world: 'World preview',
     worldAbout: 'Try a seed and terrain settings, without playing',
     play: name => `Play ${name}`,
     settings: name => `Settings of ${name}`,
     back: 'Back',
+    // The line under a profile's name.
+    neverPlayed: 'not played yet',
+    playedMinutes: n => `${n} min played`,
+    playedHours: n => `${n} h played`,
+    opensWorld: name => `opens ${name}`,
+    joinsServer: address => `joins ${address}`,
+    // What a launch is doing, by the word the server answers.
+    launch: {
+      starting: 'Starting…',
+      preparing: 'Syncing the pack…',
+      loading: seconds => `Loading the game… ${seconds} s`,
+      running: 'Running',
+      waiting: 'Prism is waiting for you: look at its window.',
+      prepareFailed: 'The pack sync failed. Prism’s window says why.',
+      stopped: 'The game stopped before its window opened. Prism shows its log.',
+      failed: 'Prism closed without starting the game.',
+    },
+    openOn: 'Opens on',
+    onMenu: 'the game menu',
+    onWorld: name => `world: ${name}`,
+    onServer: 'a server',
+    serverAddress: 'address, for example localhost',
     memory: 'Memory',
     gigabytes: n => `${n} GB`,
     javaArgs: 'Java arguments',
     folder: 'Game folder',
     open: 'Open',
-    starting: name => `${name} is starting…`,
     saved: 'Saved.',
     refused: 'Setting refused, nothing changed.',
+    locked: 'Minecraft is running: settings can change once it is closed.',
     failed: 'The request failed.',
     serverGone: 'The launcher has stopped. Close this window and open it again.',
   };
@@ -170,8 +204,12 @@
   const $ = id => document.getElementById(id);
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
   $('back').setAttribute('aria-label', text.back);
+  $('server').placeholder = text.serverAddress;
 
+  let profiles = [];
+  let locked = false;   // Prism is running: it would write its own settings over ours
   let current = null;   // the profile whose settings are open
+  let launching = null; // { id, state, since } while this window follows a launch
 
   async function post(path, body) {
     const reply = await fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
@@ -195,68 +233,136 @@
     say('');
   }
 
-  async function play(profile) {
-    say(text.starting(profile.name));
-    try {
-      await post(`/api/launch/${profile.id}`);
-      // The game takes over from here; this window has nothing left to show.
-      setTimeout(() => window.close(), 2500);
-    } catch { say(text.failed); }
+  // "yesterday · 20 min played · opens New World": when, how much, and what Play will open.
+  function about(profile) {
+    if (!profile.lastPlayed) return text.neverPlayed;
+    const day = 24 * 3600 * 1000;
+    const startOf = t => new Date(t).setHours(0, 0, 0, 0);
+    const days = Math.round((startOf(profile.lastPlayed) - startOf(Date.now())) / day);
+    const parts = [new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(days, 'day')];
+    const minutes = Math.round(profile.playedSeconds / 60);
+    if (minutes >= 60) parts.push(text.playedHours(+(minutes / 60).toFixed(minutes < 600 ? 1 : 0)));
+    else if (minutes > 0) parts.push(text.playedMinutes(minutes));
+    if (profile.open.kind === 'world') parts.push(text.opensWorld(profile.open.target));
+    if (profile.open.kind === 'server') parts.push(text.joinsServer(profile.open.target));
+    return parts.join(' · ');
   }
 
-  function openSettings(profile) {
-    current = profile;
-    $('settings-name').textContent = profile.name;
-    $('memory').value = Math.round(profile.memoryMb / 1024);
-    $('memory-value').textContent = text.gigabytes($('memory').value);
-    $('java-args').value = profile.javaArgs;
-    $('folder-path').textContent = profile.gameDir;
-    show('settings');
+  function launchSentence() {
+    const sentence = text.launch[launching.state];
+    return typeof sentence === 'function' ? sentence(Math.round((Date.now() - launching.since) / 1000)) : sentence;
   }
 
-  // Saved as soon as a field is left or the slider released: no Save button to forget.
-  async function save() {
-    const next = { memoryMb: $('memory').value * 1024, javaArgs: $('java-args').value.trim() };
-    try {
-      await post(`/api/settings/${current.id}`, next);
-      Object.assign(current, next);
-      say(text.saved);
-    } catch (e) { say(e.message === '400' ? text.refused : text.failed); }
-  }
-
-  function render(profiles) {
-    $('profiles').replaceChildren(...profiles.map(profile => {
+  function render() {
+    // The profile played last comes first.
+    const ordered = [...profiles].sort((a, b) => b.lastPlayed - a.lastPlayed || a.name.localeCompare(b.name));
+    $('profiles').replaceChildren(...ordered.map(profile => {
       const row = document.createElement('div');
       row.className = 'profile';
       const who = document.createElement('div');
       who.className = 'who';
       who.innerHTML = '<div class="name"></div><div class="meta"></div>';
       who.children[0].textContent = profile.name;
-      who.children[1].textContent = text.gigabytes(Math.round(profile.memoryMb / 1024));
-      row.append(who,
-        iconButton('play', text.play(profile.name), () => play(profile)),
+      const followed = launching && launching.id === profile.id;
+      const now = followed ? launchSentence() : profile.running ? text.launch.running : '';
+      who.children[1].textContent = now || about(profile);
+      who.children[1].classList.toggle('now', !!now);
+      const playButton = iconButton('play', text.play(profile.name), () => play(profile));
+      // One launch at a time, and never a second copy of a game that is open.
+      playButton.disabled = profile.running || (launching && !launching.over);
+      row.append(who, playButton,
         iconButton('settings', text.settings(profile.name), () => openSettings(profile)));
       return row;
     }));
   }
 
-  let profiles = [];
-  $('back').addEventListener('click', () => { render(profiles); show('list'); });
+  async function load() {
+    const data = await fetch('/api/profiles').then(r => r.json());
+    profiles = data.profiles;
+    locked = data.locked;
+    $('account').textContent = data.account || text.noAccount;
+    // Leave the system a quarter of the machine's memory.
+    $('memory').max = Math.floor(data.machineMb / 1024 * 0.75);
+    render();
+    if (current) lock();
+  }
+
+  // The server only knows that Prism was started. What happens next is asked every second:
+  // the pack sync, the game loading, its window, or the reason there is none.
+  async function play(profile) {
+    launching = { id: profile.id, state: 'starting', since: Date.now() };
+    render();
+    try { await post(`/api/launch/${profile.id}`); }
+    catch { launching = null; say(text.failed); return load(); }
+    const follow = setInterval(async () => {
+      try { launching.state = (await fetch('/api/launch').then(r => r.json())).state; } catch { return; }
+      launching.over = ['running', 'prepareFailed', 'stopped', 'failed'].includes(launching.state);
+      render();
+      if (!launching.over) return;
+      clearInterval(follow);
+      // The game is on screen; this window has nothing left to show. A failure stays, to be read.
+      if (launching.state === 'running') setTimeout(() => window.close(), 1500);
+    }, 1000);
+  }
+
+  function lock() {
+    for (const id of ['open-on', 'server', 'memory', 'java-args']) $(id).disabled = locked;
+    if (locked) say(text.locked);
+    else if ($('status').textContent === text.locked) say('');
+  }
+
+  function openSettings(profile) {
+    current = profile;
+    $('settings-name').textContent = profile.name;
+    const options = [['menu', '', text.onMenu], ...profile.worlds.map(w => ['world', w, text.onWorld(w)]), ['server', '', text.onServer]];
+    $('open-on').replaceChildren(...options.map(([kind, target, label]) => {
+      const option = new Option(label, JSON.stringify({ kind, target }));
+      option.selected = kind === profile.open.kind && (kind !== 'world' || target === profile.open.target);
+      return option;
+    }));
+    $('server').value = profile.open.kind === 'server' ? profile.open.target : '';
+    $('server').hidden = profile.open.kind !== 'server';
+    $('memory').value = Math.round(profile.memoryMb / 1024);
+    $('memory-value').textContent = text.gigabytes($('memory').value);
+    $('java-args').value = profile.javaArgs;
+    $('folder-path').textContent = profile.gameDir;
+    show('settings');
+    lock();
+  }
+
+  // Saved as soon as a field is left or the slider released: no Save button to forget.
+  async function save() {
+    const open = JSON.parse($('open-on').value);
+    if (open.kind === 'server') open.target = $('server').value.trim();
+    // A server without its address is not a choice yet: wait for the address.
+    if (open.kind === 'server' && !open.target) return;
+    const next = { memoryMb: $('memory').value * 1024, javaArgs: $('java-args').value.trim(), open };
+    try {
+      await post(`/api/settings/${current.id}`, next);
+      Object.assign(current, next);
+      say(text.saved);
+    } catch (e) { say(e.message === '400' ? text.refused : e.message === '409' ? text.locked : text.failed); }
+  }
+
+  $('back').addEventListener('click', () => { current = null; show('list'); load().catch(() => say(text.failed)); });
   // The preview needs room for a map, so it opens in its own, larger window.
   $('world').addEventListener('click', () => post('/api/preview/open').catch(() => say(text.failed)));
+  $('open-on').addEventListener('change', () => {
+    const server = JSON.parse($('open-on').value).kind === 'server';
+    $('server').hidden = !server;
+    if (server && !$('server').value) $('server').focus();
+    save();
+  });
+  $('server').addEventListener('change', save);
   $('memory').addEventListener('input', () => { $('memory-value').textContent = text.gigabytes($('memory').value); });
   $('memory').addEventListener('change', save);
   $('java-args').addEventListener('change', save);
   $('open-folder').addEventListener('click', () => post(`/api/folder/${current.id}`).catch(() => say(text.failed)));
 
-  fetch('/api/profiles').then(r => r.json()).then(data => {
-    profiles = data.profiles;
-    // Leave the system a quarter of the machine's memory.
-    $('memory').max = Math.floor(data.machineMb / 1024 * 0.75);
-    render(profiles);
-    // Tells a capture that the page is drawn (see scripts/capture.ps1).
-    document.documentElement.dataset.ready = '1';
-  });
+  // Tells a capture that the page is drawn (see scripts/capture.ps1).
+  load().then(() => { document.documentElement.dataset.ready = '1'; });
+  // Coming back to this window after a game: what runs and what was played may have changed.
+  window.addEventListener('focus', () => { if (!launching || launching.over) load().catch(() => {}); });
 
   // The server stops by itself when these pings stop, that is, when this window closes.
   setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
