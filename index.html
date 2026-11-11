@@ -346,7 +346,13 @@
 
   $('back').addEventListener('click', () => { current = null; show('list'); load().catch(() => say(text.failed)); });
   // The preview needs room for a map, so it opens in its own, larger window.
-  $('world').addEventListener('click', () => post('/api/preview/open').catch(() => say(text.failed)));
+  // The preview lives in its own repository: when it cannot be found, the server says where it looked.
+  $('world').addEventListener('click', async () => {
+    try {
+      const reply = await fetch('/api/preview/open', { method: 'POST' });
+      if (!reply.ok) say((await reply.json().catch(() => ({}))).error || text.failed);
+    } catch { say(text.failed); }
+  });
   $('open-on').addEventListener('change', () => {
     const server = JSON.parse($('open-on').value).kind === 'server';
     $('server').hidden = !server;
