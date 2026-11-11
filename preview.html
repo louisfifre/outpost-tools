@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aperçu du monde</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%238cc474' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%235a8a47' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%233b6130' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
 <script type="importmap">
 { "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -885,7 +886,9 @@
       const n = world.samples, width = n * world.step;
       if (scene3d.width !== width) {
         // Far and high enough to hold the whole square, its near edge included. A new area resets the look.
-        scene3d.camera.position.set(0, width * 1.1, width);
+        // The address may ask for another look, in widths of the area: /preview?camera=0.3,0.25,0.6
+        const [cx, cy, cz] = (new URLSearchParams(location.search).get('camera') || '0,1.1,1').split(',').map(Number);
+        scene3d.camera.position.set(cx * width, cy * width, cz * width);
         scene3d.controls.target.set(0, 0, 0);
         scene3d.width = width;
       }
