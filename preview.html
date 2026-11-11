@@ -150,6 +150,8 @@
   }
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
   #frame.busy #note { color: var(--text); font-size: 16px; }
+  /* While the sketch of a run is on the map, the figures and the list still describe the map before: they step back. */
+  #numbers.stale { opacity: 0.3; transition: opacity 200ms; }
   #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
   #tabs .apart { margin-left: auto; }
   #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -229,7 +231,7 @@
     </div>
   </section>
 
-  <section class="column">
+  <section class="column" id="numbers">
     <div>
       <h2 data-text="figures"></h2>
       <div class="figures num" id="figures"></div>
@@ -257,6 +259,7 @@
     generate: 'Generate preview',
     upToDate: 'The map shows these settings.',
     running: (elapsed, about) => `Computing… ${elapsed} of about ${about}`,
+    sketch: step => `A first sketch, one point every ${step} blocks. The figures and the list wait for the full map.`,
     figures: 'In figures',
     change: 'change',
     was: v => `before: ${v}`,
@@ -386,7 +389,7 @@
   let samples = 512;
   // Seconds a run takes, about: the server starts, then every point costs the same (measured on
   // 512, 1024 and 2048 points a side). Four times the area is four times the wait.
-  const about = points => Math.round((16 + points * points * 68e-6) / 5) * 5;
+  const about = points => Math.round((11 + points * points * 42e-6) / 5) * 5;
 
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
@@ -615,6 +618,18 @@
     return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes) };
   }
 
+  // The sketch a run writes first: the same square, one point in four along each side. Nothing is
+  // measured on it, since flat land is defined on the 16-block grid: it is only drawn.
+  async function loadSketch() {
+    const meta = await fetch('/preview/data/coarse.json').then(r => r.ok ? r.json() : null);
+    if (!meta) return null;
+    const [heights, biomeAt] = await Promise.all([
+      fetch('/preview/data/coarse-heights.bin').then(r => r.arrayBuffer()).then(b => new Int16Array(b)),
+      fetch('/preview/data/coarse-biomes.bin').then(r => r.arrayBuffer()).then(b => new Uint16Array(b)),
+    ]);
+    return { ...meta, heights, biomeAt, colours: meta.biomes.map(b => biomeColour(b.id)), sketch: true };
+  }
+
   // Sizes of the zones made of touching points that share a value. `each(value, size)` gets every zone.
   function zones(valueAt, n, each) {
     const total = n * n;
@@ -731,7 +746,9 @@
         c = water ? quietWater : temperatureColour(world.biomes[biome].temperature);
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
       } else if (view === 'flat') {
-        c = water ? flatColours.sea : world.flatAt[i] ? flatColours.flat : flatColours.steep;
+        // A sketch does not say where the land is flat: its land stays neutral.
+        const g = stepBack[1];
+        c = water ? flatColours.sea : world.sketch ? [g, g, g] : world.flatAt[i] ? flatColours.flat : flatColours.steep;
       } else {
         c = world.colours[biome];
         // Here the lightness says which biome it is, so the relief may only touch it lightly.
@@ -858,7 +875,9 @@
   }
   $('filter').addEventListener('input', () => { if (world) showChoice(); });
 
-  const restProbe = () => { if (world) $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8)); };
+  const restProbe = () => {
+    if (world) $('probe').textContent = world.sketch ? text.sketch(world.step) : text.area(num(world.samples * world.step), num(world.samples * world.step / 8));
+  };
   function showWorld() {
     showTabs(); showFigures(); showBiomes(); restProbe(); showButton();
   }
@@ -869,7 +888,8 @@
     const row = Math.min(n - 1, Math.floor((event.clientY - box.top) / box.height * n));
     return [col, row, row * n + col];
   };
-  map.addEventListener('click', event => { if (world) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
+  // A sketch has no list to mirror the choice: its biomes are not chosen.
+  map.addEventListener('click', event => { if (world && !world.sketch) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
   map.addEventListener('mousemove', event => {
     if (!world) return;
     const [col, row, i] = pointUnder(event);
@@ -977,26 +997,55 @@
     const started = Date.now();
     const seconds = () => Math.round((Date.now() - started) / 1000);
     const wait = text.duration(about(samples));
-    // Said twice: above the button, and on the dimmed map, where the eye is.
-    const tick = () => { $('status').textContent = $('note').textContent = text.running(text.duration(seconds()), wait); };
+    // Said twice: above the button, and on the dimmed map, where the eye is. Once the sketch is on
+    // the map, only above the button.
+    const tick = () => {
+      $('status').textContent = text.running(text.duration(seconds()), wait);
+      if (!world?.sketch) $('note').textContent = $('status').textContent;
+    };
     const clock = setInterval(tick, 1000);
     tick();
+    // While the server computes, the sketch it writes first takes the map's place. The figures and
+    // the list stay those of the map before, stepped back, until the full map is there.
+    const old = world;
+    let waiting = true, poll = 0;
+    const lookForSketch = async () => {
+      const sketch = await loadSketch().catch(() => null);
+      if (!waiting) return;
+      if (!sketch) { poll = setTimeout(lookForSketch, 1000); return; }
+      world = sketch;
+      $('frame').classList.remove('busy');
+      $('numbers').classList.add('stale');
+      $('numbers').inert = true;
+      showTabs(); restProbe();
+    };
+    // The server removes the sketch of the run before as it takes this one: ask a little later.
+    poll = setTimeout(lookForSketch, 1000);
     let done = false;
     try {
       const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
+      waiting = false;
       if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
-      if (world) {
-        before = world.figures;
+      if (old) {
+        before = old.figures;
         try { localStorage.setItem('preview.before', JSON.stringify(before)); } catch { }
       }
       world = await loadWorld();
       done = true;
     } catch (e) { trouble = e instanceof TypeError ? text.serverGone : e.message || text.failed; }
+    waiting = false;
+    clearTimeout(poll);
     clearInterval(clock);
+    const sketched = !!world?.sketch;
+    // A failed run leaves the map it found.
+    if (!done) world = old;
     $('note').textContent = world ? '' : text.noPreview;
     busy = false;
     $('frame').classList.remove('busy');
+    $('numbers').classList.remove('stale');
+    $('numbers').inert = false;
     if (done) { showWorld(); $('probe').textContent = text.done(seconds()); }
+    else if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
     showButton();
   });
 
