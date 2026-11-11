@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Minecraft</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%238cc474' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%235a8a47' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%233b6130' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%237fb850' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%238b6344' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%236b4b33' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
 <style>
   /* The same two grounds as the preview page: pure black, or a white that is almost white. */
   :root {
@@ -13,8 +13,6 @@
     --line: #2a2a2a;
     --text: #ececec;
     --muted: #8a8a8a;
-    --accent: #8cc474;
-    --accent-ink: #0b1208;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -23,8 +21,6 @@
       --line: #deded9;
       --text: #171717;
       --muted: #707070;
-      --accent: #3f7f2c;
-      --accent-ink: #fff;
     }
   }
   * { box-sizing: border-box; }
@@ -59,7 +55,7 @@
     background: none;
     transition: color 120ms, filter 120ms;
   }
-  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: default; }
   svg { width: 18px; height: 18px; display: block; fill: currentColor; }
   .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
@@ -76,15 +72,16 @@
   .profile .who { flex: 1; min-width: 0; }
   .profile .name { font-size: 18px; font-weight: 600; }
   .profile .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .play { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  .play:hover { filter: brightness(1.1); color: var(--accent-ink); }
+  /* No colour here either: the button to play is the text colour, filled. */
+  .play { background: var(--text); color: var(--ground); }
+  .play:hover { opacity: 0.85; color: var(--ground); }
 
   /* Settings of one profile. */
   label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .field { display: flex; flex-direction: column; }
   .memory { display: flex; align-items: center; gap: 14px; }
   .memory output { min-width: 5ch; text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  input[type=range] { flex: 1; accent-color: var(--accent); }
+  input[type=range] { flex: 1; accent-color: var(--text); }
   textarea {
     width: 100%;
     height: 84px;
@@ -149,21 +146,21 @@
   // Every sentence the page shows, in one place.
   const text = {
     title: 'Minecraft',
-    world: 'Aperçu du monde',
-    worldAbout: 'Essayer une graine et des réglages, sans jouer',
-    play: name => `Jouer à ${name}`,
-    settings: name => `Régler ${name}`,
-    back: 'Retour',
-    memory: 'Mémoire',
-    gigabytes: n => `${n} Go`,
-    javaArgs: 'Arguments Java',
-    folder: 'Dossier du jeu',
-    open: 'Ouvrir',
-    starting: name => `${name} démarre…`,
-    saved: 'Enregistré.',
-    refused: 'Réglage refusé, rien n’a changé.',
-    failed: 'La demande a échoué.',
-    serverGone: 'Le lanceur s’est arrêté. Ferme cette fenêtre et rouvre-le.',
+    world: 'World preview',
+    worldAbout: 'Try a seed and terrain settings, without playing',
+    play: name => `Play ${name}`,
+    settings: name => `Settings of ${name}`,
+    back: 'Back',
+    memory: 'Memory',
+    gigabytes: n => `${n} GB`,
+    javaArgs: 'Java arguments',
+    folder: 'Game folder',
+    open: 'Open',
+    starting: name => `${name} is starting…`,
+    saved: 'Saved.',
+    refused: 'Setting refused, nothing changed.',
+    failed: 'The request failed.',
+    serverGone: 'The launcher has stopped. Close this window and open it again.',
   };
   const icons = {
     play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
