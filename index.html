@@ -209,6 +209,12 @@
   try {
     if (!localStorage.getItem('launcher.sized')) { resizeTo(440, 560); localStorage.setItem('launcher.sized', '1'); }
   } catch { }
+
+  // The page is a window of its own, not a document: its text keeps one size. Ctrl with the wheel, a pinch
+  // (which arrives as the same thing) and Ctrl with plus or minus no longer zoom it. Ctrl+0 is left alone,
+  // to undo a zoom the browser kept from before.
+  addEventListener('wheel', event => { if (event.ctrlKey) event.preventDefault(); }, { passive: false });
+  addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && '+-=_'.includes(event.key)) event.preventDefault(); });
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
   $('back').setAttribute('aria-label', text.back);
   $('server').placeholder = text.serverAddress;
