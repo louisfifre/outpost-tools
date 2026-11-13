@@ -13,6 +13,7 @@
     --line: #2a2a2a;
     --text: #ececec;
     --muted: #8a8a8a;
+    --track: #6a6a6a;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -21,6 +22,7 @@
       --line: #deded9;
       --text: #171717;
       --muted: #707070;
+      --track: #9a9a96;
     }
   }
   * { box-sizing: border-box; }
@@ -86,7 +88,28 @@
   .field { display: flex; flex-direction: column; }
   .memory { display: flex; align-items: center; gap: 14px; }
   .memory output { min-width: 5ch; text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  input[type=range] { flex: 1; accent-color: var(--text); }
+  /* The same controls as the world preview. A slider is a hairline and a thin mark to move, wider than
+     what it shows so it stays easy to catch. */
+  input[type=range] {
+    flex: 1; height: 22px; margin: 0; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background: linear-gradient(var(--track), var(--track)) 0 50% / 100% 1px no-repeat;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 22px; background: none; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 17px; height: 22px; border: 0; border-radius: 0;
+    background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
+  }
+  /* A switch is not a slider: a small frame with a square that sits left when off, right and lit when on.
+     Underneath it is a range of two places, as on the preview page. */
+  input.switch { flex: none; width: 30px; height: 16px; padding: 2px; border: 1px solid var(--track); background: none; }
+  input.switch::-webkit-slider-runnable-track { height: 10px; }
+  input.switch::-webkit-slider-thumb { width: 10px; height: 10px; background: var(--muted); }
+  input.switch.on { border-color: var(--text); }
+  input.switch.on::-webkit-slider-thumb, input.switch:hover:not(:disabled)::-webkit-slider-thumb { background: var(--text); }
+  .toggle { display: flex; align-items: center; gap: 10px; }
+  .toggle label { flex: 1; margin: 0; }
+  .toggle output { font-size: 13px; font-weight: 600; }
   textarea, select, input[type=text] {
     width: 100%;
     padding: 10px 12px;
@@ -191,6 +214,11 @@
       <div class="field"><label for="max-players" data-text="maxPlayers"></label><input type="number" id="max-players" min="1" max="100" data-prop="maxPlayers"></div>
       <div class="field"><label for="server-port" data-text="port"></label><input type="number" id="server-port" min="1024" max="65535" data-prop="port"></div>
     </div>
+    <div class="toggle">
+      <label for="whitelist" data-text="whitelist"></label>
+      <output id="whitelist-value" for="whitelist"></output>
+      <input type="range" class="switch" id="whitelist" min="0" max="1" step="1">
+    </div>
     <div class="field">
       <label for="motd" data-text="motd"></label>
       <input type="text" id="motd" maxlength="59" spellcheck="false">
@@ -264,6 +292,9 @@
     maxPlayers: 'Players at most',
     port: 'Port',
     motd: 'Line in the server list',
+    whitelist: 'Only players on the whitelist',
+    on: 'on',
+    off: 'off',
     firstStart: 'Distances, players, port and line appear after the first start.',
     serverLocked: 'The server is running: settings can change once it is stopped.',
   };
@@ -502,7 +533,7 @@
   function lockServer() {
     const busy = serverBusy();
     for (const id of ['server-memory', 'server-java-args']) $(id).disabled = busy;
-    for (const el of [...propFields(), $('motd')]) el.disabled = busy || !server.props;
+    for (const el of [...propFields(), $('motd'), $('whitelist')]) el.disabled = busy || !server.props;
     if (busy) say(text.serverLocked);
     else if (!server.props) say(text.firstStart);
     else if ([text.serverLocked, text.firstStart].includes($('status').textContent)) say('');
@@ -514,6 +545,8 @@
     $('server-java-args').value = server.javaArgs;
     for (const el of propFields()) el.value = server.props ? server.props[el.dataset.prop] : '';
     $('motd').value = server.props ? server.props.motd : '';
+    $('whitelist').value = server.props && server.props.whitelist ? 1 : 0;
+    showWhitelist();
     $('server-folder').textContent = server.dir;
     show('server');
     lockServer();
@@ -523,7 +556,7 @@
   async function saveServer() {
     const next = { memoryMb: $('server-memory').value * 1024, javaArgs: $('server-java-args').value.trim() };
     if (server.props) {
-      next.props = { motd: $('motd').value.trim() };
+      next.props = { motd: $('motd').value.trim(), whitelist: $('whitelist').value === '1' };
       for (const el of propFields()) next.props[el.dataset.prop] = Number(el.value);
     }
     try {
@@ -532,6 +565,24 @@
       say(text.saved);
     } catch (e) { say(e.message === '400' ? text.refused : e.message === '409' ? text.serverLocked : text.failed); }
   }
+
+  function showWhitelist() {
+    const on = $('whitelist').value === '1';
+    $('whitelist').classList.toggle('on', on);
+    $('whitelist-value').textContent = on ? text.on : text.off;
+  }
+  // A click anywhere on the frame turns the switch over, where a range would only move to the half clicked.
+  function flipWhitelist() {
+    if ($('whitelist').disabled) return;
+    $('whitelist').value = 1 - $('whitelist').value;
+    showWhitelist();
+    saveServer();
+  }
+  $('whitelist').addEventListener('pointerdown', event => { event.preventDefault(); $('whitelist').focus(); flipWhitelist(); });
+  $('whitelist').addEventListener('keydown', event => {
+    if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); flipWhitelist(); }
+  });
+  $('whitelist').addEventListener('input', () => { showWhitelist(); saveServer(); });
 
   $('server-back').addEventListener('click', () => { show('list'); loadServer().catch(() => say(text.failed)); });
   $('server-memory').addEventListener('input', () => { $('server-memory-value').textContent = text.gigabytes($('server-memory').value); });
