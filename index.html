@@ -111,6 +111,18 @@
   /* The preview is a tool, not a profile: same row, but the whole row is the button, and no line under the last one. */
   #world { width: 100%; text-align: left; border-bottom: 0; border-radius: 0; }
   #world:hover .icon { color: var(--text); }
+  /* The server is not a way of playing: it sits apart from the profiles, under a small title of its own. */
+  .group { margin-top: 18px; font-size: 13px; color: var(--muted); }
+  #server-view { gap: 12px; }
+  #server-view textarea { height: 56px; }
+  .pair { display: flex; gap: 12px; }
+  .pair .field { flex: 1; min-width: 0; }
+  input[type=number] {
+    width: 100%; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--ground); color: var(--text);
+    font: 13px/1.5 "Cascadia Mono", Consolas, monospace; user-select: text;
+  }
   #status { margin-top: 12px; min-height: 20px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -118,6 +130,10 @@
   <section class="view" id="list-view">
     <header><h1 data-text="title"></h1><span id="account"></span></header>
     <div class="view" id="profiles"></div>
+    <div class="group" data-text="serverGroup"></div>
+    <div class="profile" id="server-row">
+      <div class="who"><div class="name" data-text="serverName"></div><div class="meta" id="server-meta"></div></div>
+    </div>
     <button id="world" class="profile">
       <span class="who"><span class="name" data-text="world" style="display:block"></span><span class="meta" data-text="worldAbout"></span></span>
       <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4h6v6h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H14zM5 6h6v2H6v10h10v-5h2v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/></svg></span>
@@ -148,6 +164,39 @@
     <div class="field">
       <span class="label" data-text="folder"></span>
       <div class="folder"><code id="folder-path"></code><button id="open-folder" data-text="open"></button></div>
+    </div>
+  </section>
+
+  <section class="view" id="server-view" hidden>
+    <header>
+      <button class="icon" id="server-back"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
+      <h1 data-text="serverName"></h1>
+    </header>
+    <div class="field">
+      <label for="server-memory" data-text="memory"></label>
+      <div class="memory">
+        <input type="range" id="server-memory" min="2" step="1">
+        <output id="server-memory-value" for="server-memory"></output>
+      </div>
+    </div>
+    <div class="field">
+      <label for="server-java-args" data-text="javaArgs"></label>
+      <textarea id="server-java-args" spellcheck="false"></textarea>
+    </div>
+    <div class="pair">
+      <div class="field"><label for="view-distance" data-text="viewDistance"></label><input type="number" id="view-distance" min="3" max="32" data-prop="viewDistance"></div>
+      <div class="field"><label for="simulation-distance" data-text="simulationDistance"></label><input type="number" id="simulation-distance" min="5" max="32" data-prop="simulationDistance"></div>
+    </div>
+    <div class="pair">
+      <div class="field"><label for="max-players" data-text="maxPlayers"></label><input type="number" id="max-players" min="1" max="100" data-prop="maxPlayers"></div>
+      <div class="field"><label for="server-port" data-text="port"></label><input type="number" id="server-port" min="1024" max="65535" data-prop="port"></div>
+    </div>
+    <div class="field">
+      <label for="motd" data-text="motd"></label>
+      <input type="text" id="motd" maxlength="59" spellcheck="false">
+    </div>
+    <div class="field">
+      <div class="folder"><code id="server-folder"></code><button id="open-server-folder" data-text="open"></button></div>
     </div>
   </section>
 
@@ -195,9 +244,32 @@
     locked: 'Minecraft is running: settings can change once it is closed.',
     failed: 'The request failed.',
     serverGone: 'The launcher has stopped. Close this window and open it again.',
+    // The dev server.
+    serverGroup: 'Server',
+    serverName: 'Dev server',
+    startServer: 'Start the server',
+    stopServer: 'Stop the server',
+    serverSettings: 'Settings of the server',
+    server: {
+      stopped: port => `stopped · joins at localhost:${port}`,
+      preparing: 'Syncing the mods… its window shows each step',
+      starting: 'Starting the world…',
+      running: port => `Running · localhost:${port}`,
+      failed: 'The start failed. Its window says why.',
+      stopping: 'Saving and stopping…',
+    },
+    noEula: 'EULA not accepted yet',
+    viewDistance: 'View distance (chunks)',
+    simulationDistance: 'Simulation distance',
+    maxPlayers: 'Players at most',
+    port: 'Port',
+    motd: 'Line in the server list',
+    firstStart: 'Distances, players, port and line appear after the first start.',
+    serverLocked: 'The server is running: settings can change once it is stopped.',
   };
   const icons = {
     play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    stop: '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>',
     settings: '<svg viewBox="0 0 24 24"><path d="M3 6h10v2H3zm14 0h4v2h-4zM3 16h4v2H3zm8 0h10v2H11z"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></svg>',
   };
 
@@ -243,6 +315,7 @@
   function show(view) {
     $('list-view').hidden = view !== 'list';
     $('settings-view').hidden = view !== 'settings';
+    $('server-view').hidden = view !== 'server';
     say('');
   }
 
@@ -295,7 +368,7 @@
     locked = data.locked;
     $('account').textContent = data.account || text.noAccount;
     // Leave the system a quarter of the machine's memory.
-    $('memory').max = Math.floor(data.machineMb / 1024 * 0.75);
+    $('memory').max = $('server-memory').max = Math.floor(data.machineMb / 1024 * 0.75);
     render();
     if (current) lock();
   }
@@ -378,8 +451,97 @@
   $('java-args').addEventListener('change', save);
   $('open-folder').addEventListener('click', () => post(`/api/folder/${current.id}`).catch(() => say(text.failed)));
 
+  // The dev server: one row apart from the profiles, started in a console window of its own.
+  let server = null;      // what /api/server answered last
+  let stopping = false;   // "stop" was sent and the server has not gone yet
+  const serverBusy = () => server && ['preparing', 'starting', 'running'].includes(server.state);
+  const serverPort = () => server.props ? server.props.port : 25565;
+
+  function renderServer() {
+    if (!server) return;
+    if (server.state === 'stopped' || server.state === 'failed') stopping = false;
+    const state = stopping ? 'stopping' : server.state;
+    const sentence = text.server[state];
+    let line = typeof sentence === 'function' ? sentence(serverPort()) : sentence;
+    if (state === 'stopped' && !server.eula) line = text.noEula;
+    $('server-meta').textContent = line;
+    $('server-meta').classList.toggle('now', state !== 'stopped');
+    const running = server.state === 'running';
+    const toggle = running
+      ? iconButton('stop', text.stopServer, stopServer)
+      : iconButton('play', text.startServer, startServer);
+    // Start once at a time; stop only a server that is ready to hear it.
+    toggle.disabled = stopping || (!running && serverBusy());
+    $('server-row').replaceChildren($('server-row').firstElementChild, toggle,
+      iconButton('settings', text.serverSettings, openServerSettings));
+  }
+
+  async function loadServer() {
+    server = await fetch('/api/server').then(r => r.json());
+    renderServer();
+    if (!$('server-view').hidden) lockServer();
+  }
+
+  async function startServer() {
+    try {
+      const reply = await fetch('/api/server/start', { method: 'POST' });
+      if (!reply.ok) say((await reply.json().catch(() => ({}))).error || text.failed);
+    } catch { say(text.failed); }
+    loadServer().catch(() => {});
+  }
+
+  async function stopServer() {
+    stopping = true;
+    renderServer();
+    try { await post('/api/server/stop'); } catch { stopping = false; say(text.failed); }
+    loadServer().catch(() => {});
+  }
+
+  const propFields = () => [...document.querySelectorAll('#server-view [data-prop]')];
+
+  function lockServer() {
+    const busy = serverBusy();
+    for (const id of ['server-memory', 'server-java-args']) $(id).disabled = busy;
+    for (const el of [...propFields(), $('motd')]) el.disabled = busy || !server.props;
+    if (busy) say(text.serverLocked);
+    else if (!server.props) say(text.firstStart);
+    else if ([text.serverLocked, text.firstStart].includes($('status').textContent)) say('');
+  }
+
+  function openServerSettings() {
+    $('server-memory').value = Math.round(server.memoryMb / 1024);
+    $('server-memory-value').textContent = text.gigabytes($('server-memory').value);
+    $('server-java-args').value = server.javaArgs;
+    for (const el of propFields()) el.value = server.props ? server.props[el.dataset.prop] : '';
+    $('motd').value = server.props ? server.props.motd : '';
+    $('server-folder').textContent = server.dir;
+    show('server');
+    lockServer();
+  }
+
+  // Saved as soon as a field is left, as for a profile.
+  async function saveServer() {
+    const next = { memoryMb: $('server-memory').value * 1024, javaArgs: $('server-java-args').value.trim() };
+    if (server.props) {
+      next.props = { motd: $('motd').value.trim() };
+      for (const el of propFields()) next.props[el.dataset.prop] = Number(el.value);
+    }
+    try {
+      await post('/api/server/settings', next);
+      Object.assign(server, next);
+      say(text.saved);
+    } catch (e) { say(e.message === '400' ? text.refused : e.message === '409' ? text.serverLocked : text.failed); }
+  }
+
+  $('server-back').addEventListener('click', () => { show('list'); loadServer().catch(() => say(text.failed)); });
+  $('server-memory').addEventListener('input', () => { $('server-memory-value').textContent = text.gigabytes($('server-memory').value); });
+  for (const el of [$('server-memory'), $('server-java-args'), $('motd'), ...propFields()]) el.addEventListener('change', saveServer);
+  $('open-server-folder').addEventListener('click', () => post('/api/server/folder').catch(() => say(text.failed)));
+  // The server changes on its own (its window can stop it too): its row is asked again every few seconds.
+  setInterval(() => { if (!document.hidden) loadServer().catch(() => {}); }, 3000);
+
   // Tells a capture that the page is drawn (see scripts/capture.ps1).
-  load().then(() => { document.documentElement.dataset.ready = '1'; });
+  Promise.all([load(), loadServer()]).then(() => { document.documentElement.dataset.ready = '1'; });
   // Coming back to this window after a game: what runs and what was played may have changed.
   window.addEventListener('focus', () => { if (!launching || launching.over) load().catch(() => {}); });
 
