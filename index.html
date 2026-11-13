@@ -101,11 +101,11 @@
     background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
   }
   /* A switch is not a slider: a small frame with a square that sits left when off, right and lit when on.
+     Its frame is the slider's own hairline, grey in both places: only the square says on.
      Underneath it is a range of two places, as on the preview page. */
   input.switch { flex: none; width: 30px; height: 16px; padding: 2px; border: 1px solid var(--track); background: none; }
   input.switch::-webkit-slider-runnable-track { height: 10px; }
   input.switch::-webkit-slider-thumb { width: 10px; height: 10px; background: var(--muted); }
-  input.switch.on { border-color: var(--text); }
   input.switch.on::-webkit-slider-thumb, input.switch:hover:not(:disabled)::-webkit-slider-thumb { background: var(--text); }
   .toggle { display: flex; align-items: center; gap: 10px; }
   .toggle label { flex: 1; margin: 0; }
