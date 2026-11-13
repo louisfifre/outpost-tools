@@ -110,17 +110,27 @@
   .toggle { display: flex; align-items: center; gap: 10px; }
   .toggle label { flex: 1; margin: 0; }
   .toggle output { font-size: 13px; font-weight: 600; }
-  textarea, select, input[type=text] {
+  /* A field is a line under its text, as on the preview page: no box. The line turns to the text colour
+     while it is being written in. */
+  textarea, select, input[type=text], input[type=number] {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--ground);
+    padding: 6px 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: none;
     color: var(--text);
     font: inherit;
+    user-select: text;
   }
-  textarea, input[type=text] { font: 13px/1.5 "Cascadia Mono", Consolas, monospace; user-select: text; }
-  textarea { height: 84px; resize: none; }
+  textarea:focus, select:focus, input[type=text]:focus, input[type=number]:focus { outline: none; border-color: var(--text); }
+  select { cursor: pointer; }
+  option { background: var(--ground); }
+  input[type=number] { -moz-appearance: textfield; font-variant-numeric: tabular-nums; }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  /* Java arguments are a command line: written in a font where every character has the same width. */
+  textarea { height: 52px; resize: none; font: 13px/1.5 "Cascadia Mono", Consolas, monospace; }
+  input::placeholder { color: var(--muted); }
   #server { margin-top: 8px; }
   :disabled { opacity: 0.5; }
   .folder { display: flex; align-items: center; gap: 8px; }
@@ -130,22 +140,17 @@
     font: 13px "Cascadia Mono", Consolas, monospace;
     user-select: text;
   }
-  .folder button { padding: 6px 12px; font-size: 13px; border: 1px solid var(--line); }
+  /* What acts beside a value: a quiet word, underlined like a link, as the preview's Save. */
+  .folder button { padding: 4px 0; font-size: 13px; border-radius: 0; text-decoration: underline; text-underline-offset: 3px; }
+  .folder button:hover { color: var(--muted); }
   /* The preview is a tool, not a profile: same row, but the whole row is the button, and no line under the last one. */
   #world { width: 100%; text-align: left; border-bottom: 0; border-radius: 0; }
   #world:hover .icon { color: var(--text); }
   /* The server is not a way of playing: it sits apart from the profiles, under a small title of its own. */
   .group { margin-top: 18px; font-size: 13px; color: var(--muted); }
   #server-view { gap: 12px; }
-  #server-view textarea { height: 56px; }
-  .pair { display: flex; gap: 12px; }
+  .pair { display: flex; gap: 24px; }
   .pair .field { flex: 1; min-width: 0; }
-  input[type=number] {
-    width: 100%; padding: 8px 12px;
-    border: 1px solid var(--line); border-radius: 6px;
-    background: var(--ground); color: var(--text);
-    font: 13px/1.5 "Cascadia Mono", Consolas, monospace; user-select: text;
-  }
   #status { margin-top: 12px; min-height: 20px; color: var(--muted); font-size: 13px; }
 </style>
 </head>
