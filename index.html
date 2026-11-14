@@ -6,14 +6,27 @@
 <title>Minecraft</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%237fb850' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%238b6344' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%236b4b33' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
 <style>
+  /* Headings are in Monocraft, a pixel font in the spirit of the game's own, by Idrees Hassan under the SIL
+     Open Font License 1.1 (https://github.com/IdreesInc/Monocraft), cut down to the characters a heading uses
+     and kept in this file. The icons are drawn after Pixelarticons, by Gerrit Halfmann under the MIT licence
+     (https://github.com/halfmage/pixelarticons). See THIRD-PARTY.md beside this file. Nothing of the game's
+     own font or textures is used. */
+  @font-face {
+    font-family: "Monocraft";
+    font-display: block;
+    src: url(data:font/woff;base64,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) format("woff");
+  }
   /* The same two grounds as the preview page: pure black, or a white that is almost white. */
   :root {
     color-scheme: dark;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --pixel: "Monocraft", var(--mono);
     --ground: #000;
     --line: #2a2a2a;
     --text: #ececec;
     --muted: #8a8a8a;
     --track: #6a6a6a;
+    --warn: #e5a44e;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -23,45 +36,22 @@
       --text: #171717;
       --muted: #707070;
       --track: #9a9a96;
+      --warn: #a85d00;
     }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    overflow: hidden;               /* one screen, never a scrollbar */
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     background: var(--ground);
     color: var(--text);
-    font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font: 13px/1.45 var(--mono);
     user-select: none;
   }
   [hidden] { display: none !important; }
-  /* One window, two panels: the launcher, and the world preview in a frame. */
-  #launcher { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 28px 24px; }
-  #modes[hidden] + #launcher { padding-top: 24px; }
-  #preview { flex: 1; min-height: 0; position: relative; }
-  #preview iframe { display: block; width: 100%; height: 100%; border: 0; }
-  #preview-note { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: var(--muted); }
-  /* The modes: a small bar of its own at the top, in the monospace of the command lines, above both panels
-     so it covers neither. The mode on screen is in the text colour on a faint ground, the other one muted. */
-  #modes { flex: none; display: flex; justify-content: center; padding-top: 10px; }
-  #modes > div { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
-  #modes button { padding: 5px 12px; font: 12px/1.2 "Cascadia Mono", Consolas, monospace; color: var(--muted); }
-  #modes button:hover, #modes button[aria-pressed="true"] { color: var(--text); }
-  #modes button[aria-pressed="true"] { background: var(--line); }
-  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  #settings-view { gap: 16px; }
-  header { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 4px; }
-  /* A title is the same text as the rest, only heavier: no capitals, as on the preview page. */
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-  }
-  /* Who plays: said once, opposite the title, since it holds for every row. */
-  #account { margin-left: auto; font-size: 13px; color: var(--muted); }
   button {
     font: inherit;
     color: inherit;
@@ -69,37 +59,90 @@
     border: 0;
     border-radius: 6px;
     background: none;
-    transition: color 120ms, filter 120ms;
+    transition: color 120ms, background 120ms;
   }
   button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   button:disabled { opacity: 0.5; cursor: default; }
   svg { width: 18px; height: 18px; display: block; fill: currentColor; }
-  .icon { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
-  .icon:hover { color: var(--text); }
+
+  /* The toolbar: one strip at the top of the window, a tool per icon, set apart by hairlines. The tool on
+     screen opens beside its icon to show its own choices (the preview, its views and their shape); the
+     others stay an icon. The strip is the preview page's own, drawn the same way. */
+  #toolbar { flex: none; display: flex; justify-content: center; padding: 10px 16px 0; }
+  .strip { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; }
+  .strip button { height: 28px; padding: 0 10px; border-radius: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .strip button:hover:not(:disabled) { color: var(--text); }
+  .strip button[aria-pressed=true] { color: var(--text); background: var(--line); }
+  .strip button:disabled { opacity: 0.35; }
+  .strip .sep { flex: none; width: 1px; height: 16px; margin: 0 5px; background: var(--line); }
+  .tool { display: flex; align-items: center; }
+  .tool > button { position: relative; width: 34px; padding: 0; display: grid; place-items: center; }
+  .tool > button svg { width: 16px; height: 16px; }
+  /* Opening and closing a tool is its width moving: from nothing to what its choices take. */
+  .options { display: grid; grid-template-columns: 0fr; transition: grid-template-columns 220ms ease; }
+  .tool.on .options { grid-template-columns: 1fr; }
+  .options > div { min-width: 0; overflow: hidden; display: flex; align-items: center; gap: 2px; }
+  .tool.on .options > div:not(:empty) { padding-left: 4px; }
+  /* Where a run of the preview stands, while the preview is not on screen: a dot on its icon. */
+  .marker { position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 1px; background: var(--text); }
+  .marker.running { animation: blink 1s steps(2, start) infinite; }
+  .marker.failed { background: var(--warn); }
+  @keyframes blink { to { visibility: hidden; } }
+  @media (prefers-reduced-motion: reduce) {
+    .options { transition: none; }
+    .marker.running { animation: none; }
+  }
+
+  /* One window, two tools: the launcher, and the world preview in a frame. */
+  #launcher { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  #preview { flex: 1; min-height: 0; position: relative; }
+  #preview iframe { display: block; width: 100%; height: 100%; border: 0; }
+  #preview-note { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
+  /* The launcher is one column of a capped width, centred, and inside it two: the profiles, and the server. */
+  .page { max-width: 960px; margin: 0 auto; padding: 22px 28px 28px; }
+  .top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 22px; }
+  /* A title is in the pixel font, larger than what it heads: no capitals, no second colour. */
+  h1, h2 { margin: 0; font: 400 16px/1.25 var(--pixel); font-synthesis: none; }
+  h1 { font-size: 24px; }
+  /* Who plays: said once, opposite the title, since it holds for every profile. */
+  #account { margin-left: auto; color: var(--muted); }
+  .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+  @media (max-width: 760px) {
+    .page { padding: 18px 16px 24px; }
+    .columns { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  }
+  .col { display: flex; flex-direction: column; min-width: 0; }
+  .col header { display: flex; align-items: center; gap: 6px; min-height: 36px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .view { display: flex; flex-direction: column; }
+  #settings-view, #server-fields { gap: 16px; }
+  #settings-view { padding-top: 14px; }
+  #server-fields { padding-top: 16px; }
+  .icon { flex: none; width: 36px; height: 36px; display: grid; place-items: center; color: var(--muted); }
+  .icon:hover:not(:disabled) { color: var(--text); }
+  .back { margin-left: -9px; }
 
   /* A row: a name and a line about it, then what can be done with it. Rows are set apart by a line. */
   .profile {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 14px 0;
+    gap: 4px;
+    padding: 12px 0;
     border-bottom: 1px solid var(--line);
   }
   .profile .who { flex: 1; min-width: 0; }
-  .profile .name { font-size: 18px; font-weight: 600; }
-  .profile .meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .profile .name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile .meta { font-size: 12px; color: var(--muted); }
   /* What a launch is doing is said in the row that was asked, in the text colour: it is the news of the moment. */
   .profile .meta.now { color: var(--text); }
   /* No colour here either: the button to play is the text colour, filled. */
-  .play { background: var(--text); color: var(--ground); }
-  .play:hover { opacity: 0.85; color: var(--ground); }
-  .play:disabled:hover { opacity: 0.5; }
+  .play { background: var(--text); color: var(--ground); border-radius: 0; }
+  .play:hover:not(:disabled) { opacity: 0.85; color: var(--ground); }
 
-  /* Settings of one profile. */
-  label, .label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  /* Settings. */
+  label, .label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .field { display: flex; flex-direction: column; }
   .memory { display: flex; align-items: center; gap: 14px; }
-  .memory output { min-width: 5ch; text-align: right; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .memory output { min-width: 6ch; text-align: right; font-size: 15px; font-weight: 600; }
   /* The same controls as the world preview. A slider is a hairline and a thin mark to move, wider than
      what it shows so it stays easy to catch. */
   input[type=range] {
@@ -121,7 +164,7 @@
   input.switch.on::-webkit-slider-thumb, input.switch:hover:not(:disabled)::-webkit-slider-thumb { background: var(--text); }
   .toggle { display: flex; align-items: center; gap: 10px; }
   .toggle label { flex: 1; margin: 0; }
-  .toggle output { font-size: 13px; font-weight: 600; }
+  .toggle output { font-weight: 600; }
   /* A field is a line under its text, as on the preview page: no box. The line turns to the text colour
      while it is being written in. */
   textarea, select, input[type=text], input[type=number] {
@@ -138,10 +181,9 @@
   textarea:focus, select:focus, input[type=text]:focus, input[type=number]:focus { outline: none; border-color: var(--text); }
   select { cursor: pointer; }
   option { background: var(--ground); }
-  input[type=number] { -moz-appearance: textfield; font-variant-numeric: tabular-nums; }
+  input[type=number] { -moz-appearance: textfield; }
   input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-  /* Java arguments are a command line: written in a font where every character has the same width. */
-  textarea { height: 52px; resize: none; font: 13px/1.5 "Cascadia Mono", Consolas, monospace; }
+  textarea { height: 56px; resize: none; font-size: 12px; line-height: 1.5; }
   input::placeholder { color: var(--muted); }
   #server { margin-top: 8px; }
   :disabled { opacity: 0.5; }
@@ -149,104 +191,116 @@
   .folder code {
     flex: 1; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font: 13px "Cascadia Mono", Consolas, monospace;
+    font: 12px var(--mono);
     user-select: text;
   }
-  /* What acts beside a value: a quiet word, underlined like a link, as the preview's Save. */
-  .folder button { padding: 4px 0; font-size: 13px; border-radius: 0; text-decoration: underline; text-underline-offset: 3px; }
+  /* What acts beside a value: a quiet word, underlined like a link, as the preview's Export. */
+  .folder button { padding: 4px 0; font-size: 12px; border-radius: 0; text-decoration: underline; text-underline-offset: 3px; }
   .folder button:hover { color: var(--muted); }
-  /* The server is not a way of playing: it sits apart from the profiles, under a small title of its own. */
-  .group { margin-top: 18px; font-size: 13px; color: var(--muted); }
-  #server-view { gap: 12px; }
   .pair { display: flex; gap: 24px; }
   .pair .field { flex: 1; min-width: 0; }
-  #status { margin-top: 12px; min-height: 20px; color: var(--muted); font-size: 13px; }
+  /* What a column has to say about itself, under its rows: as many lines as it needs, none when silent. */
+  .note { margin-top: 12px; color: var(--muted); font-size: 12px; }
+  .note:empty { display: none; }
 </style>
 </head>
 <body>
-  <nav id="modes" hidden>
-    <div role="group">
-      <button data-mode="play"></button>
-      <button data-mode="preview"><span></span><span id="preview-marker"></span></button>
+  <nav id="toolbar" hidden>
+    <div class="strip" role="group">
+      <div class="tool" data-mode="play">
+        <button data-mode="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16v2H4zm16-10h2v10h-2zM2 10h2v10H2zm2-2h2v2H4zm2-2h2v2H6zm2-2h2v2H8zm2-2h4v2h-4zm4 2h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2zM8 14h2v6H8zm2-2h4v2h-4zm4 2h2v6h-2z"/></svg></button>
+        <div class="options"><div></div></div>
+      </div>
+      <span class="sep"></span>
+      <div class="tool" data-mode="preview">
+        <button data-mode="preview"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h2v2H2V6h2v14Zm12 0h2v2h-4v-2h-2v-2h2V8h-2V6h4v14Zm-8 0H6v-2h2v2Zm12 0h-2v-2h2v2ZM10 4h2v2h-2v10h2v2H8V4H6V2h4v2Zm12 14h-2V4h-2V2h4v16ZM6 6H4V4h2v2Zm12 0h-2V4h2v2Z"/></svg><span class="marker" id="preview-marker" hidden></span></button>
+        <div class="options"><div id="preview-tabs"></div></div>
+      </div>
     </div>
   </nav>
 
   <div id="launcher">
-  <section class="view" id="list-view">
-    <header><h1 data-text="title"></h1><span id="account"></span></header>
-    <div class="view" id="profiles"></div>
-    <div class="group" data-text="serverGroup"></div>
-    <div class="profile" id="server-row">
-      <div class="who"><div class="name" data-text="serverName"></div><div class="meta" id="server-meta"></div></div>
-    </div>
-  </section>
+  <div class="page">
+    <div class="top"><h1 data-text="title"></h1><span id="account"></span></div>
+    <div class="columns">
+      <section class="col">
+        <div class="view" id="list-view">
+          <header><h2 data-text="profilesGroup"></h2></header>
+          <div id="profiles"></div>
+        </div>
 
-  <section class="view" id="settings-view" hidden>
-    <header>
-      <button class="icon" id="back"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
-      <h1 id="settings-name"></h1>
-    </header>
-    <div class="field">
-      <label for="open-on" data-text="openOn"></label>
-      <select id="open-on"></select>
-      <input type="text" id="server" spellcheck="false" hidden>
-    </div>
-    <div class="field">
-      <label for="memory" data-text="memory"></label>
-      <div class="memory">
-        <input type="range" id="memory" min="2" step="1">
-        <output id="memory-value" for="memory"></output>
-      </div>
-    </div>
-    <div class="field">
-      <label for="java-args" data-text="javaArgs"></label>
-      <textarea id="java-args" spellcheck="false"></textarea>
-    </div>
-    <div class="field">
-      <span class="label" data-text="folder"></span>
-      <div class="folder"><code id="folder-path"></code><button id="open-folder" data-text="open"></button></div>
-    </div>
-  </section>
+        <div class="view" id="settings-view" hidden>
+          <header>
+            <button class="icon back" id="back"><svg viewBox="0 0 24 24"><path d="M20 11v2H4v-2zM8 13v2H6v-2zm2 2v2H8v-2zm2 2v2h-2v-2zm-4-6V9H6v2z"/><path d="M10 15V7H8v8zm2 2V5h-2v12z"/></svg></button>
+            <h2 id="settings-name"></h2>
+          </header>
+          <div class="field">
+            <label for="open-on" data-text="openOn"></label>
+            <select id="open-on"></select>
+            <input type="text" id="server" spellcheck="false" hidden>
+          </div>
+          <div class="field">
+            <label for="memory" data-text="memory"></label>
+            <div class="memory">
+              <input type="range" id="memory" min="2" step="1">
+              <output id="memory-value" for="memory"></output>
+            </div>
+          </div>
+          <div class="field">
+            <label for="java-args" data-text="javaArgs"></label>
+            <textarea id="java-args" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <span class="label" data-text="folder"></span>
+            <div class="folder"><code id="folder-path"></code><button id="open-folder" data-text="open"></button></div>
+          </div>
+        </div>
+        <div class="note" id="status" role="status"></div>
+      </section>
 
-  <section class="view" id="server-view" hidden>
-    <header>
-      <button class="icon" id="server-back"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
-      <h1 data-text="serverName"></h1>
-    </header>
-    <div class="field">
-      <label for="server-memory" data-text="memory"></label>
-      <div class="memory">
-        <input type="range" id="server-memory" min="2" step="1">
-        <output id="server-memory-value" for="server-memory"></output>
-      </div>
+      <section class="col">
+        <header><h2 data-text="serverGroup"></h2></header>
+        <div class="profile" id="server-row">
+          <div class="who"><div class="name" data-text="serverName"></div><div class="meta" id="server-meta"></div></div>
+        </div>
+        <div class="view" id="server-fields">
+          <div class="field">
+            <label for="server-memory" data-text="memory"></label>
+            <div class="memory">
+              <input type="range" id="server-memory" min="2" step="1">
+              <output id="server-memory-value" for="server-memory"></output>
+            </div>
+          </div>
+          <div class="field">
+            <label for="server-java-args" data-text="javaArgs"></label>
+            <textarea id="server-java-args" spellcheck="false"></textarea>
+          </div>
+          <div class="pair">
+            <div class="field"><label for="view-distance" data-text="viewDistance"></label><input type="number" id="view-distance" min="3" max="32" data-prop="viewDistance"></div>
+            <div class="field"><label for="simulation-distance" data-text="simulationDistance"></label><input type="number" id="simulation-distance" min="5" max="32" data-prop="simulationDistance"></div>
+          </div>
+          <div class="pair">
+            <div class="field"><label for="max-players" data-text="maxPlayers"></label><input type="number" id="max-players" min="1" max="100" data-prop="maxPlayers"></div>
+            <div class="field"><label for="server-port" data-text="port"></label><input type="number" id="server-port" min="1024" max="65535" data-prop="port"></div>
+          </div>
+          <div class="toggle">
+            <label for="whitelist" data-text="whitelist"></label>
+            <output id="whitelist-value" for="whitelist"></output>
+            <input type="range" class="switch" id="whitelist" min="0" max="1" step="1">
+          </div>
+          <div class="field">
+            <label for="motd" data-text="motd"></label>
+            <input type="text" id="motd" maxlength="59" spellcheck="false">
+          </div>
+          <div class="field">
+            <span class="label" data-text="serverFolder"></span>
+            <div class="folder"><code id="server-folder"></code><button id="open-server-folder" data-text="open"></button></div>
+          </div>
+        </div>
+        <div class="note" id="server-note" role="status"></div>
+      </section>
     </div>
-    <div class="field">
-      <label for="server-java-args" data-text="javaArgs"></label>
-      <textarea id="server-java-args" spellcheck="false"></textarea>
-    </div>
-    <div class="pair">
-      <div class="field"><label for="view-distance" data-text="viewDistance"></label><input type="number" id="view-distance" min="3" max="32" data-prop="viewDistance"></div>
-      <div class="field"><label for="simulation-distance" data-text="simulationDistance"></label><input type="number" id="simulation-distance" min="5" max="32" data-prop="simulationDistance"></div>
-    </div>
-    <div class="pair">
-      <div class="field"><label for="max-players" data-text="maxPlayers"></label><input type="number" id="max-players" min="1" max="100" data-prop="maxPlayers"></div>
-      <div class="field"><label for="server-port" data-text="port"></label><input type="number" id="server-port" min="1024" max="65535" data-prop="port"></div>
-    </div>
-    <div class="toggle">
-      <label for="whitelist" data-text="whitelist"></label>
-      <output id="whitelist-value" for="whitelist"></output>
-      <input type="range" class="switch" id="whitelist" min="0" max="1" step="1">
-    </div>
-    <div class="field">
-      <label for="motd" data-text="motd"></label>
-      <input type="text" id="motd" maxlength="59" spellcheck="false">
-    </div>
-    <div class="field">
-      <div class="folder"><code id="server-folder"></code><button id="open-server-folder" data-text="open"></button></div>
-    </div>
-  </section>
-
-  <div id="status" role="status"></div>
+  </div>
   </div>
 
   <div id="preview" hidden>
@@ -259,14 +313,16 @@
   const text = {
     title: 'Minecraft',
     noAccount: 'No account: sign in once in Prism',
-    // The two modes of the window, and where a run of the preview stands, said beside its mode and in the
+    // The two tools of the window, and where a run of the preview stands, said on its icon and in the
     // window's title, which the taskbar shows.
-    modes: { play: 'Play', preview: 'Preview' },
+    modes: { play: 'Play', preview: 'World preview' },
     previewState: { running: 'computing', ready: 'ready', failed: 'failed' },
+    modeWith: (name, marker) => `${name} · ${marker}`,
     titleWith: marker => `Minecraft · preview ${marker}`,
     previewFrame: 'World preview',
     previewStarting: 'Starting the world preview…',
-    previewFailed: 'The world preview did not start. Choose Preview again to retry.',
+    previewFailed: 'The world preview did not start. Choose it again to retry.',
+    profilesGroup: 'Profiles',
     play: name => `Play ${name}`,
     settings: name => `Settings of ${name}`,
     back: 'Back',
@@ -296,6 +352,7 @@
     gigabytes: n => `${n} GB`,
     javaArgs: 'Java arguments',
     folder: 'Game folder',
+    serverFolder: 'Server folder',
     open: 'Open',
     saved: 'Saved.',
     refused: 'Setting refused, nothing changed.',
@@ -307,7 +364,6 @@
     serverName: 'Dev server',
     startServer: 'Start the server',
     stopServer: 'Stop the server',
-    serverSettings: 'Settings of the server',
     server: {
       stopped: port => `stopped · joins at localhost:${port}`,
       preparing: 'Syncing the mods… its window shows each step',
@@ -328,10 +384,11 @@
     firstStart: 'Distances, players, port and line appear after the first start.',
     serverLocked: 'The server is running: settings can change once it is stopped.',
   };
+  // Drawn after Pixelarticons (MIT), on its 24-pixel grid; the stop square is a plain square on the same grid.
   const icons = {
-    play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    play: '<svg viewBox="0 0 24 24"><path d="M15 11h-2V9h2zm0 4h-2v-2h2zm-2 2h-2v-2h2zm0-8h-2V7h2zm-2-2H9V5h2zM9 21H7V3h2zm6-8h2v-2h-2zm-6 4h2v2H9z"/></svg>',
     stop: '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>',
-    settings: '<svg viewBox="0 0 24 24"><path d="M3 6h10v2H3zm14 0h4v2h-4zM3 16h4v2H3zm8 0h10v2H11z"/><circle cx="15" cy="7" r="2.5"/><circle cx="9" cy="17" r="2.5"/></svg>',
+    settings: '<svg viewBox="0 0 24 24"><path d="M8 14H7v6H5v-6H2v-2h6v2Zm5 6h-2V10h2v10Zm9-2h-3v2h-2v-2h-1v-2h6v2Zm-3-4h-2V4h2v10ZM7 10H5V4h2v6Zm6-4h2v2H9V6h2V4h2v2Z"/></svg>',
   };
 
   const $ = id => document.getElementById(id);
@@ -343,6 +400,7 @@
   addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && '+-=_'.includes(event.key)) event.preventDefault(); });
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
   $('back').setAttribute('aria-label', text.back);
+  $('back').title = text.back;
   $('server').placeholder = text.serverAddress;
 
   let profiles = [];
@@ -354,7 +412,9 @@
     const reply = await fetch(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
     if (!reply.ok) throw new Error(reply.status);
   }
+  // Each column says what it has to say under its own rows: the profiles, and the server.
   const say = sentence => { $('status').textContent = sentence; };
+  const sayServer = sentence => { $('server-note').textContent = sentence; };
 
   function iconButton(kind, label, onClick) {
     const b = document.createElement('button');
@@ -369,7 +429,6 @@
   function show(view) {
     $('list-view').hidden = view !== 'list';
     $('settings-view').hidden = view !== 'settings';
-    $('server-view').hidden = view !== 'server';
     say('');
   }
 
@@ -496,9 +555,11 @@
   $('java-args').addEventListener('change', save);
   $('open-folder').addEventListener('click', () => post(`/api/folder/${current.id}`).catch(() => say(text.failed)));
 
-  // The dev server: one row apart from the profiles, started in a console window of its own.
+  // The dev server: its row, started in a console window of its own, and its settings under it, always in
+  // sight now that it has a column of its own.
   let server = null;      // what /api/server answered last
   let stopping = false;   // "stop" was sent and the server has not gone yet
+  let filledFor = null;   // the state the settings were last filled in for
   const serverBusy = () => server && ['preparing', 'starting', 'running'].includes(server.state);
   const serverPort = () => server.props ? server.props.port : 25565;
 
@@ -517,43 +578,46 @@
       : iconButton('play', text.startServer, startServer);
     // Start once at a time; stop only a server that is ready to hear it.
     toggle.disabled = stopping || (!running && serverBusy());
-    $('server-row').replaceChildren($('server-row').firstElementChild, toggle,
-      iconButton('settings', text.serverSettings, openServerSettings));
+    $('server-row').replaceChildren($('server-row').firstElementChild, toggle);
   }
 
   async function loadServer() {
     server = await fetch('/api/server').then(r => r.json());
     renderServer();
-    if (!$('server-view').hidden) lockServer();
+    // The settings are filled in again only when the server changed state: while it is stopped, which is
+    // when they can be changed, the values being written stay as they are.
+    const key = `${server.state} ${!!server.props}`;
+    if (key !== filledFor) { filledFor = key; fillServer(); }
+    lockServer();
   }
 
   async function startServer() {
     try {
       const reply = await fetch('/api/server/start', { method: 'POST' });
-      if (!reply.ok) say((await reply.json().catch(() => ({}))).error || text.failed);
-    } catch { say(text.failed); }
+      if (!reply.ok) sayServer((await reply.json().catch(() => ({}))).error || text.failed);
+    } catch { sayServer(text.failed); }
     loadServer().catch(() => {});
   }
 
   async function stopServer() {
     stopping = true;
     renderServer();
-    try { await post('/api/server/stop'); } catch { stopping = false; say(text.failed); }
+    try { await post('/api/server/stop'); } catch { stopping = false; sayServer(text.failed); }
     loadServer().catch(() => {});
   }
 
-  const propFields = () => [...document.querySelectorAll('#server-view [data-prop]')];
+  const propFields = () => [...document.querySelectorAll('#server-fields [data-prop]')];
 
   function lockServer() {
     const busy = serverBusy();
     for (const id of ['server-memory', 'server-java-args']) $(id).disabled = busy;
     for (const el of [...propFields(), $('motd'), $('whitelist')]) el.disabled = busy || !server.props;
-    if (busy) say(text.serverLocked);
-    else if (!server.props) say(text.firstStart);
-    else if ([text.serverLocked, text.firstStart].includes($('status').textContent)) say('');
+    if (busy) sayServer(text.serverLocked);
+    else if (!server.props) sayServer(text.firstStart);
+    else if ([text.serverLocked, text.firstStart].includes($('server-note').textContent)) sayServer('');
   }
 
-  function openServerSettings() {
+  function fillServer() {
     $('server-memory').value = Math.round(server.memoryMb / 1024);
     $('server-memory-value').textContent = text.gigabytes($('server-memory').value);
     $('server-java-args').value = server.javaArgs;
@@ -562,8 +626,6 @@
     $('whitelist').value = server.props && server.props.whitelist ? 1 : 0;
     showWhitelist();
     $('server-folder').textContent = server.dir;
-    show('server');
-    lockServer();
   }
 
   // Saved as soon as a field is left, as for a profile.
@@ -576,8 +638,8 @@
     try {
       await post('/api/server/settings', next);
       Object.assign(server, next);
-      say(text.saved);
-    } catch (e) { say(e.message === '400' ? text.refused : e.message === '409' ? text.serverLocked : text.failed); }
+      sayServer(text.saved);
+    } catch (e) { sayServer(e.message === '400' ? text.refused : e.message === '409' ? text.serverLocked : text.failed); }
   }
 
   function showWhitelist() {
@@ -598,19 +660,18 @@
   });
   $('whitelist').addEventListener('input', () => { showWhitelist(); saveServer(); });
 
-  $('server-back').addEventListener('click', () => { show('list'); loadServer().catch(() => say(text.failed)); });
   $('server-memory').addEventListener('input', () => { $('server-memory-value').textContent = text.gigabytes($('server-memory').value); });
   for (const el of [$('server-memory'), $('server-java-args'), $('motd'), ...propFields()]) el.addEventListener('change', saveServer);
-  $('open-server-folder').addEventListener('click', () => post('/api/server/folder').catch(() => say(text.failed)));
+  $('open-server-folder').addEventListener('click', () => post('/api/server/folder').catch(() => sayServer(text.failed)));
   // The server changes on its own (its window can stop it too): its row is asked again every few seconds.
   setInterval(() => { if (!document.hidden && mode === 'play') loadServer().catch(() => {}); }, 3000);
 
-  // ---------- modes ----------
-  // One window, two modes: the launcher, and the world preview, shown in a frame from its own server. The
-  // preview is an extra: its mode is offered only when its repository is there, and it starts the first
-  // time it is chosen. Each mode has its own window size: the one the person left it at, or a first size
-  // that fits what it shows.
-  const sizes = { play: [440, 600], preview: [1400, 980] };
+  // ---------- tools ----------
+  // One window, two tools: the launcher, and the world preview, shown in a frame from its own server. The
+  // preview is an extra: its tool is offered only when its repository is there, and it starts the first
+  // time it is chosen. The window keeps one size for both, the one the person left it at: the launcher is a
+  // capped column in the middle of it, so it needs no size of its own, and switching never moves the window.
+  const firstSize = [1280, 880];
   let mode = 'play';
   let previewUrl = null;      // the preview's own page, when the preview is there
   let previewOpened = false;  // its server was asked to start
@@ -618,21 +679,13 @@
   let previewSeen = true;     // false when a run ended while the preview was not on screen
   let sizing = 0;
 
-  for (const b of $('modes').querySelectorAll('button')) {
-    // The preview's name sits in a span of its own, beside the marker of its run.
-    (b.firstElementChild || b).textContent = text.modes[b.dataset.mode];
-    b.addEventListener('click', () => showMode(b.dataset.mode));
-  }
+  for (const b of $('toolbar').querySelectorAll('.tool > button')) b.addEventListener('click', () => showMode(b.dataset.mode));
   $('preview-frame').title = text.previewFrame;
 
-  function sizeFor(name) {
-    let size = sizes[name];
-    try { size = JSON.parse(localStorage.getItem(`launcher.size.${name}`)) || size; } catch { }
-    return [Math.min(size[0], screen.availWidth), Math.min(size[1], screen.availHeight)];
-  }
-
-  function fit(name) {
-    const [w, h] = sizeFor(name);
+  function fit() {
+    let size = firstSize;
+    try { size = JSON.parse(localStorage.getItem('launcher.size')) || size; } catch { }
+    const [w, h] = [Math.min(size[0], screen.availWidth), Math.min(size[1], screen.availHeight)];
     resizeTo(w, h);
     // A window grown past the screen's edge comes back inside it.
     const x0 = screen.availLeft ?? 0, y0 = screen.availTop ?? 0;
@@ -641,33 +694,44 @@
     if (left !== screenX || top !== screenY) moveTo(left, top);
   }
 
-  // The size the person gives a mode is kept for that mode.
+  // The size the person gives the window is kept.
   addEventListener('resize', () => {
     clearTimeout(sizing);
-    const kept = mode;
     sizing = setTimeout(() => {
-      try { localStorage.setItem(`launcher.size.${kept}`, JSON.stringify([outerWidth, outerHeight])); } catch { }
+      try { localStorage.setItem('launcher.size', JSON.stringify([outerWidth, outerHeight])); } catch { }
     }, 400);
   });
 
   function renderModes() {
-    for (const b of $('modes').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
-    const marker = previewState === 'running' ? text.previewState.running : previewSeen ? '' : text.previewState[previewState] || '';
-    $('preview-marker').textContent = marker ? ` · ${marker}` : '';
-    document.title = marker ? text.titleWith(marker) : text.title;
+    for (const tool of $('toolbar').querySelectorAll('.tool')) {
+      const on = tool.dataset.mode === mode;
+      tool.classList.toggle('on', on);
+      // A closed tool's choices are out of reach of the keyboard too.
+      tool.querySelector('.options').inert = !on;
+      tool.firstElementChild.setAttribute('aria-pressed', String(on));
+    }
+    const marker = previewState === 'running' ? 'running' : previewSeen ? '' : ['ready', 'failed'].includes(previewState) ? previewState : '';
+    $('preview-marker').hidden = !marker;
+    $('preview-marker').className = `marker ${marker}`;
+    const word = text.previewState[marker];
+    for (const b of $('toolbar').querySelectorAll('.tool > button')) {
+      const name = text.modes[b.dataset.mode];
+      const label = b.dataset.mode === 'preview' && word ? text.modeWith(name, word) : name;
+      b.title = label;
+      b.setAttribute('aria-label', label);
+    }
+    document.title = word ? text.titleWith(word) : text.title;
   }
 
   async function showMode(name) {
     if (name === mode) return;
     if (name === 'preview' && !previewOpened && !await openPreview()) return;
-    clearTimeout(sizing);
     mode = name;
     $('launcher').hidden = name !== 'play';
     $('preview').hidden = name !== 'preview';
     if (name === 'preview') previewSeen = true;
-    else load().catch(() => {});
+    else { load().catch(() => {}); loadServer().catch(() => {}); }
     renderModes();
-    fit(name);
   }
 
   // The launcher's server starts the preview's; that one takes a few seconds before it answers, and its
@@ -699,9 +763,28 @@
     previewOpened = false;
   }
 
-  // The preview tells where its run stands (see the world-preview repository's docs/setup.md).
+  // The preview's views and their shape, as the preview page sends them, drawn in this bar; a click is
+  // sent back to the page, which takes it as a click on its own tab (see the world-preview repository's
+  // docs/setup.md).
+  function renderPreviewTabs(tabs) {
+    $('preview-tabs').replaceChildren(...tabs.map(tab => {
+      if (tab.sep) return Object.assign(document.createElement('span'), { className: 'sep', hidden: tab.hidden });
+      const b = document.createElement('button');
+      b.textContent = tab.label;
+      b.title = tab.title || '';
+      b.disabled = tab.disabled;
+      b.hidden = tab.hidden;
+      b.setAttribute('aria-pressed', String(tab.pressed));
+      b.addEventListener('click', () => $('preview-frame').contentWindow.postMessage({ source: 'host', tab: tab.key }, new URL(previewUrl).origin));
+      return b;
+    }));
+  }
+
+  // The preview tells where its run stands, and what its tabs are.
   addEventListener('message', event => {
     if (!previewUrl || event.origin !== new URL(previewUrl).origin || event.data?.source !== 'world-preview') return;
+    if (Array.isArray(event.data.tabs)) return renderPreviewTabs(event.data.tabs);
+    if (!event.data.state) return;
     previewState = event.data.state;
     if (mode !== 'preview' && ['ready', 'failed'].includes(previewState)) previewSeen = false;
     renderModes();
@@ -714,9 +797,9 @@
 
   async function loadModes() {
     const preview = await fetch('/api/preview').then(r => r.json()).catch(() => null);
-    if (preview?.available) { previewUrl = preview.url; $('modes').hidden = false; }
+    if (preview?.available) { previewUrl = preview.url; $('toolbar').hidden = false; }
     renderModes();
-    fit(mode);
+    fit();
   }
 
   // Tells a capture that the page is drawn (see scripts/capture.ps1).
