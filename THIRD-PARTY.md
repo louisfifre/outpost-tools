@@ -2,12 +2,11 @@
 
 The page carries two pieces of other people's work. Nothing of Minecraft's own font or textures is used.
 
-## Monocraft (the headings' font)
+## IBM Plex Mono (the page's font)
 
-- Source: https://github.com/IdreesInc/Monocraft, `dist/Monocraft-ttf/Monocraft.ttf` (release v4.2.1).
-- Licence: SIL Open Font License 1.1, https://github.com/IdreesInc/Monocraft/blob/main/LICENSE. Copyright (c) 2022, Idrees Hassan.
-- What is used: a subset holding only printable ASCII and a few punctuation marks (`· × – — ’ … →`), without ligatures, as WOFF, embedded in `index.html` as a data URL (about 3 KB). The OFL allows a subset to be embedded in a document; it is not sold on its own.
-- How it was made: `pyftsubset Monocraft.ttf --unicodes="U+0020-007E,U+00B7,U+00D7,U+2013,U+2014,U+2019,U+2026,U+2192" --layout-features="" --flavor=woff`.
+- Source: https://github.com/IBM/plex, release `@ibm/plex-mono@2.5.0`, file `ibm-plex-mono.zip`.
+- Licence: SIL Open Font License 1.1, https://github.com/IBM/plex/blob/master/LICENSE.txt. Copyright © 2017 IBM Corp. with Reserved Font Name "Plex".
+- What is used: IBM's own split cuts, unchanged, from `fonts/split/woff2`: `IBMPlexMono-Regular-Latin1.woff2`, `IBMPlexMono-SemiBold-Latin1.woff2` and `IBMPlexMono-Regular-Pi.woff2` (arrows and signs), embedded in `index.html` as data URLs (about 50 KB) with the unicode ranges of IBM's own stylesheet. The OFL allows the font to be embedded in a document; it is not sold on its own. The world preview page embeds the same three files.
 
 ## Pixelarticons (the icons)
 
