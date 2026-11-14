@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Minecraft</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%237fb850' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%238b6344' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%236b4b33' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
+<!-- What makes the page an application the browser can install, with its title bar to itself. -->
+<link rel="manifest" href="/launcher.webmanifest">
 <style>
   /* The same raw page as the world preview: two grounds, black or almost white, hairlines in one grey, square
      corners, no shadow and no texture. What is current is drawn in reverse. One font for everything, IBM Plex
@@ -68,16 +70,48 @@
   button:disabled { opacity: 0.4; cursor: default; }
   svg { width: 16px; height: 16px; display: block; fill: currentColor; }
 
-  /* The toolbar: one strip of boxes at the top of the window, the boxes sharing their hairlines, a tool per
-     icon. The tool on screen is drawn in reverse and opens beside its icon to show its own choices (the
-     preview, its views and their shape); the others stay an icon. The strip is the preview page's own. */
-  #toolbar { flex: none; display: flex; justify-content: center; padding: 10px 16px 0; }
+  /* The title bar is the page's own. Installed as an application (launcher.webmanifest), the window gives the
+     page its title bar and keeps only Windows' three buttons, on the right: env(titlebar-area-*) says where
+     the free part is. In a bare browser window the browser draws its own bar above, and this one is a plain
+     bar at the top of the page. Two parts on one line: who this is on the left (the game and the account
+     that plays), the tools in the middle. What is not a button moves the window. */
+  #titlebar {
+    flex: none; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center;
+    height: 40px; padding-left: 12px; border-bottom: 1px solid var(--line);
+    app-region: drag;
+  }
+  /* The free part of the bar is only known in an installed window with its bar given to the page. */
+  @media (display-mode: window-controls-overlay) {
+    #titlebar {
+      height: max(32px, env(titlebar-area-height, 40px));
+      padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+    }
+  }
+  #titlebar button { app-region: no-drag; }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; white-space: nowrap; }
+  .brand svg { flex: none; }
+  /* Who plays: said once, beside the game's name, since it holds for every profile. */
+  #account { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  @media (max-width: 640px) { #account { display: none; } }
+  /* The far end of the bar, for what is not a tool: for now the offer to install the page as an application. */
+  .ends { justify-self: end; display: flex; padding-right: 8px; }
+
+  /* The toolbar: one strip of boxes in the middle of the title bar, the boxes sharing their hairlines, a
+     tool per icon. The tool on screen is drawn in reverse and opens beside its icon to show its own choices
+     (the preview, its views and their shape); the others stay an icon. The strip is the preview page's own. */
+  #toolbar { display: flex; justify-content: center; }
   .strip { display: flex; align-items: stretch; padding-left: 1px; }
   .strip button { height: 28px; padding: 0 12px; margin-left: -1px; border: 1px solid var(--edge); color: var(--muted); white-space: nowrap; }
   .strip button:hover:not(:disabled) { color: var(--text); }
   .strip button[aria-pressed=true] { position: relative; color: var(--ground); background: var(--text); border-color: var(--text); }
   .strip button:disabled { opacity: 0.35; }
   .strip .sep { flex: none; width: 12px; }
+  /* When the bar has no room for the views' names, each shows its icon instead, its name on hover. The
+     shapes, 2D and 3D, are short enough to stay words. */
+  .strip button .glyph { display: none; }
+  #toolbar.compact .strip button:has(.glyph) { width: 36px; padding: 0; }
+  #toolbar.compact .strip button:has(.glyph) .glyph { display: grid; place-items: center; }
+  #toolbar.compact .strip button:has(.glyph) .word { display: none; }
   .tool { display: flex; align-items: stretch; }
   .tool > button { position: relative; width: 36px; padding: 0; display: grid; place-items: center; }
   /* Opening and closing a tool is its width moving: from nothing to what its choices take. */
@@ -100,16 +134,13 @@
   #preview { flex: 1; min-height: 0; position: relative; }
   #preview iframe { display: block; width: 100%; height: 100%; border: 0; }
   #preview-note { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
-  /* The launcher is one column of a capped width, centred, and inside it two: the profiles, and the server. */
-  .page { max-width: 960px; margin: 0 auto; padding: 22px 28px 28px; }
-  .top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
-  /* A title is in capitals and semibold, in the colour of the text; the window's own a size up. */
+  /* The launcher is one column of a capped width, centred, and inside it two: the profiles, and the server.
+     Two columns need room each: under it, one above the other. */
+  .page { max-width: 1120px; margin: 0 auto; padding: 24px 28px 28px; }
+  /* A title is in capitals and semibold, in the colour of the text. */
   h1, h2 { margin: 0; font: 600 12px/1.25 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
-  h1 { font-size: 14px; }
-  /* Who plays: said once, opposite the title, since it holds for every profile. */
-  #account { margin-left: auto; color: var(--muted); }
-  .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
-  @media (max-width: 760px) {
+  .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
+  @media (max-width: 860px) {
     .page { padding: 18px 16px 24px; }
     .columns { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   }
@@ -123,6 +154,9 @@
   .icon { flex: none; width: 30px; height: 30px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--edge); }
   .icon:hover:not(:disabled) { color: var(--text); border-color: var(--text); }
   .icon + .icon { margin-left: -1px; }
+  /* An icon that opens something under it is drawn in reverse while it is open. */
+  .icon[aria-expanded=true] { color: var(--ground); background: var(--text); border-color: var(--text); }
+  .icon[aria-expanded=true]:hover { color: var(--ground); }
   .back { border: 0; width: 24px; margin-left: -4px; }
 
   /* A row: a name and a line about it, then what can be done with it. Rows are set apart by a hairline. */
@@ -174,10 +208,15 @@
 </style>
 </head>
 <body>
+  <header id="titlebar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="#7fb850" d="M16 2l14 7-14 7L2 9z"/><path fill="#8b6344" d="M2 9l14 7v14L2 23z"/><path fill="#6b4b33" d="M30 9l-14 7v14l14-7z"/></svg>
+    <h1 data-text="title"></h1><span id="account"></span>
+  </div>
   <nav id="toolbar" hidden>
     <div class="strip" role="group">
-      <div class="tool" data-mode="play">
-        <button data-mode="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16v2H4zm16-10h2v10h-2zM2 10h2v10H2zm2-2h2v2H4zm2-2h2v2H6zm2-2h2v2H8zm2-2h4v2h-4zm4 2h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2zM8 14h2v6H8zm2-2h4v2h-4zm4 2h2v6h-2z"/></svg></button>
+      <div class="tool" data-mode="home">
+        <button data-mode="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16v2H4zm16-10h2v10h-2zM2 10h2v10H2zm2-2h2v2H4zm2-2h2v2H6zm2-2h2v2H8zm2-2h4v2h-4zm4 2h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2zM8 14h2v6H8zm2-2h4v2h-4zm4 2h2v6h-2z"/></svg></button>
         <div class="options"><div></div></div>
       </div>
       <span class="sep"></span>
@@ -187,10 +226,11 @@
       </div>
     </div>
   </nav>
+  <div class="ends"><button class="icon" id="install" hidden></button></div>
+  </header>
 
   <div id="launcher">
   <div class="page">
-    <div class="top"><h1 data-text="title"></h1><span id="account"></span></div>
     <div class="columns">
       <section class="col">
         <div class="view" id="list-view">
@@ -232,7 +272,7 @@
         <div class="profile" id="server-row">
           <div class="who"><div class="name" data-text="serverName"></div><div class="meta" id="server-meta"></div></div>
         </div>
-        <div class="view" id="server-fields">
+        <div class="view" id="server-fields" hidden>
           <div class="field">
             <label for="server-memory" data-text="memory"></label>
             <div class="memory">
@@ -283,7 +323,7 @@
     noAccount: 'No account: sign in once in Prism',
     // The two tools of the window, and where a run of the preview stands, said on its icon and in the
     // window's title, which the taskbar shows.
-    modes: { play: 'Play', preview: 'World preview' },
+    modes: { home: 'Home', preview: 'World preview' },
     previewState: { running: 'computing', ready: 'ready', failed: 'failed' },
     modeWith: (name, marker) => `${name} · ${marker}`,
     titleWith: marker => `Minecraft · preview ${marker}`,
@@ -351,6 +391,8 @@
     off: 'off',
     firstStart: 'Distances, players, port and line appear after the first start.',
     serverLocked: 'The server is running: settings can change once it is stopped.',
+    serverSettings: 'Settings of the server',
+    install: 'Install as an application: a window of its own, the title bar to the page',
   };
   // Drawn after Pixelarticons (MIT), on its 24-pixel grid; the stop square is a plain square on the same grid.
   const icons = {
@@ -358,6 +400,18 @@
     stop: '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>',
     settings: '<svg viewBox="0 0 24 24"><path d="M8 14H7v6H5v-6H2v-2h6v2Zm5 6h-2V10h2v10Zm9-2h-3v2h-2v-2h-1v-2h6v2Zm-3-4h-2V4h2v10ZM7 10H5V4h2v6Zm6-4h2v2H9V6h2V4h2v2Z"/></svg>',
   };
+
+  // The preview's views, for a bar too narrow for their names, by the key the preview sends with each: drawn
+  // here on the same grid, in steps of two. A tree, the level ground, a mountain, a thermometer, a tower, and
+  // a block cut through with the ground's line across it.
+  const viewIcons = Object.fromEntries(Object.entries({
+    biomes: 'M8 2h8v2H8zM6 4h12v8H6zM8 12h8v2H8zM11 14h2v6h-2zM5 20h14v2H5z',
+    flat: 'M2 12h20v2H2zM2 16h20v2H2zM2 20h20v2H2zM8 6h8v2H8z',
+    height: 'M10 4h4v2h-4zM8 6h2v2H8zm6 0h2v2h-2zM6 8h2v4H6zm10 0h2v4h-2zM4 12h2v4H4zm14 0h2v4h-2zM2 16h2v4H2zm18 0h2v4h-2zM2 20h20v2H2z',
+    temperature: 'M10 2h4v2h-4zM8 4h2v10H8zm6 0h2v10h-2zM6 14h2v6H6zm10 0h2v6h-2zM8 20h8v2H8zM11 8h2v8h-2zM9 16h6v2H9z',
+    structures: 'M4 2h4v2h2V2h4v2h2V2h4v6H4zM6 8h2v12H6zm10 0h2v12h-2zM10 14h4v6h-4zM2 20h20v2H2z',
+    section: 'M2 4h20v2H2zM2 18h20v2H2zM2 6h2v12H2zm18 0h2v12h-2zM4 12h4v2H4zm4-2h4v2H8zm4 2h4v2h-4zm4-4h4v2h-4z',
+  }).map(([key, d]) => [key, `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`]));
 
   const $ = id => document.getElementById(id);
 
@@ -521,8 +575,15 @@
   $('java-args').addEventListener('change', save);
   $('open-folder').addEventListener('click', () => post(`/api/folder/${current.id}`).catch(() => say(text.failed)));
 
-  // The dev server: its row, started in a console window of its own, and its settings under it, always in
-  // sight now that it has a column of its own.
+  // The dev server: its row, started in a console window of its own, and its settings under it, folded until
+  // its settings icon opens them: most of the time the server is only started and stopped.
+  const serverSettings = iconButton('settings', text.serverSettings, () => {
+    const open = $('server-fields').hidden;
+    $('server-fields').hidden = !open;
+    serverSettings.setAttribute('aria-expanded', String(open));
+  });
+  serverSettings.setAttribute('aria-expanded', 'false');
+  serverSettings.setAttribute('aria-controls', 'server-fields');
   let server = null;      // what /api/server answered last
   let stopping = false;   // "stop" was sent and the server has not gone yet
   let filledFor = null;   // the state the settings were last filled in for
@@ -544,7 +605,7 @@
       : iconButton('play', text.startServer, startServer);
     // Start once at a time; stop only a server that is ready to hear it.
     toggle.disabled = stopping || (!running && serverBusy());
-    $('server-row').replaceChildren($('server-row').firstElementChild, toggle);
+    $('server-row').replaceChildren($('server-row').firstElementChild, toggle, serverSettings);
   }
 
   async function loadServer() {
@@ -630,7 +691,7 @@
   for (const el of [$('server-memory'), $('server-java-args'), $('motd'), ...propFields()]) el.addEventListener('change', saveServer);
   $('open-server-folder').addEventListener('click', () => post('/api/server/folder').catch(() => sayServer(text.failed)));
   // The server changes on its own (its window can stop it too): its row is asked again every few seconds.
-  setInterval(() => { if (!document.hidden && mode === 'play') loadServer().catch(() => {}); }, 3000);
+  setInterval(() => { if (!document.hidden && mode === 'home') loadServer().catch(() => {}); }, 3000);
 
   // ---------- tools ----------
   // One window, two tools: the launcher, and the world preview, shown in a frame from its own server. The
@@ -638,7 +699,7 @@
   // time it is chosen. The window keeps one size for both, the one the person left it at: the launcher is a
   // capped column in the middle of it, so it needs no size of its own, and switching never moves the window.
   const firstSize = [1280, 880];
-  let mode = 'play';
+  let mode = 'home';
   let previewUrl = null;      // the preview's own page, when the preview is there
   let previewOpened = false;  // its server was asked to start
   let previewState = 'idle';  // what the preview said last: idle, running, ready or failed
@@ -660,11 +721,16 @@
     if (left !== screenX || top !== screenY) moveTo(left, top);
   }
 
-  // The size the person gives the window is kept.
+  // The size the person gives the window is kept. A web page cannot forbid a window to shrink: one left
+  // smaller than the preview needs (its map in the middle, a panel on each side) springs back to that size
+  // once the person lets go of it.
+  const minSize = [960, 600];
   addEventListener('resize', () => {
     clearTimeout(sizing);
     sizing = setTimeout(() => {
-      try { localStorage.setItem('launcher.size', JSON.stringify([outerWidth, outerHeight])); } catch { }
+      const [w, h] = [Math.max(outerWidth, minSize[0]), Math.max(outerHeight, minSize[1])];
+      if ((w !== outerWidth || h !== outerHeight) && !matchMedia('(display-mode: browser)').matches) resizeTo(w, h);
+      try { localStorage.setItem('launcher.size', JSON.stringify([w, h])); } catch { }
     }, 400);
   });
 
@@ -693,7 +759,7 @@
     if (name === mode) return;
     if (name === 'preview' && !previewOpened && !await openPreview()) return;
     mode = name;
-    $('launcher').hidden = name !== 'play';
+    $('launcher').hidden = name !== 'home';
     $('preview').hidden = name !== 'preview';
     if (name === 'preview') previewSeen = true;
     else { load().catch(() => {}); loadServer().catch(() => {}); }
@@ -736,15 +802,34 @@
     $('preview-tabs').replaceChildren(...tabs.map(tab => {
       if (tab.sep) return Object.assign(document.createElement('span'), { className: 'sep', hidden: tab.hidden });
       const b = document.createElement('button');
-      b.textContent = tab.label;
-      b.title = tab.title || '';
+      b.append(Object.assign(document.createElement('span'), { className: 'word', textContent: tab.label }));
+      if (viewIcons[tab.key]) b.insertAdjacentHTML('beforeend', `<span class="glyph" aria-hidden="true">${viewIcons[tab.key]}</span>`);
+      b.setAttribute('aria-label', tab.label);
+      b.title = tab.title || tab.label;
       b.disabled = tab.disabled;
       b.hidden = tab.hidden;
       b.setAttribute('aria-pressed', String(tab.pressed));
       b.addEventListener('click', () => $('preview-frame').contentWindow.postMessage({ source: 'host', tab: tab.key }, new URL(previewUrl).origin));
       return b;
     }));
+    condense();
   }
+
+  // The bar is three columns, the tools in the middle and as much room on each side: the views keep their
+  // names while the game's name and the tools fit side by side, and turn to icons once they would not. The
+  // test is made against the names' own width, open or closed, so switching tools never changes the bar.
+  function condense() {
+    const bar = $('titlebar'), style = getComputedStyle(bar);
+    const room = bar.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const tools = [...$('toolbar').querySelectorAll('.tool > button, .strip > .sep')].reduce((w, el) => w + el.offsetWidth, 0);
+    $('toolbar').classList.remove('compact');
+    const names = $('preview-tabs').scrollWidth;
+    // The game's name and the account at their own width, not the column's: their widths and the gaps.
+    const parts = [...document.querySelector('.brand').children].filter(el => el.checkVisibility());
+    const brand = parts.reduce((w, el) => w + Math.max(el.scrollWidth || 0, el.getBoundingClientRect().width), 0) + 10 * (parts.length - 1);
+    $('toolbar').classList.toggle('compact', tools + names + 2 * (brand + 32) > room);
+  }
+  new ResizeObserver(condense).observe($('titlebar'));
 
   // The preview tells where its run stands, and what its tabs are.
   addEventListener('message', event => {
@@ -755,6 +840,16 @@
     if (mode !== 'preview' && ['ready', 'failed'].includes(previewState)) previewSeen = false;
     renderModes();
   });
+
+  // The browser says when the page can be installed, and the button asks it to; once installed the offer
+  // goes, and scripts/launcher.ps1 opens the installed application from then on.
+  let installOffer = null;
+  $('install').innerHTML = '<svg viewBox="0 0 24 24"><path d="M11 3h2v10h-2zM9 11h2v2H9zm4 0h2v2h-2zm-6-2h2v2H7zm8 0h2v2h-2zM4 17h16v2H4zM4 15h2v2H4zm14 0h2v2h-2z"/></svg>';
+  $('install').title = text.install;
+  $('install').setAttribute('aria-label', text.install);
+  addEventListener('beforeinstallprompt', event => { event.preventDefault(); installOffer = event; $('install').hidden = false; });
+  addEventListener('appinstalled', () => { installOffer = null; $('install').hidden = true; });
+  $('install').addEventListener('click', () => installOffer?.prompt());
 
   // Closing the window quits everything: a map being computed would be lost, so the window asks first.
   addEventListener('beforeunload', event => {
