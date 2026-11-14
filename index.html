@@ -29,7 +29,6 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    padding: 24px 28px;
     overflow: hidden;               /* one screen, never a scrollbar */
     display: flex;
     flex-direction: column;
@@ -39,6 +38,19 @@
     user-select: none;
   }
   [hidden] { display: none !important; }
+  /* One window, two panels: the launcher, and the world preview in a frame. */
+  #launcher { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 28px 24px; }
+  #modes[hidden] + #launcher { padding-top: 24px; }
+  #preview { flex: 1; min-height: 0; position: relative; }
+  #preview iframe { display: block; width: 100%; height: 100%; border: 0; }
+  #preview-note { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: var(--muted); }
+  /* The modes: a small bar of its own at the top, in the monospace of the command lines, above both panels
+     so it covers neither. The mode on screen is in the text colour on a faint ground, the other one muted. */
+  #modes { flex: none; display: flex; justify-content: center; padding-top: 10px; }
+  #modes > div { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+  #modes button { padding: 5px 12px; font: 12px/1.2 "Cascadia Mono", Consolas, monospace; color: var(--muted); }
+  #modes button:hover, #modes button[aria-pressed="true"] { color: var(--text); }
+  #modes button[aria-pressed="true"] { background: var(--line); }
   .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   #settings-view { gap: 16px; }
   header { display: flex; align-items: center; gap: 10px; min-height: 32px; margin-bottom: 4px; }
@@ -143,9 +155,6 @@
   /* What acts beside a value: a quiet word, underlined like a link, as the preview's Save. */
   .folder button { padding: 4px 0; font-size: 13px; border-radius: 0; text-decoration: underline; text-underline-offset: 3px; }
   .folder button:hover { color: var(--muted); }
-  /* The preview is a tool, not a profile: same row, but the whole row is the button, and no line under the last one. */
-  #world { width: 100%; text-align: left; border-bottom: 0; border-radius: 0; }
-  #world:hover .icon { color: var(--text); }
   /* The server is not a way of playing: it sits apart from the profiles, under a small title of its own. */
   .group { margin-top: 18px; font-size: 13px; color: var(--muted); }
   #server-view { gap: 12px; }
@@ -155,6 +164,14 @@
 </style>
 </head>
 <body>
+  <nav id="modes" hidden>
+    <div role="group">
+      <button data-mode="play"></button>
+      <button data-mode="preview"><span></span><span id="preview-marker"></span></button>
+    </div>
+  </nav>
+
+  <div id="launcher">
   <section class="view" id="list-view">
     <header><h1 data-text="title"></h1><span id="account"></span></header>
     <div class="view" id="profiles"></div>
@@ -162,10 +179,6 @@
     <div class="profile" id="server-row">
       <div class="who"><div class="name" data-text="serverName"></div><div class="meta" id="server-meta"></div></div>
     </div>
-    <button id="world" class="profile">
-      <span class="who"><span class="name" data-text="world" style="display:block"></span><span class="meta" data-text="worldAbout"></span></span>
-      <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4h6v6h-2V7.4l-7.3 7.3-1.4-1.4L16.6 6H14zM5 6h6v2H6v10h10v-5h2v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/></svg></span>
-    </button>
   </section>
 
   <section class="view" id="settings-view" hidden>
@@ -234,14 +247,26 @@
   </section>
 
   <div id="status" role="status"></div>
+  </div>
+
+  <div id="preview" hidden>
+    <iframe id="preview-frame"></iframe>
+    <div id="preview-note" hidden></div>
+  </div>
 
 <script>
   // Every sentence the page shows, in one place.
   const text = {
     title: 'Minecraft',
     noAccount: 'No account: sign in once in Prism',
-    world: 'World preview',
-    worldAbout: 'Try a seed and terrain settings, without playing',
+    // The two modes of the window, and where a run of the preview stands, said beside its mode and in the
+    // window's title, which the taskbar shows.
+    modes: { play: 'Play', preview: 'Preview' },
+    previewState: { running: 'computing', ready: 'ready', failed: 'failed' },
+    titleWith: marker => `Minecraft · preview ${marker}`,
+    previewFrame: 'World preview',
+    previewStarting: 'Starting the world preview…',
+    previewFailed: 'The world preview did not start. Choose Preview again to retry.',
     play: name => `Play ${name}`,
     settings: name => `Settings of ${name}`,
     back: 'Back',
@@ -310,13 +335,6 @@
   };
 
   const $ = id => document.getElementById(id);
-
-  // The browser keeps this window's size from one opening to the next, but a window that joins a browser
-  // already running ignores the size its command line asks for. So the page sets it itself, the first
-  // time only: after that, the size is whatever the person left.
-  try {
-    if (!localStorage.getItem('launcher.sized')) { resizeTo(440, 560); localStorage.setItem('launcher.sized', '1'); }
-  } catch { }
 
   // The page is a window of its own, not a document: its text keeps one size. Ctrl with the wheel, a pinch
   // (which arrives as the same thing) and Ctrl with plus or minus no longer zoom it. Ctrl+0 is left alone,
@@ -421,9 +439,8 @@
       launching.over = ['running', 'prepareFailed', 'stopped', 'failed'].includes(launching.state);
       render();
       if (!launching.over) return;
+      // The window stays: closing it would quit the whole launcher, the preview with it.
       clearInterval(follow);
-      // The game is on screen; this window has nothing left to show. A failure stays, to be read.
-      if (launching.state === 'running') setTimeout(() => window.close(), 1500);
     }, 1000);
   }
 
@@ -467,14 +484,6 @@
   }
 
   $('back').addEventListener('click', () => { current = null; show('list'); load().catch(() => say(text.failed)); });
-  // The preview needs room for a map, so it opens in its own, larger window.
-  // The preview lives in its own repository: when it cannot be found, the server says where it looked.
-  $('world').addEventListener('click', async () => {
-    try {
-      const reply = await fetch('/api/preview/open', { method: 'POST' });
-      if (!reply.ok) say((await reply.json().catch(() => ({}))).error || text.failed);
-    } catch { say(text.failed); }
-  });
   $('open-on').addEventListener('change', () => {
     const server = JSON.parse($('open-on').value).kind === 'server';
     $('server').hidden = !server;
@@ -594,10 +603,124 @@
   for (const el of [$('server-memory'), $('server-java-args'), $('motd'), ...propFields()]) el.addEventListener('change', saveServer);
   $('open-server-folder').addEventListener('click', () => post('/api/server/folder').catch(() => say(text.failed)));
   // The server changes on its own (its window can stop it too): its row is asked again every few seconds.
-  setInterval(() => { if (!document.hidden) loadServer().catch(() => {}); }, 3000);
+  setInterval(() => { if (!document.hidden && mode === 'play') loadServer().catch(() => {}); }, 3000);
+
+  // ---------- modes ----------
+  // One window, two modes: the launcher, and the world preview, shown in a frame from its own server. The
+  // preview is an extra: its mode is offered only when its repository is there, and it starts the first
+  // time it is chosen. Each mode has its own window size: the one the person left it at, or a first size
+  // that fits what it shows.
+  const sizes = { play: [440, 600], preview: [1400, 980] };
+  let mode = 'play';
+  let previewUrl = null;      // the preview's own page, when the preview is there
+  let previewOpened = false;  // its server was asked to start
+  let previewState = 'idle';  // what the preview said last: idle, running, ready or failed
+  let previewSeen = true;     // false when a run ended while the preview was not on screen
+  let sizing = 0;
+
+  for (const b of $('modes').querySelectorAll('button')) {
+    // The preview's name sits in a span of its own, beside the marker of its run.
+    (b.firstElementChild || b).textContent = text.modes[b.dataset.mode];
+    b.addEventListener('click', () => showMode(b.dataset.mode));
+  }
+  $('preview-frame').title = text.previewFrame;
+
+  function sizeFor(name) {
+    let size = sizes[name];
+    try { size = JSON.parse(localStorage.getItem(`launcher.size.${name}`)) || size; } catch { }
+    return [Math.min(size[0], screen.availWidth), Math.min(size[1], screen.availHeight)];
+  }
+
+  function fit(name) {
+    const [w, h] = sizeFor(name);
+    resizeTo(w, h);
+    // A window grown past the screen's edge comes back inside it.
+    const x0 = screen.availLeft ?? 0, y0 = screen.availTop ?? 0;
+    const left = Math.max(x0, Math.min(screenX, x0 + screen.availWidth - w));
+    const top = Math.max(y0, Math.min(screenY, y0 + screen.availHeight - h));
+    if (left !== screenX || top !== screenY) moveTo(left, top);
+  }
+
+  // The size the person gives a mode is kept for that mode.
+  addEventListener('resize', () => {
+    clearTimeout(sizing);
+    const kept = mode;
+    sizing = setTimeout(() => {
+      try { localStorage.setItem(`launcher.size.${kept}`, JSON.stringify([outerWidth, outerHeight])); } catch { }
+    }, 400);
+  });
+
+  function renderModes() {
+    for (const b of $('modes').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+    const marker = previewState === 'running' ? text.previewState.running : previewSeen ? '' : text.previewState[previewState] || '';
+    $('preview-marker').textContent = marker ? ` · ${marker}` : '';
+    document.title = marker ? text.titleWith(marker) : text.title;
+  }
+
+  async function showMode(name) {
+    if (name === mode) return;
+    if (name === 'preview' && !previewOpened && !await openPreview()) return;
+    clearTimeout(sizing);
+    mode = name;
+    $('launcher').hidden = name !== 'play';
+    $('preview').hidden = name !== 'preview';
+    if (name === 'preview') previewSeen = true;
+    else load().catch(() => {});
+    renderModes();
+    fit(name);
+  }
+
+  // The launcher's server starts the preview's; that one takes a few seconds before it answers, and its
+  // page goes into the frame once it does. When it cannot be found, the launcher's server says where it looked.
+  async function openPreview() {
+    try {
+      const reply = await fetch('/api/preview/open', { method: 'POST' });
+      const body = await reply.json().catch(() => ({}));
+      if (!reply.ok) { say(body.error || text.failed); return false; }
+      previewOpened = true;
+      $('preview-note').textContent = text.previewStarting;
+      $('preview-note').hidden = false;
+      waitForPreview(body.url);
+      return true;
+    } catch { say(text.failed); return false; }
+  }
+
+  async function waitForPreview(url) {
+    for (let i = 0; i < 60; i++) {
+      try {
+        // Another server's answer cannot be read from here, only whether there is one.
+        await fetch(`${url}api/ping`, { mode: 'no-cors', cache: 'no-store' });
+        $('preview-frame').src = url;
+        $('preview-note').hidden = true;
+        return;
+      } catch { await new Promise(resolve => setTimeout(resolve, 500)); }
+    }
+    $('preview-note').textContent = text.previewFailed;
+    previewOpened = false;
+  }
+
+  // The preview tells where its run stands (see the world-preview repository's docs/setup.md).
+  addEventListener('message', event => {
+    if (!previewUrl || event.origin !== new URL(previewUrl).origin || event.data?.source !== 'world-preview') return;
+    previewState = event.data.state;
+    if (mode !== 'preview' && ['ready', 'failed'].includes(previewState)) previewSeen = false;
+    renderModes();
+  });
+
+  // Closing the window quits everything: a map being computed would be lost, so the window asks first.
+  addEventListener('beforeunload', event => {
+    if (previewState === 'running') { event.preventDefault(); event.returnValue = ''; }
+  });
+
+  async function loadModes() {
+    const preview = await fetch('/api/preview').then(r => r.json()).catch(() => null);
+    if (preview?.available) { previewUrl = preview.url; $('modes').hidden = false; }
+    renderModes();
+    fit(mode);
+  }
 
   // Tells a capture that the page is drawn (see scripts/capture.ps1).
-  Promise.all([load(), loadServer()]).then(() => { document.documentElement.dataset.ready = '1'; });
+  Promise.all([load(), loadServer(), loadModes()]).then(() => { document.documentElement.dataset.ready = '1'; });
   // Coming back to this window after a game: what runs and what was played may have changed.
   window.addEventListener('focus', () => { if (!launching || launching.over) load().catch(() => {}); });
 
