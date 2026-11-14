@@ -159,8 +159,12 @@
   .icon[aria-expanded=true]:hover { color: var(--ground); }
   .back { border: 0; width: 24px; margin-left: -4px; }
 
-  /* A row: a name and a line about it, then what can be done with it. Rows are set apart by a hairline. */
-  .profile { display: flex; align-items: center; gap: 0; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  /* A row: a name and a line about it, then what can be done with it. Only the title has a hairline: rows are
+     set apart by their space, and the one under the pointer lights faintly. That light says nothing can be
+     clicked (the pointer stays an arrow, only buttons take the hand); it only shows which row is which. Its
+     side padding is pulled back by as much, so the text stays aligned with the title. */
+  .profile { display: flex; align-items: center; gap: 0; padding: 10px 8px; margin: 0 -8px; }
+  .profile:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
   .profile .who { flex: 1; min-width: 0; padding-right: 10px; }
   .profile .name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .profile .meta { font-size: 11px; color: var(--muted); }
