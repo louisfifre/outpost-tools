@@ -20,12 +20,12 @@ serde_json = "1"
 # The toolkit and the world preview, from rust-native-ui's checkout, the sibling folder of this repository (as
 # world-preview is). Cargo takes no variable in a path dependency, so a worktree of this repository, which sits
 # elsewhere, must point these at ../../rust-native-ui for as long as it is tried there.
-nui-base = { path = "../../../rust-native-ui/crates/nui-base" }
-nui-layout = { path = "../../../rust-native-ui/crates/nui-layout" }
-nui-ui = { path = "../../../rust-native-ui/crates/nui-ui" }
-nui-win32 = { path = "../../../rust-native-ui/crates/nui-win32" }
-nui-png = { path = "../../../rust-native-ui/crates/nui-png" }
-preview = { path = "../../../rust-native-ui/demos/preview" }
+nui-base = { path = "../../rust-native-ui/crates/nui-base" }
+nui-layout = { path = "../../rust-native-ui/crates/nui-layout" }
+nui-ui = { path = "../../rust-native-ui/crates/nui-ui" }
+nui-win32 = { path = "../../rust-native-ui/crates/nui-win32" }
+nui-png = { path = "../../rust-native-ui/crates/nui-png" }
+preview = { path = "../../rust-native-ui/demos/preview" }
 
 [profile.release]
 opt-level = "s"
