@@ -19,48 +19,53 @@ fn home_at(w: f32, h: f32) -> (nui_ui::Ui, launcher_native::HomeIds, nui_base::D
     (ui, home.ids().clone(), list)
 }
 
-/// L1: side by side, every width from 1000 (the window's least) to 1920, one rule and no switch: line 148 (two minmax(0, 1fr) and a gap of 48), the page's
-/// padding of 28 (line 145, side), the top of the preview's page (10) under the bar (40).
+/// L1: side by side, every width from 1000 (the window's least) to 2560, one rule and no switch: line 148 (two minmax(0, 1fr) and a gap of 48), the page's
+/// padding of 28 (line 145, side), the top of the preview's page (10) under the bar (40), and the page's cap of 1120
+/// for the two together, centred beyond it.
 #[test]
-fn l1_side_by_side_fills_the_width() {
-    for w in 1000..=1920 {
+fn l1_side_by_side_up_to_the_cap() {
+    for w in 1000..=2560 {
         let (ui, ids, _) = home_at(w as f32, 940.0);
-        let half = (w as f32 - 104.0) / 2.0;
+        let inner = w as f32 - 56.0;
+        let used = inner.min(launcher_native::home::COLUMNS_MAX);
+        let left = 28.0 + (inner - used) / 2.0;
+        let half = (used - 48.0) / 2.0;
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
-        assert!((a.x - 28.0).abs() < 0.01 && (a.y - 50.0).abs() < 0.01 && (a.w - half).abs() < 0.01, "profiles at {w}: {a:?}");
-        assert!((b.x - (28.0 + half + 48.0)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
+        assert!((a.x - left).abs() < 0.01 && (a.y - 50.0).abs() < 0.01 && (a.w - half).abs() < 0.01, "profiles at {w}: {a:?}");
+        assert!((b.x - (left + half + 48.0)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
     }
 }
 
 /// L4: at 1400 x 940, the page's rows: lines 154 (header of 34), 172-176 (a row of 56 pulled 8 px out on each
-/// side), 160 (30 px squares) and 162 (the second pulled 1 px over the first).
+/// side), 160 (30 px squares) and 162 (the second pulled 1 px over the first). At 1400 the columns are at their
+/// cap of 1120, centred: 112 px of room on each side beyond the padding of 28, two parts of 536.
 #[test]
 fn l4_the_numbers_at_1400() {
     let (ui, ids, _) = home_at(1400.0, 940.0);
-    rect_is(ui.rect(ids.profiles_header).unwrap(), 28.0, 50.0, 648.0, 34.0, "header");
+    rect_is(ui.rect(ids.profiles_header).unwrap(), 140.0, 50.0, 536.0, 34.0, "header");
     let r = |id| ui.rect(id).unwrap();
     // The hairline is the header's last pixel row.
     assert_eq!(r(ids.profiles_header).y + r(ids.profiles_header).h - 1.0, 83.0);
     let first = &ids.rows[0];
     assert_eq!(first.profile, "exploration", "the profile played last comes first");
-    rect_is(r(first.row), 20.0, 84.0, 664.0, 56.0, "first row");
+    rect_is(r(first.row), 132.0, 84.0, 552.0, 56.0, "first row");
     rect_is(r(first.play), 617.0, 97.0, 30.0, 30.0, "play");
     rect_is(r(first.settings), 646.0, 97.0, 30.0, 30.0, "settings");
-    rect_is(r(ids.server_row), 716.0, 84.0, 664.0, 56.0, "server row");
-    rect_is(r(ids.server_play), 1313.0, 97.0, 30.0, 30.0, "start");
-    rect_is(r(ids.server_settings), 1342.0, 97.0, 30.0, 30.0, "server settings");
+    rect_is(r(ids.server_row), 716.0, 84.0, 552.0, 56.0, "server row");
+    rect_is(r(ids.server_play), 1201.0, 97.0, 30.0, 30.0, "start");
+    rect_is(r(ids.server_settings), 1230.0, 97.0, 30.0, 30.0, "server settings");
 }
 
 fn texts(list: &nui_base::DrawList) -> Vec<(Vec2, String)> {
     list.cmds.iter().filter_map(|c| if let nui_base::Cmd::Text { at, text, .. } = c { Some((*at, text.clone())) } else { None }).collect()
 }
 
-/// L4 (cont.): the name starts at x 28.
+/// L4 (cont.): the name starts at the column, x 140 at 1400.
 #[test]
 fn l4_the_name_starts_at_the_column() {
     let (_, _, list) = home_at(1400.0, 940.0);
     let name = texts(&list).into_iter().find(|(_, t)| t == "Exploration").expect("the name is drawn whole");
-    assert!((name.0.x - 28.0).abs() < 0.01, "{:?}", name.0);
+    assert!((name.0.x - 140.0).abs() < 0.01, "{:?}", name.0);
 }
 
 /// L5: nothing clipped or overlapped, at every width the pictures use and a short height.

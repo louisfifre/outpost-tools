@@ -1,9 +1,10 @@
 //! The launcher's Home (index.html lines 247-327 and the script 447-713): the profiles and the dev server, in two
 //! parts that fill the window, drawn with nui-ui and answered by the api through a `Bridge`.
 //!
-//! Layout is the page's without its breakpoints: two columns that fill the window continuously, with no switch.
-//! The window holds 1000 px at the least (the preview's rule), where each part is still 448 px wide, so the page's
-//! one-column form at 860 could never be reached and is not built. The page's cap of 1120 px is dropped too.
+//! Layout is the page's without its breakpoints: two columns that widen continuously, with no switch, up to the
+//! page's cap of 1120 px (`COLUMNS_MAX`), then stay centred. The window holds 1000 px at the least (the preview's
+//! rule), where each part is still 448 px wide, so the page's one-column form at 860 could never be reached and is
+//! not built.
 //!
 //! The build only reads the pointer and the keys, and records what was asked (`Want`); `act` does it, after the
 //! build, so that a build never waits on the api. Answers are taken by `poll`.
@@ -13,6 +14,9 @@ use std::any::Any;
 use nui_base::Vec2;
 use nui_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
 use nui_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
+
+/// The widest the two columns grow together, the page's cap (index.html line 145).
+pub const COLUMNS_MAX: f32 = 1120.0;
 use preview::Home;
 use preview::PAGE;
 use preview::bar::icons;
@@ -878,11 +882,16 @@ impl Home for LauncherHome {
             // `.page` (line 145) without its cap and its 860 padding change; the top is the preview's.
             let page = Style { column: true, pad: PAGE.pad, ..Style::default() };
             self.ids.page = ui.node("homePage", page, |ui| {
+                // Capped at the page's 1120 and centred: a row of a list read across a whole wide screen loses the
+                // link between its name and its buttons, so the room beyond the cap stays empty on both sides.
                 let columns = Style {
                     display: Display::Grid,
                     cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]),
                     gap: Vec2::new(48.0, 0.0),
                     align_items: Align::Start,
+                    w: Dim::Pct(100.0),
+                    max_w: Dim::Px(COLUMNS_MAX),
+                    margin: Margin::horizontal_auto(),
                     ..Style::default()
                 };
                 self.ids.columns = ui.node("columns", columns, |ui| {
