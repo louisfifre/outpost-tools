@@ -30,7 +30,8 @@ fn parse_size(s: &str) -> Option<(u32, u32)> {
     Some((w.parse().ok()?, h.parse().ok()?))
 }
 
-const DEFAULT_DATA: &str = r"C:\Games\preview\out";
+/// The world preview's out folder a picture draws when `--data` is not given, if set.
+const DATA_VAR: &str = "PREVIEW_DATA_DIR";
 
 /// The world of an out folder, and whether the folder is there and cannot be read (the preview's own main shows
 /// its trouble line then).
@@ -74,7 +75,7 @@ fn main() {
 
 /// One frame offscreen, from the fixture.
 fn picture(path: &str, size: (u32, u32), light: bool, tool: &str, data: Option<PathBuf>) {
-    let dir = data.or_else(|| Path::new(DEFAULT_DATA).join("preview.json").exists().then(|| PathBuf::from(DEFAULT_DATA)));
+    let dir = data.or_else(|| std::env::var_os(DATA_VAR).map(PathBuf::from).filter(|d| d.join("preview.json").exists()));
     let (world, unreadable) = dir.map_or((None, false), |d| load_world(&d));
     let dark = !light;
     let theme = if dark { Theme::dark() } else { Theme::light() };

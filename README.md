@@ -64,7 +64,7 @@ cd native; cargo test                # its tests; the pictures land in native\ta
 cd app; cargo build --release        # the page launcher: app\target\release\launcher.exe
 ```
 
-Run either with `--repo <pack repository>`. `launcher-native --shot out.png --tool home|preview --theme dark|light` draws one frame offscreen from the fake api, with no window. `shots.ps1` takes pictures of the page launcher in a headless Brave or Edge.
+Run either with `--repo <pack repository>`. `launcher-native --shot out.png --tool home|preview --theme dark|light` draws one frame offscreen from the fake api, with no window. The world preview's pictures, and the tests that draw them, read the world of a preview's out folder named by `--data` or the `PREVIEW_DATA_DIR` environment variable; without one they are skipped. `shots.ps1` takes pictures of the page launcher in a headless Brave or Edge.
 
 ## What is where
 

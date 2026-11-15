@@ -149,9 +149,10 @@ fn l9_a_small_window_is_raised_to_the_least() {
 /// L8: the preview tool in the launcher keeps the panels where the preview has them. Skipped without the data.
 #[test]
 fn l8_the_preview_tool_keeps_its_panels() {
-    let dir = std::path::Path::new(r"C:\Games\preview\out");
+    let dir = std::path::PathBuf::from(std::env::var_os("PREVIEW_DATA_DIR").unwrap_or_default());
+    let dir = dir.as_path();
     if !dir.join("preview.json").exists() {
-        println!("skipped: no C:\\Games\\preview\\out");
+        println!("skipped: PREVIEW_DATA_DIR names no world preview out folder");
         return;
     }
     let world = preview::world::World::load(dir).expect("the data loads");
