@@ -914,11 +914,15 @@ impl Home for LauncherHome {
             seen.push(w.clone());
             !dup
         });
+        // A save goes before any navigation: the page's change event fires on mousedown, before the click, and a press and release in one frame would otherwise let Back drop the edit.
+        wants.sort_by_key(|w| !matches!(w, Want::SaveProfile | Want::ServerSave));
         for want in wants {
             match want {
                 // 532-545.
                 Want::Play(id) => {
                     self.launching = Some(Launching { id: id.clone(), state: "starting".into(), since: self.now, over: false });
+                    // The page awaits the POST before it starts its 1 s follow (531-543): a GET sent now would race it and could read the previous launch.
+                    self.next_launch = f64::INFINITY;
                     self.send(Tag::Play(id.clone()), "POST", &format!("/api/launch/{id}"), None);
                 }
                 Want::Settings(id) => self.open_settings(&id),
@@ -1002,7 +1006,9 @@ impl Home for LauncherHome {
             due.push(self.next_profiles);
         }
         if self.launching.as_ref().is_some_and(|l| !l.over) {
-            due.push(self.next_launch);
+            if self.next_launch.is_finite() {
+                due.push(self.next_launch);
+            }
         }
         due.into_iter().reduce(f64::min).map(|d| (d - now).max(0.0) as f32)
     }
