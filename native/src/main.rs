@@ -105,11 +105,15 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let repo = repo.or_else(find_repo).unwrap_or_else(|| PathBuf::from("."));
     let data = repo.join("run").join("app");
     let _ = std::fs::create_dir_all(&data);
-    // Opening the launcher while it runs shows the window already open rather than a second one.
+    let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
+    // A second start is refused. The page launcher writes `hwnd.txt` and `only_one` raises that window; this window
+    // does not write it (not built), so a refused start here brings nothing forward and the log is its only trace.
     if !system::only_one(&data) {
+        api.write_log("start refused: the launcher already runs");
         return;
     }
-    let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
+    // Holding the lock, whatever `hwnd.txt` says is from a dead session; handles are recycled, so a later start must not raise it.
+    let _ = std::fs::remove_file(data.join("hwnd.txt"));
     api.write_log("started (native)");
     // What the toolkit warns of goes to the launcher's log: with no console it is the only trace.
     let sink_api = api.clone();
