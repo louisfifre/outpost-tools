@@ -17,16 +17,15 @@ path = "src/main.rs"
 # The api and the system side of the page's launcher, as a library, without its window (tao and wry).
 launcher = { path = "../app", default-features = false }
 serde_json = "1"
-# The toolkit and the world preview, from rust-native-ui's main checkout. The path is absolute while this branch
-# is tried from its worktree, where the relative sibling path would not reach rust-native-ui. Once this branch is
-# merged into main, these become ../../../rust-native-ui (the sibling folder of this repository, as world-preview
-# is). Cargo takes no variable in a path dependency.
-nui-base = { path = "../../rust-native-ui/crates/nui-base" }
-nui-layout = { path = "../../rust-native-ui/crates/nui-layout" }
-nui-ui = { path = "../../rust-native-ui/crates/nui-ui" }
-nui-win32 = { path = "../../rust-native-ui/crates/nui-win32" }
-nui-png = { path = "../../rust-native-ui/crates/nui-png" }
-preview = { path = "../../rust-native-ui/demos/preview" }
+# The toolkit and the world preview, from rust-native-ui's checkout, the sibling folder of this repository (as
+# world-preview is). Cargo takes no variable in a path dependency, so a worktree of this repository, which sits
+# elsewhere, must point these at ../../rust-native-ui for as long as it is tried there.
+nui-base = { path = "../../../rust-native-ui/crates/nui-base" }
+nui-layout = { path = "../../../rust-native-ui/crates/nui-layout" }
+nui-ui = { path = "../../../rust-native-ui/crates/nui-ui" }
+nui-win32 = { path = "../../../rust-native-ui/crates/nui-win32" }
+nui-png = { path = "../../../rust-native-ui/crates/nui-png" }
+preview = { path = "../../../rust-native-ui/demos/preview" }
 
 [profile.release]
 opt-level = "s"
