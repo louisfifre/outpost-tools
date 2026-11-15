@@ -26,4 +26,4 @@ Until profiles are data of Outpost Tools' own, the program drives one pack repos
 - `pack/`, for the world preview;
 - `run/`, for the log (`run\launcher.log`) and the window's data (`run\app`).
 
-The world preview's own repository is looked for beside the pack repository, or at `WORLD_PREVIEW_DIR`. Cutting these ties is the work listed in the README under "Not built yet".
+The world preview's own repository is looked for beside the pack repository, or at `WORLD_PREVIEW_DIR`. It is the engine only, the generator that makes a world's maps, and stays a repository of its own so others can use it alone to generate worlds; every interface of the preview lives here (decided with the maintainer, 2026-11-15). Cutting these ties is the work listed in the README under "Not built yet".
