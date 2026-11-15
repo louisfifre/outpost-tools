@@ -659,7 +659,7 @@ impl LauncherHome {
         ui.node("fields", fields, |ui| {
             Self::field(ui, "openOn", text::OPEN_ON, |ui| {
                 let mut at = self.form.open_on;
-                let r = ui.select_menu("select", &labels, &mut at, SelectOpts { disabled: locked });
+                let r = ui.select_menu("select", &labels, &mut at, SelectOpts { disabled: locked, ..SelectOpts::default() });
                 self.ids.open_on = r.resp.id;
                 self.form.open_on = at;
                 let is_server = matches!(self.form.options.get(at), Some((Open::Server(_), _)));
