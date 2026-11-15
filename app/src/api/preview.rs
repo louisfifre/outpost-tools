@@ -8,6 +8,15 @@ use crate::system;
 
 pub const PREVIEW_URL: &str = "http://localhost:25590/";
 
+/// The folders the native launcher gives the preview's generator: the ones `start_preview` gives serve.ps1.
+pub struct PreviewPaths {
+    pub generator: PathBuf,
+    pub pack: PathBuf,
+    pub dir: PathBuf,
+    pub out: PathBuf,
+    pub exports: PathBuf,
+}
+
 impl Api {
     // Its own repository, the sibling folder ..\world-preview or WORLD_PREVIEW_DIR when set.
     pub(super) fn preview_serve(&self) -> PathBuf {
@@ -51,5 +60,31 @@ impl Api {
         let child = system::hidden("pwsh").args(["-NoProfile", "-Command", &script]).spawn().map_err(|e| e.to_string())?;
         live.preview = Some(child);
         Ok(())
+    }
+
+    // Where the preview's parts are on this pack, as start_preview gives them to serve.ps1 (its own Out default is
+    // <Dir>\out). The generator is preview.ps1, beside serve.ps1.
+    pub fn preview_paths(&self) -> PreviewPaths {
+        let config = self.config();
+        PreviewPaths {
+            generator: self.preview_serve().with_file_name("preview.ps1"),
+            pack: self.repo.join("pack"),
+            dir: config.preview_dir.clone(),
+            out: config.preview_dir.join("out"),
+            exports: config.preview_exports.clone(),
+        }
+    }
+
+    // The glue mod's jar, built as start_preview builds it (`$env:WORLD_PREVIEW_MODS = Build-GlueMod`): the path
+    // pwsh prints. Hidden, and it takes a moment the first time.
+    pub fn glue_mod(&self) -> Result<PathBuf, String> {
+        let script = format!(". '{}'; Build-GlueMod", self.repo.join("scripts").join("common.ps1").display());
+        let out = system::hidden("pwsh").args(["-NoProfile", "-Command", &script]).output().map_err(|e| e.to_string())?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let line = text.lines().map(str::trim).filter(|l| !l.is_empty()).last().unwrap_or_default();
+        if !out.status.success() || line.is_empty() {
+            return Err(format!("The glue mod could not be built: {}", String::from_utf8_lossy(&out.stderr).trim()));
+        }
+        Ok(PathBuf::from(line))
     }
 }

@@ -5,15 +5,30 @@ edition = "2024"
 description = "The launcher application: a frameless window showing launcher/index.html, and everything the page asks for."
 publish = false
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "launcher"
+path = "src/main.rs"
+required-features = ["window"]
+
+[features]
+default = ["window"]
+# The window of the page (tao and wry). launcher/native takes this package as a library without them: it draws
+# its own window.
+window = ["dep:tao", "dep:wry"]
+
 [dependencies]
-tao = "0.37"
-wry = "0.57"
+tao = { version = "0.37", optional = true }
+wry = { version = "0.57", optional = true }
 serde_json = "1"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
+    "Win32_System_Time",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

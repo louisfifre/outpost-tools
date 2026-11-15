@@ -14,20 +14,17 @@
 //   launcher --devtools       the window, with the browser's tools on F12
 #![windows_subsystem = "windows"]
 
-mod api;
-mod system;
-
 use std::{
     borrow::Cow,
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use api::Api;
+use launcher::{api::Api, find_repo, system};
 use tao::{
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::{Event, WindowEvent},
@@ -64,12 +61,6 @@ fn main() {
     }
 }
 
-// The repository the program was built in: the first folder above it with scripts\common.ps1.
-fn find_repo() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    exe.ancestors().find(|dir| dir.join("scripts").join("common.ps1").exists()).map(Path::to_path_buf)
-}
-
 // ---------- the window ----------
 
 // What the page asks, and what the window answers.
@@ -83,7 +74,7 @@ fn open_window(api: Api, devtools: bool) {
     let data = api.repo.join("run").join("app");
     let _ = fs::create_dir_all(&data);
     // Opening the launcher while it runs shows the window already open rather than a second one.
-    if !only_one(&data) {
+    if !system::only_one(&data) {
         return;
     }
     let place_file = data.join("window.txt");
@@ -216,34 +207,6 @@ fn direction(edge: &str) -> Option<ResizeDirection> {
         "sw" => ResizeDirection::SouthWest,
         _ => return None,
     })
-}
-
-// True for the first launcher. A second one brings the first one's window to the front and gives up: Windows
-// keeps a named lock while the first runs, and the first wrote where its window is.
-fn only_one(data: &Path) -> bool {
-    use windows_sys::Win32::{
-        Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
-        System::Threading::CreateMutexW,
-        UI::WindowsAndMessaging::{IsIconic, IsWindow, SW_RESTORE, SetForegroundWindow, ShowWindow},
-    };
-    let name: Vec<u16> = "Local\\outpost-tools\0".encode_utf16().collect();
-    // The lock is never released by hand: Windows lets it go when this process ends.
-    let lock = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
-    if lock.is_null() || unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
-        return true;
-    }
-    if let Some(hwnd) = fs::read_to_string(data.join("hwnd.txt")).ok().and_then(|t| t.trim().parse::<isize>().ok()) {
-        let hwnd = hwnd as windows_sys::Win32::Foundation::HWND;
-        unsafe {
-            if IsWindow(hwnd) != 0 {
-                if IsIconic(hwnd) != 0 {
-                    ShowWindow(hwnd, SW_RESTORE);
-                }
-                SetForegroundWindow(hwnd);
-            }
-        }
-    }
-    false
 }
 
 // The window opens where it was left: its place and size, or maximised. Kept as one line of numbers.
