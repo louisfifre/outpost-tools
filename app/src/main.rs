@@ -1,5 +1,5 @@
 // The launcher application: one window showing launcher/index.html, and everything the page asks for (the
-// profiles, the dev server, the world preview), answered here in api.rs.
+// profiles, the dev server, the world preview), routed by api.rs to one file per part in api/.
 //
 // The window has no frame of its own: the page draws the whole bar, its title, its tools and the buttons to
 // minimise, maximise and close. The page asks for what only the window can do through window.ipc.postMessage, one
