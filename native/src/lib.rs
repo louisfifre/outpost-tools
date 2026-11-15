@@ -14,7 +14,7 @@ use preview::run::Runs;
 use preview::world::World;
 use preview::{Mode, PreviewApp, PreviewState};
 
-pub use home::{HOME_SWITCH, HomeIds, LauncherHome};
+pub use home::{HomeIds, LauncherHome};
 
 /// The origin the api is given and is called with, so that its own check of who asks passes as it does for the page.
 pub const ORIGIN: &str = "native://launcher";

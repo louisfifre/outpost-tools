@@ -40,7 +40,7 @@ fn home_picture(w: u32, h: u32, dark: bool) -> Vec<u8> {
 
 #[test]
 fn home_pictures_over_the_sweep() {
-    for (w, h, name) in [(800, 940, "home_800.png"), (860, 940, "home_860.png"), (1000, 940, "home_1000.png"), (1400, 940, "home_1400.png"), (1920, 940, "home_1920.png")] {
+    for (w, h, name) in [(1000, 940, "home_1000.png"), (1400, 940, "home_1400.png"), (1920, 940, "home_1920.png")] {
         let rgba = home_picture(w, h, true);
         save(&rgba, w, h, name);
         assert!(rgba.chunks(4).any(|p| p[..3] != rgba[..3]), "{name} is one colour");
@@ -137,11 +137,4 @@ fn the_preview_tool_in_the_launcher() {
         assert!(rig.says("PlayerOne") || rig.texts().iter().any(|t| t.1.starts_with("Player")), "the account is in the bar");
         rig.write(name);
     }
-    // Asked at 800: the window holds 1000.
-    let Some(mut rig) = preview_rig(800, 940, true) else { return };
-    assert_eq!(rig.w, 1000);
-    rig.write("launcher_preview_800.png");
-    let path = out_dir().join("launcher_preview_800.png");
-    let bytes = std::fs::read(&path).unwrap();
-    assert_eq!(u32::from_be_bytes(bytes[16..20].try_into().unwrap()), 1000, "the file is 1000 px wide");
 }

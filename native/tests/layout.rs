@@ -1,12 +1,11 @@
 //! The layout of Home against the page's numbers (every one cites its index.html line): the two parts fill the
-//! window, one switch moves them one above the other, and nothing is cut or overlaps.
+//! window continuously, with no switch, and nothing is cut or overlaps.
 
 mod common;
 
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::HOME_SWITCH;
 use launcher_native::fake::fixture;
 use nui_base::{App, Rect, Vec2};
 use nui_ui::Theme;
@@ -20,50 +19,17 @@ fn home_at(w: f32, h: f32) -> (nui_ui::Ui, launcher_native::HomeIds, nui_base::D
     (ui, home.ids().clone(), list)
 }
 
-/// L1: side by side, every width from 861 to 1920: line 148 (two minmax(0, 1fr) and a gap of 48), the page's
+/// L1: side by side, every width from 1000 (the window's least) to 1920, one rule and no switch: line 148 (two minmax(0, 1fr) and a gap of 48), the page's
 /// padding of 28 (line 145, side), the top of the preview's page (10) under the bar (40).
 #[test]
 fn l1_side_by_side_fills_the_width() {
-    for w in 861..=1920 {
+    for w in 1000..=1920 {
         let (ui, ids, _) = home_at(w as f32, 940.0);
         let half = (w as f32 - 104.0) / 2.0;
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
         assert!((a.x - 28.0).abs() < 0.01 && (a.y - 50.0).abs() < 0.01 && (a.w - half).abs() < 0.01, "profiles at {w}: {a:?}");
         assert!((b.x - (28.0 + half + 48.0)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
-        assert!(!ids.stacked, "{w}");
     }
-}
-
-/// L2: stacked, at 800, 830 and 860 (lines 149-152): one column, a gap of 28.
-#[test]
-fn l2_stacked_below_the_switch() {
-    for w in [800.0, 830.0, 860.0] {
-        let (ui, ids, _) = home_at(w, 940.0);
-        rect_is(ui.rect(ids.profiles).unwrap(), 28.0, 50.0, w - 56.0, 146.0, &format!("profiles at {w}"));
-        let b = ui.rect(ids.server).unwrap();
-        assert!((b.x - 28.0).abs() < 0.01 && (b.y - 224.0).abs() < 0.01 && (b.w - (w - 56.0)).abs() < 0.01, "server at {w}: {b:?}");
-        assert!(ids.stacked);
-    }
-}
-
-/// L3: one switch and only one, between 860 and 861.
-#[test]
-fn l3_there_is_one_switch() {
-    let mut changes = Vec::new();
-    let mut last = None;
-    for w in 800..=1920 {
-        let stacked = w as f32 <= HOME_SWITCH;
-        if last.is_some_and(|l| l != stacked) {
-            changes.push(w);
-        }
-        last = Some(stacked);
-        // And the layout agrees with the rule.
-        if w % 40 == 0 || w == 860 || w == 861 {
-            let (_, ids, _) = home_at(w as f32, 940.0);
-            assert_eq!(ids.stacked, stacked, "{w}");
-        }
-    }
-    assert_eq!(changes, vec![861]);
 }
 
 /// L4: at 1400 x 940, the page's rows: lines 154 (header of 34), 172-176 (a row of 56 pulled 8 px out on each
@@ -100,7 +66,7 @@ fn l4_the_name_starts_at_the_column() {
 /// L5: nothing clipped or overlapped, at every width the pictures use and a short height.
 #[test]
 fn l5_nothing_is_clipped_or_overlapped() {
-    for (w, h) in [(800.0, 940.0), (860.0, 940.0), (861.0, 940.0), (1000.0, 940.0), (1400.0, 940.0), (1920.0, 940.0), (1400.0, 600.0)] {
+    for (w, h) in [(1000.0, 940.0), (1200.0, 940.0), (1400.0, 940.0), (1920.0, 940.0), (1400.0, 600.0)] {
         let (ui, ids, list) = home_at(w, h);
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
         assert!(a.intersect(&b).w <= 0.0 || a.intersect(&b).h <= 0.0, "{w}x{h}: the parts overlap: {a:?} {b:?}");
@@ -144,7 +110,7 @@ fn l6_a_short_window_scrolls_to_its_end() {
     rig.write("home_1400x600_scrolled.png");
 }
 
-/// L7: the account in the bar, whole in Home from 800 to 1920 (a window raised to 1000 at the least).
+/// L7: the account in the bar, whole in Home from 1000 to 1920 (a window raised to 1000 at the least).
 #[test]
 fn l7_the_account_after_the_name() {
     for w in [1000, 1200, 1400, 1920] {

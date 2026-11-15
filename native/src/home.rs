@@ -1,9 +1,9 @@
 //! The launcher's Home (index.html lines 247-327 and the script 447-713): the profiles and the dev server, in two
 //! parts that fill the window, drawn with nui-ui and answered by the api through a `Bridge`.
 //!
-//! Layout is the page's, with the one switch it has: side by side above `HOME_SWITCH`, one above the other at or
-//! under it. The page's cap of 1120 px and the padding change of its 860 rule are dropped: the parts fill the
-//! width, and the switch moves them and changes nothing else.
+//! Layout is the page's without its breakpoints: two columns that fill the window continuously, with no switch.
+//! The window holds 1000 px at the least (the preview's rule), where each part is still 448 px wide, so the page's
+//! one-column form at 860 could never be reached and is not built. The page's cap of 1120 px is dropped too.
 //!
 //! The build only reads the pointer and the keys, and records what was asked (`Want`); `act` does it, after the
 //! build, so that a build never waits on the api. Answers are taken by `poll`.
@@ -22,9 +22,6 @@ use crate::bridge::{Bridge, Done, Tag};
 use crate::icons as own_icons;
 use crate::model::{Open, Profile, Profiles, Server, about, memory_max, ordered, round_clamp};
 use crate::text;
-
-/// The page's `@media (max-width: 860px)` (lines 149-152): at this width and under, one column.
-pub const HOME_SWITCH: f32 = 860.0;
 
 /// What time is, for the line under a profile: the real one, or a fixed one for pictures.
 #[derive(Copy, Clone)]
@@ -58,8 +55,6 @@ pub struct HomeIds {
     pub server: Id,
     pub profiles_header: Id,
     pub server_header: Id,
-    /// True when the parts are one above the other.
-    pub stacked: bool,
     pub rows: Vec<RowIds>,
     pub back: Id,
     pub settings_name: Id,
@@ -116,7 +111,6 @@ impl Default for HomeIds {
             s_motd: o,
             s_open_folder: o,
             server_note: o,
-            stacked: false,
             rows: Vec::new(),
         }
     }
@@ -867,9 +861,8 @@ impl LauncherHome {
 }
 
 impl Home for LauncherHome {
-    fn build(&mut self, ui: &mut Ui, size: Vec2) {
-        let stacked = size.x <= HOME_SWITCH;
-        self.ids = HomeIds { stacked, ..HomeIds::default() };
+    fn build(&mut self, ui: &mut Ui, _size: Vec2) {
+        self.ids = HomeIds::default();
         // The page's `#launcher` (line 139): a column that scrolls when it is taller than the window.
         let scroll = Style {
             column: true,
@@ -887,8 +880,8 @@ impl Home for LauncherHome {
             self.ids.page = ui.node("homePage", page, |ui| {
                 let columns = Style {
                     display: Display::Grid,
-                    cols: if stacked { Tracks::new(&[Track::MinMaxFr0(1.0)]) } else { Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]) },
-                    gap: if stacked { Vec2::new(0.0, 28.0) } else { Vec2::new(48.0, 0.0) },
+                    cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]),
+                    gap: Vec2::new(48.0, 0.0),
                     align_items: Align::Start,
                     ..Style::default()
                 };
