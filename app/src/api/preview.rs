@@ -8,9 +8,10 @@ use crate::system;
 
 pub const PREVIEW_URL: &str = "http://localhost:25590/";
 
-/// The folders the native launcher gives the preview's generator: the ones `start_preview` gives serve.ps1.
+/// The folders the native launcher gives the preview's engine: the ones `start_preview` gives serve.ps1.
 pub struct PreviewPaths {
-    pub generator: PathBuf,
+    /// The world-preview repository, whose mod the engine builds and gives the server.
+    pub engine: PathBuf,
     pub pack: PathBuf,
     pub dir: PathBuf,
     pub out: PathBuf,
@@ -63,11 +64,11 @@ impl Api {
     }
 
     // Where the preview's parts are on this pack, as start_preview gives them to serve.ps1 (its own Out default is
-    // <Dir>\out). The generator is preview.ps1, beside serve.ps1.
+    // <Dir>\out). The engine is the repository serve.ps1 sits in.
     pub fn preview_paths(&self) -> PreviewPaths {
         let config = self.config();
         PreviewPaths {
-            generator: self.preview_serve().with_file_name("preview.ps1"),
+            engine: self.preview_serve().parent().unwrap().parent().unwrap().to_path_buf(),
             pack: self.repo.join("pack"),
             dir: config.preview_dir.clone(),
             out: config.preview_dir.join("out"),
