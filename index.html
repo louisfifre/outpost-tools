@@ -888,7 +888,7 @@
     renderModes();
   }
 
-  // Tells a capture that the page is drawn (see scripts/capture.ps1).
+  // Tells a capture that the page is drawn (see launcher/shots.ps1).
   Promise.all([load(), loadServer(), loadModes()]).then(() => { document.documentElement.dataset.ready = '1'; });
   // Coming back to this window after a game: what runs and what was played may have changed.
   window.addEventListener('focus', () => { if (!launching || launching.over) load().catch(() => {}); });

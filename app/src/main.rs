@@ -9,7 +9,7 @@
 //
 // Usage:
 //   launcher                  the window
-//   launcher --serve <port>   no window: the page and its answers on http://localhost:<port>, for scripts/capture.ps1;
+//   launcher --serve <port>   no window: the page and its answers on http://localhost:<port>, for launcher/shots.ps1;
 //                             it stops 90 s after the last request
 //   launcher --devtools       the window, with the browser's tools on F12
 #![windows_subsystem = "windows"]
@@ -329,7 +329,7 @@ fn inside(corners: &[(f32, f32); 4], x: f32, y: f32) -> bool {
 // ---------- without a window, for captures ----------
 
 // The same answers over plain HTTP on localhost, so a headless browser can take pictures of the page
-// (scripts/capture.ps1). One request per connection, which is all a page needs here.
+// (launcher/shots.ps1). One request per connection, which is all a page needs here.
 fn serve_http(api: Api, port: u16) {
     let listener = TcpListener::bind(("127.0.0.1", port)).expect("the port is taken");
     let api = Arc::new(api);
