@@ -60,22 +60,22 @@ dependencies = [
 
 [[package]]
 name = "nui-base"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nui-layout"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nui-base",
 ]
 
 [[package]]
 name = "nui-png"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "nui-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nui-base",
  "nui-layout",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "nui-win32"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nui-base",
  "windows 0.62.2",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "preview"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "nui-base",
  "nui-layout",

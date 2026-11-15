@@ -17,10 +17,10 @@ path = "src/main.rs"
 # The api and the system side of the page's launcher, as a library, without its window (tao and wry).
 launcher = { path = "../app", default-features = false }
 serde_json = "1"
-# The toolkit and the world preview, from rust-native-ui. These paths name that repository's feat/native-launcher
-# worktree for now; once that branch is merged, the orchestrator repoints them at ../../../rust-native-ui (the sibling
-# folder of this repository, as world-preview is). Cargo takes no variable in a path dependency, so the sibling
-# folder is the convention.
+# The toolkit and the world preview, from rust-native-ui's main checkout. The path is absolute while this branch
+# is tried from its worktree, where the relative sibling path would not reach rust-native-ui. Once this branch is
+# merged into main, these become ../../../rust-native-ui (the sibling folder of this repository, as world-preview
+# is). Cargo takes no variable in a path dependency.
 nui-base = { path = "../../rust-native-ui/crates/nui-base" }
 nui-layout = { path = "../../rust-native-ui/crates/nui-layout" }
 nui-ui = { path = "../../rust-native-ui/crates/nui-ui" }
