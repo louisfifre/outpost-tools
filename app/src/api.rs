@@ -1,6 +1,6 @@
 // Everything the page asks for, by path, as scripts/launcher.ps1 answered it before: the profiles are Prism
 // Launcher's instances, their settings are read from and written to each instance.cfg so the page and Prism always
-// agree, the dev server is scripts/server.ps1 in a console of its own, and the world preview is the sibling
+// agree, the dev server is scripts/dev-server.ps1 in a console of its own, and the world preview is the sibling
 // repository's own server. The page is launcher/index.html, read from the disk at each load: a change to it shows
 // on a reload of the window, with nothing to build.
 
@@ -417,7 +417,7 @@ impl Api {
     }
 
     fn server_launch_settings(&self) -> (i64, String) {
-        // How server.ps1 starts Java, saved by the page in launch.json of the server folder.
+        // How dev-server.ps1 starts Java, saved by the page in launch.json of the server folder.
         let saved: Value = fs::read(self.config().dev_server.join("launch.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(strip_bom(&b)).ok())
@@ -434,7 +434,7 @@ impl Api {
 
     fn server_info(&self, live: &mut Live) -> Value {
         let (memory, java_args) = self.server_launch_settings();
-        // server.properties is written by server.ps1 on its first run (with the RCON password): until then, nothing to show.
+        // server.properties is written by dev-server.ps1 on its first run (with the RCON password): until then, nothing to show.
         let props = Props::read(&self.server_props()).map(|props| {
             let mut out = json!({
                 "motd": props.get("motd").unwrap_or_default(),
@@ -469,7 +469,7 @@ impl Api {
                 format!("The Minecraft EULA is not accepted. Read https://aka.ms/MinecraftEULA, then write eula=true in {}.", file.display()),
             ));
         }
-        let script = self.repo.join("scripts").join("server.ps1");
+        let script = self.repo.join("scripts").join("dev-server.ps1");
         let command = format!(
             "& '{}' -ServerDir '{}'; Write-Host ''; Read-Host 'The server script has ended. Press Enter to close this window'",
             script.display(),
