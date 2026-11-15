@@ -1,9 +1,10 @@
 // Everything the page asks for, by path, as scripts/launcher.ps1 answered it before. This file routes each request
 // and holds what the answers share; each part answers in a file of its own: the profiles (Prism Launcher's
 // instances) in api/profiles.rs, the dev server in api/dev_server.rs, the world preview in api/preview.rs, and the
-// key=value files both profiles and server keep their settings in, in api/key_value.rs. The page is
-// launcher/index.html, read from the disk at each load: a change to it shows on a reload of the window, with
-// nothing to build.
+// key=value files both profiles and server keep their settings in, in api/key_value.rs. The page is index.html in
+// Outpost Tools' own folder, read from the disk at each load: a change to it shows on a reload of the window, with
+// nothing to build. Everything else (the profiles, the dev server's scripts, the pack) is read from the pack
+// repository in `repo`.
 
 mod dev_server;
 mod key_value;
@@ -136,7 +137,8 @@ impl Api {
         if method == "GET" {
             return Ok(match path {
                 "/" | "/launcher" => {
-                    let page = fs::read(self.repo.join("launcher").join("index.html")).map_err(|e| e.to_string())?;
+                    let home = crate::find_home().ok_or("index.html was not found above the program.")?;
+                    let page = fs::read(home.join("index.html")).map_err(|e| e.to_string())?;
                     Reply { status: 200, kind: "text/html; charset=utf-8", body: page }
                 }
                 "/api/profiles" => self.profiles()?,

@@ -68,7 +68,7 @@
   button:disabled { opacity: 0.4; cursor: default; }
   svg { width: 16px; height: 16px; display: block; fill: currentColor; }
 
-  /* The title bar is the page's own: the launcher's window (launcher/app) has no frame, and this bar is the
+  /* The title bar is the page's own: the launcher's window (app) has no frame, and this bar is the
      window's only one. Three parts on one line: who this is on the left (the game and the account that plays),
      the tools in the middle, the window's own buttons on the right. What is not a button moves the window, and
      a double click on it maximises. In a plain browser (the captures) the window's buttons are not drawn. */
@@ -715,7 +715,7 @@
   // ---------- tools ----------
   // One window, two tools: the launcher, and the world preview, shown in a frame from its own server. The
   // preview is an extra: its tool is offered only when its repository is there, and it starts the first
-  // time it is chosen. The window keeps its size and place itself (launcher/app), with a least size the
+  // time it is chosen. The window keeps its size and place itself (app), with a least size the
   // preview fits in: the launcher is a capped column in the middle of it, and switching never moves the window.
   let mode = 'home';
   let previewUrl = null;      // the preview's own page, when the preview is there
@@ -727,7 +727,7 @@
   $('preview-frame').title = text.previewFrame;
 
   // ---------- the window ----------
-  // In the launcher's own window (launcher/app), window.ipc carries one word to the window: minimize,
+  // In the launcher's own window (app), window.ipc carries one word to the window: minimize,
   // maximize, close, drag, resize:<edge>. The window answers through window.shell. In a plain browser there is
   // no window.ipc, and none of this is drawn.
   // Another name than ipc: the window declares that one itself, and a second declaration stops the whole script.
@@ -888,7 +888,7 @@
     renderModes();
   }
 
-  // Tells a capture that the page is drawn (see launcher/shots.ps1).
+  // Tells a capture that the page is drawn (see shots.ps1).
   Promise.all([load(), loadServer(), loadModes()]).then(() => { document.documentElement.dataset.ready = '1'; });
   // Coming back to this window after a game: what runs and what was played may have changed.
   window.addEventListener('focus', () => { if (!launching || launching.over) load().catch(() => {}); });

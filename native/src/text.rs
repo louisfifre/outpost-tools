@@ -1,4 +1,4 @@
-//! Every sentence Home shows, as the page's `text` object says it (launcher/index.html lines 336-415), with the
+//! Every sentence Home shows, as the page's `text` object says it (index.html lines 336-415), with the
 //! line it comes from. The page's sentences are the source of truth: change them there first.
 
 /// Line 338.

@@ -2,7 +2,7 @@
 name = "launcher-native"
 version = "0.1.0"
 edition = "2024"
-description = "The native launcher: the world preview's window with the launcher's Home, drawn with rust-native-ui, answering through launcher/app's own api."
+description = "The native launcher: the world preview's window with the launcher's Home, drawn with rust-native-ui, answering through app's own api."
 publish = false
 
 [lib]
@@ -17,15 +17,15 @@ path = "src/main.rs"
 # The api and the system side of the page's launcher, as a library, without its window (tao and wry).
 launcher = { path = "../app", default-features = false }
 serde_json = "1"
-# The toolkit and the world preview, from rust-native-ui's checkout, the sibling folder of this repository (as
-# world-preview is). Cargo takes no variable in a path dependency, so a worktree of this repository, which sits
-# elsewhere, must point these at ../../rust-native-ui for as long as it is tried there.
-nui-base = { path = "../../../rust-native-ui/crates/nui-base" }
-nui-layout = { path = "../../../rust-native-ui/crates/nui-layout" }
-nui-ui = { path = "../../../rust-native-ui/crates/nui-ui" }
-nui-win32 = { path = "../../../rust-native-ui/crates/nui-win32" }
-nui-png = { path = "../../../rust-native-ui/crates/nui-png" }
-preview = { path = "../../../rust-native-ui/demos/preview" }
+# The toolkit and the world preview, from rust-native-ui's checkout, the sibling folder of this repository.
+# Cargo takes no variable in a path dependency, so a worktree of this repository that sits elsewhere must point
+# these at rust-native-ui's folder for as long as it is tried there.
+nui-base = { path = "../../rust-native-ui/crates/nui-base" }
+nui-layout = { path = "../../rust-native-ui/crates/nui-layout" }
+nui-ui = { path = "../../rust-native-ui/crates/nui-ui" }
+nui-win32 = { path = "../../rust-native-ui/crates/nui-win32" }
+nui-png = { path = "../../rust-native-ui/crates/nui-png" }
+preview = { path = "../../rust-native-ui/demos/preview" }
 
 [profile.release]
 opt-level = "s"

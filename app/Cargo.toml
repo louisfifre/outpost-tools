@@ -2,7 +2,7 @@
 name = "launcher"
 version = "0.1.0"
 edition = "2024"
-description = "The launcher application: a frameless window showing launcher/index.html, and everything the page asks for."
+description = "The launcher application: a frameless window showing index.html, and everything the page asks for."
 publish = false
 
 [lib]
@@ -15,7 +15,7 @@ required-features = ["window"]
 
 [features]
 default = ["window"]
-# The window of the page (tao and wry). launcher/native takes this package as a library without them: it draws
+# The window of the page (tao and wry). native takes this package as a library without them: it draws
 # its own window.
 window = ["dep:tao", "dep:wry"]
 

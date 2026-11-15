@@ -1,0 +1,5 @@
+# Rust build output
+app/target/
+native/target/
+# What a tool makes to be looked at (shots.ps1's pictures, its browser profile)
+run/

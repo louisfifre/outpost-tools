@@ -1,4 +1,4 @@
-// The launcher application: one window showing launcher/index.html, and everything the page asks for (the
+// The launcher application: one window showing index.html, and everything the page asks for (the
 // profiles, the dev server, the world preview), routed by api.rs to one file per part in api/.
 //
 // The window has no frame of its own: the page draws the whole bar, its title, its tools and the buttons to
@@ -9,8 +9,9 @@
 //
 // Usage:
 //   launcher                  the window
-//   launcher --serve <port>   no window: the page and its answers on http://localhost:<port>, for launcher/shots.ps1;
+//   launcher --serve <port>   no window: the page and its answers on http://localhost:<port>, for shots.ps1;
 //                             it stops 90 s after the last request
+//   launcher --repo <dir>     the pack repository to drive (otherwise the first folder above with scripts\common.ps1)
 //   launcher --devtools       the window, with the browser's tools on F12
 #![windows_subsystem = "windows"]
 
@@ -256,7 +257,7 @@ fn cube_icon() -> Icon {
 // ---------- without a window, for captures ----------
 
 // The same answers over plain HTTP on localhost, so a headless browser can take pictures of the page
-// (launcher/shots.ps1). One request per connection, which is all a page needs here.
+// (shots.ps1). One request per connection, which is all a page needs here.
 fn serve_http(api: Api, port: u16) {
     let listener = TcpListener::bind(("127.0.0.1", port)).expect("the port is taken");
     let api = Arc::new(api);

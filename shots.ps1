@@ -10,7 +10,12 @@ launcher and its window are never touched.
 A page says it is ready by setting data-ready="1" on its root element, once everything it had to
 fetch is drawn. Taking the picture when the page loads is not enough: the data arrives after.
 
-It lives with the launcher it pictures; the shared helpers are in scripts/common.ps1. The world preview has its own capture script, in its own repository.
+It lives with the launcher it pictures and builds the page launcher (app) first when cargo finds it out of date.
+The world preview has its own capture script, in its own repository.
+
+.PARAMETER Repo
+The pack repository the launcher reads its profiles and folders from (passed as --repo). Without it the page
+still draws, with the errors a launcher without a pack shows.
 
 .PARAMETER Shots
 One hashtable per picture. Name is the file name. Path defaults to /. Size defaults to
@@ -28,14 +33,26 @@ Where the pictures land. run\shots when omitted (not versioned).
 #>
 param(
     [hashtable[]]$Shots,
-    [string]$OutDir
+    [string]$OutDir,
+    [string]$Repo
 )
+$ErrorActionPreference = 'Stop'
 
-. (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\common.ps1')
+function Find-AppBrowser {
+    # A Chromium browser takes pictures of a page without a window (--headless). Brave first, then Edge.
+    foreach ($name in 'brave.exe', 'msedge.exe') {
+        foreach ($hive in 'HKCU:', 'HKLM:') {
+            $key = "$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$name"
+            $exe = (Get-ItemProperty $key -ErrorAction SilentlyContinue).'(default)'
+            if ($exe -and (Test-Path $exe)) { return $exe }
+        }
+    }
+}
 
 $Port = 25581
 $DebugPort = 9333
-if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'run\shots' }
+$RunDir = Join-Path $PSScriptRoot 'run'
+if (-not $OutDir) { $OutDir = Join-Path $RunDir 'shots' }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 if (-not $Shots) {
@@ -69,10 +86,17 @@ function Send-Cdp($socket, [string]$method, $params = @{}) {
 }
 
 # The launcher program without its window: the page and its answers on the port, the owner's window untouched.
-$server = Start-Process (Get-LauncherApp) -PassThru -ArgumentList '--serve', $Port
+Push-Location (Join-Path $PSScriptRoot 'app')
+try {
+    cargo build --release --quiet
+    if ($LASTEXITCODE -ne 0) { throw "The page launcher did not build (cargo exited with $LASTEXITCODE)." }
+} finally { Pop-Location }
+$serveArgs = @('--serve', $Port)
+if ($Repo) { $serveArgs += @('--repo', "`"$Repo`"") }
+$server = Start-Process (Join-Path $PSScriptRoot 'app\target\release\launcher.exe') -PassThru -ArgumentList $serveArgs
 # Its own profile folder: the owner's browser, its tabs and its sign-ins stay out of it.
 $browser = Start-Process $browserExe -PassThru -ArgumentList '--headless=new', "--remote-debugging-port=$DebugPort",
-    "--user-data-dir=`"$(Join-Path $ToolsDir 'capture-profile')`"", '--hide-scrollbars', '--enable-unsafe-swiftshader', 'about:blank'
+    "--user-data-dir=`"$(Join-Path $RunDir 'capture-profile')`"", '--hide-scrollbars', '--enable-unsafe-swiftshader', 'about:blank'
 try {
     $target = $null
     foreach ($try in 1..60) {

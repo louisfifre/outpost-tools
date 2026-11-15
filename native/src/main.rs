@@ -1,7 +1,7 @@
 // launcher-native [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]
 //
 // The native launcher: the world preview's window with the launcher's Home, answered by the same api as the page's
-// launcher (launcher/app), called in process. Without --shot, opens the window, which draws its own bar and holds
+// launcher (app), called in process. Without --shot, opens the window, which draws its own bar and holds
 // the preview's least size. With it, draws one frame offscreen and writes the PNG, from a fake api and a fixed date:
 // a picture never asks the real one and does not depend on the machine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
