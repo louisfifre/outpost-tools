@@ -247,46 +247,10 @@ fn restore_place(window: &Window, file: &PathBuf) {
     }
 }
 
-// The page's own icon, the grass block seen from above, drawn here for the taskbar: three faces of a cube.
+// The page's own icon for the taskbar, from the pixels the library draws (the native launcher shows the same ones).
 fn cube_icon() -> Icon {
-    const SIZE: u32 = 64;
-    let faces: [([(f32, f32); 4], [u8; 3]); 3] = [
-        ([(16.0, 2.0), (30.0, 9.0), (16.0, 16.0), (2.0, 9.0)], [0x7f, 0xb8, 0x50]),
-        ([(2.0, 9.0), (16.0, 16.0), (16.0, 30.0), (2.0, 23.0)], [0x8b, 0x63, 0x44]),
-        ([(30.0, 9.0), (30.0, 23.0), (16.0, 30.0), (16.0, 16.0)], [0x6b, 0x4b, 0x33]),
-    ];
-    let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
-    for py in 0..SIZE {
-        for px in 0..SIZE {
-            // The drawing is on a 32-unit grid, as the page's SVG.
-            let (x, y) = ((px as f32 + 0.5) / 2.0, (py as f32 + 0.5) / 2.0);
-            for (corners, color) in &faces {
-                if inside(corners, x, y) {
-                    let i = ((py * SIZE + px) * 4) as usize;
-                    rgba[i..i + 4].copy_from_slice(&[color[0], color[1], color[2], 255]);
-                    break;
-                }
-            }
-        }
-    }
-    Icon::from_rgba(rgba, SIZE, SIZE).expect("the icon could not be made")
-}
-
-// A point is inside a convex shape when it is on the same side of each of its edges.
-fn inside(corners: &[(f32, f32); 4], x: f32, y: f32) -> bool {
-    let mut sign = 0.0f32;
-    for i in 0..4 {
-        let (ax, ay) = corners[i];
-        let (bx, by) = corners[(i + 1) % 4];
-        let cross = (bx - ax) * (y - ay) - (by - ay) * (x - ax);
-        if cross != 0.0 {
-            if sign != 0.0 && cross.signum() != sign {
-                return false;
-            }
-            sign = cross.signum();
-        }
-    }
-    true
+    let (rgba, side) = launcher::icon::cube_rgba();
+    Icon::from_rgba(rgba, side, side).expect("the icon could not be made")
 }
 
 // ---------- without a window, for captures ----------

@@ -3,6 +3,7 @@
 // native window in front of the same answers.
 
 pub mod api;
+pub mod icon;
 pub mod system;
 
 use std::path::{Path, PathBuf};
