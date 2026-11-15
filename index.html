@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Minecraft</title>
+<title>Outpost Tools</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%237fb850' d='M16 2l14 7-14 7L2 9z'/%3E%3Cpath fill='%238b6344' d='M2 9l14 7v14L2 23z'/%3E%3Cpath fill='%236b4b33' d='M30 9l-14 7v14l14-7z'/%3E%3C/svg%3E">
 <style>
   /* The same raw page as the world preview: two grounds, black or almost white, hairlines in one grey, square
@@ -334,14 +334,14 @@
 <script>
   // Every sentence the page shows, in one place.
   const text = {
-    title: 'Minecraft',
+    title: 'Outpost Tools',
     noAccount: 'No account: sign in once in Prism',
     // The two tools of the window, and where a run of the preview stands, said on its icon and in the
     // window's title, which the taskbar shows.
     modes: { home: 'Home', preview: 'World preview' },
     previewState: { running: 'computing', ready: 'ready', failed: 'failed' },
     modeWith: (name, marker) => `${name} · ${marker}`,
-    titleWith: marker => `Minecraft · preview ${marker}`,
+    titleWith: marker => `${text.title} · preview ${marker}`,
     previewFrame: 'World preview',
     previewStarting: 'Starting the world preview…',
     previewFailed: 'The world preview did not start. Choose it again to retry.',

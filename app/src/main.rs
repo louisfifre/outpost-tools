@@ -87,7 +87,7 @@ fn open_window(api: Api, devtools: bool) {
 
     // No frame, but the shadow and the rounded corners Windows gives a window: it still looks like one.
     let window = WindowBuilder::new()
-        .with_title("Minecraft")
+        .with_title("Outpost Tools")
         .with_decorations(false)
         .with_undecorated_shadow(true)
         // In the page's own pixels, which a screen at 200 % doubles: the page's 960 is the screen's 1920 there.

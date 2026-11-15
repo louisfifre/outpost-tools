@@ -169,7 +169,7 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
         place: Some(data.join("native-window.txt")),
         hwnd_file: Some(data.join("hwnd.txt")),
     };
-    if let Err(e) = nui_win32::run_with("Minecraft", &mut app, frame) {
+    if let Err(e) = nui_win32::run_with(preview::text::BAR_TITLE, &mut app, frame) {
         api.write_log(&format!("the window failed: {e}"));
     }
     api.write_log("stopped: the window was closed");

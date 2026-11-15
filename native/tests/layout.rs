@@ -121,7 +121,9 @@ fn l7_the_account_after_the_name() {
     for w in [1000, 1200, 1400, 1920] {
         let rig = Rig::new(w, 940, true);
         let at = rig.texts().into_iter().find(|(_, t, _)| t == "PlayerOne").unwrap_or_else(|| panic!("no account at {w}"));
-        assert!((at.0.x - 119.28).abs() < 0.5, "{w}: {}", at.0.x);
+        // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says.
+        let after_name = 48.0 + nui_ui::TextLook::heading().width(&preview::text::BAR_TITLE.to_uppercase());
+        assert!((at.0.x - after_name).abs() < 0.5, "{w}: {} for {after_name}", at.0.x);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
     }
     // The preview tool's bar holds the panels' buttons where Home has the brand and the account (the preview's
