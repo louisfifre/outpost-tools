@@ -26,7 +26,7 @@ The pictures come from the native launcher's own tests (`cargo test` in `native/
 
 ## How it works
 
-- It is native Rust, drawn with [rust-native-ui](#what-it-needs-today), its maintainer's interface toolkit (Direct2D, no web view). The world preview's window comes from rust-native-ui, and its maps come from the `world-preview` repository's generator.
+- It is native Rust, drawn with [rust-native-ui](#what-it-needs-today), its maintainer's interface toolkit (Direct2D, no web view). The world preview's window comes from rust-native-ui, and its maps come from the `world-preview` repository's engine, which the native launcher calls as a Rust library (`world_preview::run`), in its own process.
 - The game starts through [Prism Launcher](https://prismlauncher.org/), which keeps the Microsoft sign-in. Outpost Tools only gives Prism commands: you never open Prism to play.
 - Each profile is a Prism instance. Its settings (memory, Java arguments, what it opens on: the menu, a world or a server) are written straight into Prism's own files, so the two never disagree.
 - An older form of the launcher, a web page in a frameless window of its own (`app/` and `index.html`), still exists. Both forms share one api (`app/src/api/`) and never run together.
@@ -37,7 +37,7 @@ Outpost Tools does not stand alone yet. To build and run it you need:
 
 - Windows, PowerShell 7 and Rust (`rustup`, stable);
 - rust-native-ui cloned beside this repository (`..\rust-native-ui`). **It is not published yet**, so today nobody else can build the native launcher;
-- the `world-preview` repository beside the pack, for the preview tool;
+- the `world-preview` repository beside the pack, for the preview tool: rust-native-ui's preview links its engine by the path `..\world-preview\driver`, and the launcher builds its mod at run time from the one found beside the pack or at `WORLD_PREVIEW_DIR`;
 - Prism Launcher, installed with Scoop;
 - a **pack repository**, given to the program with `--repo <folder>`. That is where it reads what it drives today: `scripts/common.ps1` (the server and preview folders, and where Prism is), `scripts/dev-server.ps1` and `scripts/rcon.ps1` (the test server), and `pack/` (the modpack the world preview reads).
 
@@ -50,7 +50,7 @@ What stands between today and the goal (download one exe, double-click, play):
 - **The self-installing exe.** It would put itself in its own folder, add its Start menu shortcut and update itself from this repository's releases.
 - **Portable Prism.** Prism Launcher would be downloaded in its portable form and kept up to date by Outpost Tools, so nobody installs it by hand.
 - **Profiles as data.** Profiles would be added from a modpack file and kept in Outpost Tools' folder, instead of the paths a pack's scripts write.
-- **The Rust port.** What runs in PowerShell today (the pack's sync, the test server, the preview's generation) would move to Rust, so the PC needs nothing else.
+- **The Rust port.** What runs in PowerShell today (the pack's sync, the test server) would move to Rust, as the preview's generation already has, so the PC needs nothing else.
 - **Signing.** The exe is not signed: Windows warns once on the first download, and Smart App Control blocks it. Signing names the publisher, but the warning stays until the app has a reputation.
 - **rust-native-ui, published** with a licence, so this repository can be built by others.
 

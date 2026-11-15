@@ -16,7 +16,6 @@ use launcher_native::home::{Calendar, LauncherHome};
 use launcher_native::{ORIGIN, app};
 use nui_base::{Vec2, log};
 use nui_ui::{Slide, Theme};
-use preview::run::Runs;
 use preview::world::World;
 use preview::{MIN_SIZE, Mode, text};
 
@@ -124,33 +123,13 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
         }
     });
 
-    let paths = api.preview_paths();
-    // The glue mod's jar, as serve.ps1 is given it: the section then shows the pack's own ores.
-    let mut env = Vec::new();
-    match api.glue_mod() {
-        Ok(jar) => env.push(("WORLD_PREVIEW_MODS".to_string(), jar.display().to_string())),
-        Err(why) => api.write_log(&why),
-    }
-    let (world, unreadable) = load_world(&paths.out);
+    let runs = launcher_native::runs(&api, &repo);
+    let (world, unreadable) = load_world(&runs.out());
 
     let dark = match scheme {
         "dark" => true,
         "light" => false,
         _ => nui_win32::system_dark(),
-    };
-    let root = repo.join("run").join("app").join("preview");
-    let _ = std::fs::create_dir_all(&root);
-    let runs = Runs {
-        shell: PathBuf::from("pwsh"),
-        // Without world-preview next to the pack, Generate says it failed.
-        generator: paths.generator.exists().then_some(paths.generator.clone()),
-        pack: Some(paths.pack.clone()),
-        root,
-        env,
-        launcher: Box::new(nui_win32::SystemLauncher),
-        server_dir: Some(paths.dir.clone()),
-        out_dir: Some(paths.out.clone()),
-        exports_dir: Some(paths.exports.clone()),
     };
     let home = LauncherHome::new(Bridge::threads(api.clone()), Calendar::real());
     let theme = if dark { Theme::dark() } else { Theme::light() };
