@@ -1,0 +1,163 @@
+// launcher-native [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]
+//
+// The native launcher: the world preview's window with the launcher's Home, answered by the same api as the page's
+// launcher (launcher/app), called in process. Without --shot, opens the window, which draws its own bar and holds
+// the preview's least size. With it, draws one frame offscreen and writes the PNG, from a fake api and a fixed date:
+// a picture never asks the real one and does not depend on the machine.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use launcher::{api::Api, find_repo, system};
+use launcher_native::bridge::Bridge;
+use launcher_native::fake;
+use launcher_native::home::{Calendar, LauncherHome};
+use launcher_native::{ORIGIN, app};
+use nui_base::{Vec2, log};
+use nui_ui::{Slide, Theme};
+use preview::run::Runs;
+use preview::world::World;
+use preview::{MIN_SIZE, Mode, text};
+
+fn usage() -> ! {
+    eprintln!("usage: launcher-native [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]");
+    std::process::exit(2);
+}
+
+fn parse_size(s: &str) -> Option<(u32, u32)> {
+    let (w, h) = s.split_once('x')?;
+    Some((w.parse().ok()?, h.parse().ok()?))
+}
+
+const DEFAULT_DATA: &str = r"C:\Games\preview\out";
+
+/// The world of an out folder, and whether the folder is there and cannot be read (the preview's own main shows
+/// its trouble line then).
+fn load_world(dir: &Path) -> (Option<World>, bool) {
+    if !dir.join("preview.json").exists() {
+        return (None, false);
+    }
+    match World::load(dir) {
+        Ok(w) => (Some(w), false),
+        Err(e) => {
+            nui_base::observe!(Warn, "{}: {e}", dir.display());
+            (None, true)
+        }
+    }
+}
+
+fn main() {
+    log::add_sink(log::stderr_sink(log::Level::Info));
+    let (mut repo, mut theme, mut shot, mut size, mut tool, mut data) = (None::<PathBuf>, None::<String>, None::<String>, (1400u32, 940u32), String::from("home"), None::<PathBuf>);
+    let mut args = std::env::args().skip(1);
+    while let Some(a) = args.next() {
+        let mut value = || args.next().unwrap_or_else(|| usage());
+        match a.as_str() {
+            "--repo" => repo = Some(PathBuf::from(value())),
+            "--theme" => theme = Some(value()),
+            "--shot" => shot = Some(value()),
+            "--size" => size = parse_size(&value()).unwrap_or_else(|| usage()),
+            "--tool" => tool = value(),
+            "--data" => data = Some(PathBuf::from(value())),
+            _ => usage(),
+        }
+    }
+    if !matches!(tool.as_str(), "home" | "preview") || theme.as_deref().is_some_and(|t| !matches!(t, "dark" | "light" | "system")) {
+        usage();
+    }
+    match shot {
+        Some(path) => picture(&path, size, theme.as_deref().unwrap_or("dark") == "light", &tool, data),
+        None => window(repo, theme.as_deref().unwrap_or("system")),
+    }
+}
+
+/// One frame offscreen, from the fixture.
+fn picture(path: &str, size: (u32, u32), light: bool, tool: &str, data: Option<PathBuf>) {
+    let dir = data.or_else(|| Path::new(DEFAULT_DATA).join("preview.json").exists().then(|| PathBuf::from(DEFAULT_DATA)));
+    let (world, unreadable) = dir.map_or((None, false), |d| load_world(&d));
+    let dark = !light;
+    let theme = if dark { Theme::dark() } else { Theme::light() };
+    let (w, h) = preview::min_size_px(size);
+    let backend = Arc::new(fake::fixture());
+    let home = LauncherHome::new(Bridge::inline(backend), Calendar::fixed());
+    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, None, home, true);
+    if unreadable {
+        app.state_mut().trouble = text::UNREADABLE.to_string();
+    }
+    if tool == "preview" {
+        app.state_mut().mode = Mode::Preview;
+        app.state_mut().options = Slide::settled(true);
+    }
+    app.ui_mut().set_clipboard(Box::new(nui_win32::SystemClipboard));
+    let rgba = nui_win32::shot(&mut app, w, h, 1.0).unwrap_or_else(|e| {
+        eprintln!("launcher-native: {e}");
+        std::process::exit(1);
+    });
+    if let Err(e) = std::fs::write(path, nui_png::encode(w, h, &rgba)) {
+        eprintln!("launcher-native: {path}: {e}");
+        std::process::exit(1);
+    }
+    nui_base::observe!(Info, "wrote {path}");
+}
+
+fn window(repo: Option<PathBuf>, scheme: &str) {
+    let repo = repo.or_else(find_repo).unwrap_or_else(|| PathBuf::from("."));
+    let data = repo.join("run").join("app");
+    let _ = std::fs::create_dir_all(&data);
+    // Opening the launcher while it runs shows the window already open rather than a second one.
+    if !system::only_one(&data) {
+        return;
+    }
+    let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
+    api.write_log("started (native)");
+    // What the toolkit warns of goes to the launcher's log: with no console it is the only trace.
+    let sink_api = api.clone();
+    log::add_sink(move |r| {
+        if r.level >= log::Level::Warn {
+            sink_api.write_log(&format!("{:?} {}: {}", r.level, r.source, r.message));
+        }
+    });
+
+    let paths = api.preview_paths();
+    // The glue mod's jar, as serve.ps1 is given it: the section then shows the pack's own ores.
+    let mut env = Vec::new();
+    match api.glue_mod() {
+        Ok(jar) => env.push(("WORLD_PREVIEW_MODS".to_string(), jar.display().to_string())),
+        Err(why) => api.write_log(&why),
+    }
+    let (world, unreadable) = load_world(&paths.out);
+
+    let dark = match scheme {
+        "dark" => true,
+        "light" => false,
+        _ => nui_win32::system_dark(),
+    };
+    let root = repo.join("run").join("app").join("preview");
+    let _ = std::fs::create_dir_all(&root);
+    let runs = Runs {
+        shell: PathBuf::from("pwsh"),
+        // Without world-preview next to the pack, Generate says it failed.
+        generator: paths.generator.exists().then_some(paths.generator.clone()),
+        pack: Some(paths.pack.clone()),
+        root,
+        env,
+        launcher: Box::new(nui_win32::SystemLauncher),
+        server_dir: Some(paths.dir.clone()),
+        out_dir: Some(paths.out.clone()),
+        exports_dir: Some(paths.exports.clone()),
+    };
+    let home = LauncherHome::new(Bridge::threads(api.clone()), Calendar::real());
+    let theme = if dark { Theme::dark() } else { Theme::light() };
+    let (w, h) = preview::min_size_px((1280, 880));
+    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, nui_win32::reduced_motion()).follow_scheme(scheme == "system");
+    if unreadable {
+        app.state_mut().trouble = text::UNREADABLE.to_string();
+    }
+    app.ui_mut().set_clipboard(Box::new(nui_win32::SystemClipboard));
+    let frame = nui_win32::Frame { own: true, min: MIN_SIZE };
+    if let Err(e) = nui_win32::run_with("Minecraft", &mut app, frame) {
+        api.write_log(&format!("the window failed: {e}"));
+    }
+    api.write_log("stopped: the window was closed");
+}

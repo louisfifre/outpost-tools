@@ -1,0 +1,34 @@
+[package]
+name = "launcher-native"
+version = "0.1.0"
+edition = "2024"
+description = "The native launcher: the world preview's window with the launcher's Home, drawn with rust-native-ui, answering through launcher/app's own api."
+publish = false
+
+[lib]
+name = "launcher_native"
+path = "src/lib.rs"
+
+[[bin]]
+name = "launcher-native"
+path = "src/main.rs"
+
+[dependencies]
+# The api and the system side of the page's launcher, as a library, without its window (tao and wry).
+launcher = { path = "../app", default-features = false }
+serde_json = "1"
+# The toolkit and the world preview, from rust-native-ui. These paths name that repository's feat/native-launcher
+# worktree for now; once that branch is merged, the orchestrator repoints them at ../../../rust-native-ui (the sibling
+# folder of this repository, as world-preview is). Cargo takes no variable in a path dependency, so the sibling
+# folder is the convention.
+nui-base = { path = "../../rust-native-ui/crates/nui-base" }
+nui-layout = { path = "../../rust-native-ui/crates/nui-layout" }
+nui-ui = { path = "../../rust-native-ui/crates/nui-ui" }
+nui-win32 = { path = "../../rust-native-ui/crates/nui-win32" }
+nui-png = { path = "../../rust-native-ui/crates/nui-png" }
+preview = { path = "../../rust-native-ui/demos/preview" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
