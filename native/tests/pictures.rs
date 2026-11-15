@@ -134,7 +134,8 @@ fn preview_rig(w: u32, h: u32, dark: bool) -> Option<Rig> {
 fn the_preview_tool_in_the_launcher() {
     for (w, name, dark) in [(1000, "launcher_preview_1000.png", true), (1400, "launcher_preview_1400.png", true), (1920, "launcher_preview_1920.png", true), (1400, "launcher_preview_1400_light.png", false)] {
         let Some(mut rig) = preview_rig(w, 940, dark) else { return };
-        assert!(rig.says("PlayerOne") || rig.texts().iter().any(|t| t.1.starts_with("Player")), "the account is in the bar");
+        // At 1000 the bar gives the account up to keep the views and their names (preview tests/bar_overflow.rs).
+        assert_eq!(rig.says("PlayerOne") || rig.texts().iter().any(|t| t.1.starts_with("Player")), w > 1000, "the account is in the bar when it fits");
         rig.write(name);
     }
 }

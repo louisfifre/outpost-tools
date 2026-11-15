@@ -124,13 +124,19 @@ fn l7_the_account_after_the_name() {
         assert!((at.0.x - 119.28).abs() < 0.5, "{w}: {}", at.0.x);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
     }
-    // The preview tool at 1000: the name ends where the tools begin.
-    let mut rig = Rig::new(1000, 940, true);
+    // The preview tool at 1100: the name ends where the tools begin.
+    let mut rig = Rig::new(1100, 940, true);
     rig.app.state_mut().mode = Mode::Preview;
     rig.frame();
     let strip = rig.rect(rig.app.ids().strip);
     let shown = rig.texts().into_iter().find(|(_, t, _)| t.starts_with("Player")).expect("the account");
     assert!(shown.0.x + shown.1.chars().count() as f32 * 7.2 <= strip.x + 0.01, "{shown:?} runs into the strip at {}", strip.x);
+    // At 1000 the preview tool's views leave the brand no room, so the bar gives the account up (the preview's
+    // tests/bar_overflow.rs holds the rule); Home keeps it, as the loop above shows.
+    let mut rig = Rig::new(1000, 940, true);
+    rig.app.state_mut().mode = Mode::Preview;
+    rig.frame();
+    assert!(rig.texts().into_iter().all(|(_, t, _)| !t.starts_with("Player")), "the account is gone at 1000 in the preview tool");
 }
 
 /// L9: a window asked at 800 is the least, 1000 (the app's own rule).
@@ -168,6 +174,8 @@ fn l8_the_preview_tool_keeps_its_panels() {
         let stage = app.ui().rect(ids.frame).unwrap();
         let side = (w as f32 - 762.0).min(h as f32 - 136.0);
         assert!((stage.w - side).abs() < 0.01 || (stage.h - side).abs() < 0.01, "the map's square at {w}: {stage:?} against {side}");
-        assert!(app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Text { text, .. } if text.starts_with("Player"))), "the account at {w}");
+        // The bar gives the account up when the preview tool's views leave it no room: at 1000.
+        let account = app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Text { text, .. } if text.starts_with("Player")));
+        assert_eq!(account, w > 1000, "the account at {w}");
     }
 }
