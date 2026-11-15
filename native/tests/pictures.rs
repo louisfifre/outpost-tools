@@ -40,7 +40,7 @@ fn home_picture(w: u32, h: u32, dark: bool) -> Vec<u8> {
 
 #[test]
 fn home_pictures_over_the_sweep() {
-    for (w, h, name) in [(1000, 940, "home_1000.png"), (1400, 940, "home_1400.png"), (1920, 940, "home_1920.png")] {
+    for (w, h, name) in [(620, 940, "home_620.png"), (800, 940, "home_800.png"), (1000, 940, "home_1000.png"), (1400, 940, "home_1400.png"), (1920, 940, "home_1920.png")] {
         let rgba = home_picture(w, h, true);
         save(&rgba, w, h, name);
         assert!(rgba.chunks(4).any(|p| p[..3] != rgba[..3]), "{name} is one colour");
@@ -134,8 +134,8 @@ fn preview_rig(w: u32, h: u32, dark: bool) -> Option<Rig> {
 fn the_preview_tool_in_the_launcher() {
     for (w, name, dark) in [(1000, "launcher_preview_1000.png", true), (1400, "launcher_preview_1400.png", true), (1920, "launcher_preview_1920.png", true), (1400, "launcher_preview_1400_light.png", false)] {
         let Some(mut rig) = preview_rig(w, 940, dark) else { return };
-        // At 1000 the bar gives the account up to keep the views and their names (preview tests/bar_overflow.rs).
-        assert_eq!(rig.says("PlayerOne") || rig.texts().iter().any(|t| t.1.starts_with("Player")), w > 1000, "the account is in the bar when it fits");
+        // The preview tool's bar holds the panels' buttons where Home has the brand and the account (preview overflow.rs).
+        assert!(!rig.texts().iter().any(|t| t.1.starts_with("Player")), "the account is Home's only, at {w}");
         rig.write(name);
     }
 }

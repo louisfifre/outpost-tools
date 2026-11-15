@@ -2,9 +2,8 @@
 //! parts that fill the window, drawn with nui-ui and answered by the api through a `Bridge`.
 //!
 //! Layout is the page's without its breakpoints: two columns that widen continuously, with no switch, up to the
-//! page's cap of 1120 px (`COLUMNS_MAX`), then stay centred. The window holds 1000 px at the least (the preview's
-//! rule), where each part is still 448 px wide, so the page's one-column form at 860 could never be reached and is
-//! not built.
+//! page's cap of 1120 px (`COLUMNS_MAX`), then stay centred. The window's least is the preview's `MIN_SIZE` (about
+//! 610 px), where each part is about 250 px wide and its lines wrap; the page's one-column form at 860 is not built.
 //!
 //! The build only reads the pointer and the keys, and records what was asked (`Want`); `act` does it, after the
 //! build, so that a build never waits on the api. Answers are taken by `poll`.

@@ -124,28 +124,24 @@ fn l7_the_account_after_the_name() {
         assert!((at.0.x - 119.28).abs() < 0.5, "{w}: {}", at.0.x);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
     }
-    // The preview tool at 1100: the name ends where the tools begin.
-    let mut rig = Rig::new(1100, 940, true);
-    rig.app.state_mut().mode = Mode::Preview;
-    rig.frame();
-    let strip = rig.rect(rig.app.ids().strip);
-    let shown = rig.texts().into_iter().find(|(_, t, _)| t.starts_with("Player")).expect("the account");
-    assert!(shown.0.x + shown.1.chars().count() as f32 * 7.2 <= strip.x + 0.01, "{shown:?} runs into the strip at {}", strip.x);
-    // At 1000 the preview tool's views leave the brand no room, so the bar gives the account up (the preview's
-    // tests/bar_overflow.rs holds the rule); Home keeps it, as the loop above shows.
-    let mut rig = Rig::new(1000, 940, true);
-    rig.app.state_mut().mode = Mode::Preview;
-    rig.frame();
-    assert!(rig.texts().into_iter().all(|(_, t, _)| !t.starts_with("Player")), "the account is gone at 1000 in the preview tool");
+    // The preview tool's bar holds the panels' buttons where Home has the brand and the account (the preview's
+    // overflow.rs holds the rule), so the account is Home's only, at any width.
+    for w in [1000, 1920] {
+        let mut rig = Rig::new(w, 940, true);
+        rig.app.state_mut().mode = Mode::Preview;
+        rig.frame();
+        assert!(rig.texts().into_iter().all(|(_, t, _)| !t.starts_with("Player")), "the account is shown in the preview tool at {w}");
+    }
 }
 
-/// L9: a window asked at 800 is the least, 1000 (the app's own rule).
+/// L9: a window asked smaller than the least is raised to it (the preview's MIN_SIZE, derived from its panels and bar).
 #[test]
 fn l9_a_small_window_is_raised_to_the_least() {
-    let rig = Rig::new(800, 500, true);
-    assert_eq!((rig.w, rig.h), (1000, 600));
+    let least = (preview::MIN_SIZE.0.ceil() as u32, preview::MIN_SIZE.1.ceil() as u32);
+    let rig = Rig::new(400, 400, true);
+    assert_eq!((rig.w, rig.h), least);
     let ids = rig.app.ids();
-    assert_eq!(rig.rect(ids.bar).w, 1000.0);
+    assert_eq!(rig.rect(ids.bar).w, least.0 as f32);
 }
 
 /// L8: the preview tool in the launcher keeps the panels where the preview has them. Skipped without the data.
@@ -169,13 +165,16 @@ fn l8_the_preview_tool_keeps_its_panels() {
         app.frame(&mut r, 0.0);
         let ids = app.ids().clone();
         let (l, rt) = (app.ui().rect(ids.left).unwrap(), app.ui().rect(ids.right).unwrap());
-        rect_is(l, 28.0, 50.0, 320.0, h as f32 - 72.0, &format!("left at {w}"));
-        rect_is(rt, w as f32 - 358.0, 50.0, 330.0, h as f32 - 72.0, &format!("right at {w}"));
+        // The widths are the preview's own plan (natural widths, shrunk once the map is at its least).
+        let plan = preview::panels::plan(w as f32, [true, true], [None, None]);
+        let gap = preview::panels::GAP;
+        rect_is(l, gap, 50.0, plan.widths[0], h as f32 - 72.0, &format!("left at {w}"));
+        rect_is(rt, w as f32 - gap - plan.widths[1], 50.0, plan.widths[1], h as f32 - 72.0, &format!("right at {w}"));
         let stage = app.ui().rect(ids.frame).unwrap();
-        let side = (w as f32 - 762.0).min(h as f32 - 136.0);
+        let middle = w as f32 - preview::panels::gaps(2) as f32 * gap - plan.widths[0] - plan.widths[1];
+        let side = middle.min(h as f32 - 136.0);
         assert!((stage.w - side).abs() < 0.01 || (stage.h - side).abs() < 0.01, "the map's square at {w}: {stage:?} against {side}");
-        // The bar gives the account up when the preview tool's views leave it no room: at 1000.
         let account = app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Text { text, .. } if text.starts_with("Player")));
-        assert_eq!(account, w > 1000, "the account at {w}");
+        assert!(!account, "the account is Home's only, at {w}");
     }
 }
