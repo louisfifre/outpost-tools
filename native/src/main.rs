@@ -106,13 +106,13 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let data = repo.join("run").join("app");
     let _ = std::fs::create_dir_all(&data);
     let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
-    // A second start is refused. The page launcher writes `hwnd.txt` and `only_one` raises that window; this window
-    // does not write it (not built), so a refused start here brings nothing forward and the log is its only trace.
+    // A second start is refused: `only_one` raises the running window, whose handle the toolkit keeps in `hwnd.txt`.
     if !system::only_one(&data) {
         api.write_log("start refused: the launcher already runs");
         return;
     }
-    // Holding the lock, whatever `hwnd.txt` says is from a dead session; handles are recycled, so a later start must not raise it.
+    // Holding the lock, whatever `hwnd.txt` says is from a dead session (the toolkit removes it when its window
+    // closes, a crash leaves it); handles are recycled, so a later start must not raise it.
     let _ = std::fs::remove_file(data.join("hwnd.txt"));
     api.write_log("started (native)");
     // What the toolkit warns of goes to the launcher's log: with no console it is the only trace.
@@ -159,7 +159,16 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
         app.state_mut().trouble = text::UNREADABLE.to_string();
     }
     app.ui_mut().set_clipboard(Box::new(nui_win32::SystemClipboard));
-    let frame = nui_win32::Frame { own: true, min: MIN_SIZE };
+    // The same cube as the page launcher's. The place goes in a file of its own, beside the page launcher's
+    // `window.txt`, because the two files are not written the same way.
+    let (rgba, side) = launcher::icon::cube_rgba();
+    let frame = nui_win32::Frame {
+        own: true,
+        min: MIN_SIZE,
+        icon: Some(nui_win32::Icon { rgba, side }),
+        place: Some(data.join("native-window.txt")),
+        hwnd_file: Some(data.join("hwnd.txt")),
+    };
     if let Err(e) = nui_win32::run_with("Minecraft", &mut app, frame) {
         api.write_log(&format!("the window failed: {e}"));
     }
