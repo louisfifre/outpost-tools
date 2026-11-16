@@ -1,0 +1,13 @@
+[package]
+name = "relief"
+description = "The world preview's relief from a real out folder: terrain in 3D, in a window or as a PNG."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-only"
+
+[dependencies]
+mere-base.workspace = true
+mere-png.workspace = true
+mere-win32.workspace = true
+preview = { path = "../preview" }
