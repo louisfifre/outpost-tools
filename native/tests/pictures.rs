@@ -1,6 +1,6 @@
 //! The pictures of the native launcher: Home over a sweep of widths, light, its settings and menu, a launch, a
 //! short window, and the world preview tool inside it. They go to target\tmp; the ones worth keeping are copied
-//! into mere-ui's docs\shots. Every picture comes from the fake api and the fixed date.
+//! into docs\shots. Every picture comes from the fake api and the fixed date.
 
 mod common;
 

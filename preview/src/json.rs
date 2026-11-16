@@ -1,6 +1,3 @@
-//! This is relief's copy of `demos/relief/src/json.rs`, taken verbatim below this note. Step 15 moves the 3D
-//! view into preview, and one copy is left then.
-
 //! Just enough JSON to read `preview.json`: no third-party parser is allowed, and the file is written by
 //! our own scripts, so objects, arrays, strings, numbers and the three literals are all it holds.
 
