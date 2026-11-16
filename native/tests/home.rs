@@ -190,7 +190,7 @@ fn h10_server_fields_and_locks() {
     rig.click(gear);
     assert_ne!(rig.home().ids().s_memory, nui_ui::Id::ROOT);
     let r = rig.rect(rig.home().ids().server_settings);
-    assert!(rig.app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Fill { rect, color } if *color == rig.theme.text && (rect.x - r.x).abs() < 0.01 && (rect.w - 30.0).abs() < 0.01)), "drawn in reverse");
+    assert!(rig.app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Fill { rect, color } if *color == rig.theme.text && (rect.x - r.x).abs() < 0.01 && (rect.w - nui_ui::tokens::ICON_SQUARE).abs() < 0.01)), "drawn in reverse");
     // No props: the first start has not happened.
     rig.api.set_get("/api/server", json!({"dir": "C:\\Games\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
     rig.wait(3.0);

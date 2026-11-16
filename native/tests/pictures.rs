@@ -47,8 +47,9 @@ fn home_pictures_over_the_sweep() {
     }
     let rgba = home_picture(1400, 940, false);
     save(&rgba, 1400, 940, "home_1400_light.png");
-    // The light ground.
-    assert_eq!(&rgba[..3], &[0xfa, 0xfa, 0xf8]);
+    // The light ground, the light theme's `bg-ground`.
+    let g = nui_ui::tokens::palette::GREY_50;
+    assert_eq!(&rgba[..3], &[(g >> 16) as u8, (g >> 8) as u8, g as u8]);
 }
 
 /// P0: the full app in Home draws the same bytes as the Home alone at its size.
