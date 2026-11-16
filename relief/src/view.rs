@@ -115,6 +115,7 @@ mod tests {
     fn app() -> Option<(Relief, Renderer)> {
         let dir = &preview::world::data_dir();
         if !dir.join("preview.json").exists() {
+            println!("skipped: PREVIEW_DATA_DIR names no out folder");
             return None;
         }
         let mut app = Relief::new(World::load(dir).unwrap());
