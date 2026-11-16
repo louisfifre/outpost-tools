@@ -23,7 +23,7 @@ fn page() -> PathBuf {
         // The world-preview repository beside this one, unless WORLD_PREVIEW_DIR names it.
         None => std::env::var_os("WORLD_PREVIEW_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../world-preview")))
+            .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../world-preview")))
             .join("page")
             .join("preview.html"),
     }
