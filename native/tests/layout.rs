@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 use common::*;
 use launcher_native::fake::fixture;
-use nui_base::{App, Rect, Vec2};
-use nui_ui::Theme;
+use mere_base::{App, Rect, Vec2};
+use mere_ui::Theme;
 use preview::{BAR_H, Mode, PreviewState, picture_with_home};
 
 /// Home alone in its pane (no raise to the window's least), `w` x `h` as the window.
-fn home_at(w: f32, h: f32) -> (nui_ui::Ui, launcher_native::HomeIds, nui_base::DrawList) {
+fn home_at(w: f32, h: f32) -> (mere_ui::Ui, launcher_native::HomeIds, mere_base::DrawList) {
     let mut home = loaded_home(Arc::new(fixture()));
     let state = PreviewState { mode: Mode::Home, reduce_motion: true, ..PreviewState::default() };
     let (list, ui, _) = picture_with_home(Theme::dark(), Vec2::new(w, h), None, state, &mut home);
@@ -43,7 +43,7 @@ fn l1_side_by_side_up_to_the_cap() {
 #[test]
 fn l4_the_numbers_at_1400() {
     use launcher_native::home::COLUMNS_GAP;
-    use nui_ui::tokens::{FRAME, ICON_SQUARE, INSET};
+    use mere_ui::tokens::{FRAME, ICON_SQUARE, INSET};
     let (ui, ids, _) = home_at(1400.0, 940.0);
     let (left, part, top) = (140.0, (1120.0 - COLUMNS_GAP) / 2.0, 50.0);
     rect_is(ui.rect(ids.profiles_header).unwrap(), left, top, part, ICON_SQUARE + FRAME, "header");
@@ -72,8 +72,8 @@ fn l4_the_numbers_at_1400() {
     rect_is(r(ids.server_settings), settings, square_y, ICON_SQUARE, ICON_SQUARE, "server settings");
 }
 
-fn texts(list: &nui_base::DrawList) -> Vec<(Vec2, String)> {
-    list.cmds.iter().filter_map(|c| if let nui_base::Cmd::Text { at, text, .. } = c { Some((*at, text.clone())) } else { None }).collect()
+fn texts(list: &mere_base::DrawList) -> Vec<(Vec2, String)> {
+    list.cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { at, text, .. } = c { Some((*at, text.clone())) } else { None }).collect()
 }
 
 /// L4 (cont.): the name starts at the column, x 140 at 1400.
@@ -120,10 +120,10 @@ fn l6_a_short_window_scrolls_to_its_end() {
     rig.click(settings);
     let gear = rig.home().ids().server_settings;
     rig.click(gear);
-    let thumb = rig.app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Fill { rect, color } if *color == rig.theme.line && rect.w < 8.0 && rect.h > 10.0));
+    let thumb = rig.app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Fill { rect, color } if *color == rig.theme.line && rect.w < 8.0 && rect.h > 10.0));
     assert!(thumb, "the scrollbar's thumb is drawn");
     for _ in 0..20 {
-        rig.app.event(nui_base::Event::Wheel { pos: Vec2::new(700.0, 400.0), delta: -3.0 });
+        rig.app.event(mere_base::Event::Wheel { pos: Vec2::new(700.0, 400.0), delta: -3.0 });
         rig.frame();
     }
     let open = rig.rect(rig.home().ids().s_open_folder);
@@ -138,7 +138,7 @@ fn l7_the_account_after_the_name() {
         let rig = Rig::new(w, 940, true);
         let at = rig.texts().into_iter().find(|(_, t, _)| t == "PlayerOne").unwrap_or_else(|| panic!("no account at {w}"));
         // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says.
-        let after_name = 48.0 + nui_ui::TextLook::heading().width(&preview::text::BAR_TITLE.to_uppercase());
+        let after_name = 48.0 + mere_ui::TextLook::heading().width(&preview::text::BAR_TITLE.to_uppercase());
         assert!((at.0.x - after_name).abs() < 0.5, "{w}: {} for {after_name}", at.0.x);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
     }
@@ -175,7 +175,7 @@ fn l8_the_preview_tool_keeps_its_panels() {
     for w in [1000u32, 1200, 1400, 1920] {
         let theme = Theme::dark();
         let h = 940u32;
-        let mut r = nui_win32::Renderer::offscreen(w, h, 1.0).unwrap();
+        let mut r = mere_win32::Renderer::offscreen(w, h, 1.0).unwrap();
         let mut app = launcher_native::app(theme, true, Vec2::new(w as f32, h as f32), Some(world.clone()), None, home_over(Arc::new(fixture())), true);
         app.start(&mut r);
         app.set_clock(Some(1.0));
@@ -193,7 +193,7 @@ fn l8_the_preview_tool_keeps_its_panels() {
         let middle = w as f32 - preview::panels::gaps(2) as f32 * gap - plan.widths[0] - plan.widths[1];
         let side = middle.min(h as f32 - 136.0);
         assert!((stage.w - side).abs() < 0.01 || (stage.h - side).abs() < 0.01, "the map's square at {w}: {stage:?} against {side}");
-        let account = app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Text { text, .. } if text.starts_with("Player")));
+        let account = app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Text { text, .. } if text.starts_with("Player")));
         assert!(!account, "the account is Home's only, at {w}");
     }
 }

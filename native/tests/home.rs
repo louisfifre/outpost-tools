@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use nui_base::{App, Key, Vec2};
+use mere_base::{App, Key, Vec2};
 use preview::Mode;
 use serde_json::json;
 
@@ -13,7 +13,7 @@ const EULA: &str = "The Minecraft EULA is not accepted yet: set eula=true in the
 fn open_menu_row(rig: &mut Rig, row: usize) {
     let b = rig.rect(rig.home().ids().open_on);
     rig.click_at(centre(b));
-    let p = Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + row as f32 * nui_ui::MENU_ROW + 10.0);
+    let p = Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + row as f32 * mere_ui::MENU_ROW + 10.0);
     rig.click_at(p);
 }
 
@@ -81,7 +81,7 @@ fn h4_settings_and_the_address() {
     let ids = rig.home().ids().clone();
     assert_eq!(rig.app.ui().focused(), Some(ids.address), "the address has the keyboard");
     for ch in "localhost".chars() {
-        rig.app.event(nui_base::Event::Char { ch });
+        rig.app.event(mere_base::Event::Char { ch });
     }
     rig.key(Key::Enter);
     let body = rig.api.last_body("POST", "/api/settings/exploration").expect("saved");
@@ -186,11 +186,11 @@ fn h9_start_and_stop() {
 fn h10_server_fields_and_locks() {
     let mut rig = Rig::new(1400, 940, true);
     let gear = rig.home().ids().server_settings;
-    assert_eq!(rig.home().ids().s_memory, nui_ui::Id::ROOT, "folded at first");
+    assert_eq!(rig.home().ids().s_memory, mere_ui::Id::ROOT, "folded at first");
     rig.click(gear);
-    assert_ne!(rig.home().ids().s_memory, nui_ui::Id::ROOT);
+    assert_ne!(rig.home().ids().s_memory, mere_ui::Id::ROOT);
     let r = rig.rect(rig.home().ids().server_settings);
-    assert!(rig.app.list().cmds.iter().any(|c| matches!(c, nui_base::Cmd::Fill { rect, color } if *color == rig.theme.fill && (rect.x - r.x).abs() < 0.01 && (rect.w - nui_ui::tokens::ICON_SQUARE).abs() < 0.01)), "drawn in reverse");
+    assert!(rig.app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Fill { rect, color } if *color == rig.theme.fill && (rect.x - r.x).abs() < 0.01 && (rect.w - mere_ui::tokens::ICON_SQUARE).abs() < 0.01)), "drawn in reverse");
     // No props: the first start has not happened.
     rig.api.set_get("/api/server", json!({"dir": "C:\\Games\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
     rig.wait(3.0);

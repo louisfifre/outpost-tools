@@ -8,8 +8,8 @@ pub mod icons;
 pub mod model;
 pub mod text;
 
-use nui_base::Vec2;
-use nui_ui::{Slide, Theme};
+use mere_base::Vec2;
+use mere_ui::{Slide, Theme};
 use preview::run::Runs;
 use preview::world::World;
 use preview::{Mode, PreviewApp, PreviewState};
@@ -38,7 +38,7 @@ pub fn runs(api: &launcher::api::Api, repo: &std::path::Path) -> Runs {
         pack: Some(paths.pack.clone()),
         root,
         mods,
-        launcher: Box::new(nui_win32::SystemLauncher),
+        launcher: Box::new(mere_win32::SystemLauncher),
         server_dir: Some(paths.dir.clone()),
         out_dir: Some(paths.out.clone()),
         exports_dir: Some(paths.exports.clone()),

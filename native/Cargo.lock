@@ -177,11 +177,11 @@ name = "launcher-native"
 version = "0.1.0"
 dependencies = [
  "launcher",
- "nui-base",
- "nui-layout",
- "nui-png",
- "nui-ui",
- "nui-win32",
+ "mere-base",
+ "mere-layout",
+ "mere-png",
+ "mere-ui",
+ "mere-win32",
  "preview",
  "serde_json",
 ]
@@ -205,6 +205,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "mere-base"
+version = "0.12.0"
+
+[[package]]
+name = "mere-layout"
+version = "0.12.0"
+dependencies = [
+ "mere-base",
+]
+
+[[package]]
+name = "mere-png"
+version = "0.12.0"
+
+[[package]]
+name = "mere-ui"
+version = "0.12.0"
+dependencies = [
+ "mere-base",
+ "mere-layout",
+]
+
+[[package]]
+name = "mere-win32"
+version = "0.12.0"
+dependencies = [
+ "mere-base",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -221,37 +252,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "nui-base"
-version = "0.11.0"
-
-[[package]]
-name = "nui-layout"
-version = "0.11.0"
-dependencies = [
- "nui-base",
-]
-
-[[package]]
-name = "nui-png"
-version = "0.11.0"
-
-[[package]]
-name = "nui-ui"
-version = "0.11.0"
-dependencies = [
- "nui-base",
- "nui-layout",
-]
-
-[[package]]
-name = "nui-win32"
-version = "0.11.0"
-dependencies = [
- "nui-base",
- "windows 0.62.2",
 ]
 
 [[package]]
@@ -287,13 +287,13 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "preview"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
- "nui-base",
- "nui-layout",
- "nui-png",
- "nui-ui",
- "nui-win32",
+ "mere-base",
+ "mere-layout",
+ "mere-png",
+ "mere-ui",
+ "mere-win32",
  "world-preview",
 ]
 

@@ -14,8 +14,8 @@ use launcher_native::bridge::Bridge;
 use launcher_native::fake;
 use launcher_native::home::{Calendar, LauncherHome};
 use launcher_native::{ORIGIN, app};
-use nui_base::{Vec2, log};
-use nui_ui::{Slide, Theme};
+use mere_base::{Vec2, log};
+use mere_ui::{Slide, Theme};
 use preview::world::World;
 use preview::{MIN_SIZE, Mode, text};
 
@@ -41,7 +41,7 @@ fn load_world(dir: &Path) -> (Option<World>, bool) {
     match World::load(dir) {
         Ok(w) => (Some(w), false),
         Err(e) => {
-            nui_base::observe!(Warn, "{}: {e}", dir.display());
+            mere_base::observe!(Warn, "{}: {e}", dir.display());
             (None, true)
         }
     }
@@ -89,16 +89,16 @@ fn picture(path: &str, size: (u32, u32), light: bool, tool: &str, data: Option<P
         app.state_mut().mode = Mode::Preview;
         app.state_mut().options = Slide::settled(true);
     }
-    app.ui_mut().set_clipboard(Box::new(nui_win32::SystemClipboard));
-    let rgba = nui_win32::shot(&mut app, w, h, 1.0).unwrap_or_else(|e| {
+    app.ui_mut().set_clipboard(Box::new(mere_win32::SystemClipboard));
+    let rgba = mere_win32::shot(&mut app, w, h, 1.0).unwrap_or_else(|e| {
         eprintln!("launcher-native: {e}");
         std::process::exit(1);
     });
-    if let Err(e) = std::fs::write(path, nui_png::encode(w, h, &rgba)) {
+    if let Err(e) = std::fs::write(path, mere_png::encode(w, h, &rgba)) {
         eprintln!("launcher-native: {path}: {e}");
         std::process::exit(1);
     }
-    nui_base::observe!(Info, "wrote {path}");
+    mere_base::observe!(Info, "wrote {path}");
 }
 
 fn window(repo: Option<PathBuf>, scheme: &str) {
@@ -129,27 +129,27 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let dark = match scheme {
         "dark" => true,
         "light" => false,
-        _ => nui_win32::system_dark(),
+        _ => mere_win32::system_dark(),
     };
     let home = LauncherHome::new(Bridge::threads(api.clone()), Calendar::real());
     let theme = if dark { Theme::dark() } else { Theme::light() };
     let (w, h) = preview::min_size_px((1280, 880));
-    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, nui_win32::reduced_motion()).follow_scheme(scheme == "system");
+    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, mere_win32::reduced_motion()).follow_scheme(scheme == "system");
     if unreadable {
         app.state_mut().trouble = text::UNREADABLE.to_string();
     }
-    app.ui_mut().set_clipboard(Box::new(nui_win32::SystemClipboard));
+    app.ui_mut().set_clipboard(Box::new(mere_win32::SystemClipboard));
     // The same cube as the page launcher's. The place goes in a file of its own, beside the page launcher's
     // `window.txt`, because the two files are not written the same way.
     let (rgba, side) = launcher::icon::cube_rgba();
-    let frame = nui_win32::Frame {
+    let frame = mere_win32::Frame {
         own: true,
         min: MIN_SIZE,
-        icon: Some(nui_win32::Icon { rgba, side }),
+        icon: Some(mere_win32::Icon { rgba, side }),
         place: Some(data.join("native-window.txt")),
         hwnd_file: Some(data.join("hwnd.txt")),
     };
-    if let Err(e) = nui_win32::run_with(preview::text::BAR_TITLE, &mut app, frame) {
+    if let Err(e) = mere_win32::run_with(preview::text::BAR_TITLE, &mut app, frame) {
         api.write_log(&format!("the window failed: {e}"));
     }
     api.write_log("stopped: the window was closed");

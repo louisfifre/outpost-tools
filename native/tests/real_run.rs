@@ -15,8 +15,8 @@ use launcher_native::bridge::Bridge;
 use launcher_native::fake::fixture;
 use launcher_native::home::{Calendar, LauncherHome};
 use launcher_native::{ORIGIN, app};
-use nui_base::{App, Button, Event, Vec2};
-use nui_ui::{Slide, Theme};
+use mere_base::{App, Button, Event, Vec2};
+use mere_ui::{Slide, Theme};
 use preview::Mode;
 
 #[test]
@@ -41,7 +41,7 @@ fn a_real_run_cap_1_over_65536_blocks_every_64() {
         s.samples = 4096;
         s.detail = 0;
     }
-    let mut r = nui_win32::Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
+    let mut r = mere_win32::Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
     app.start(&mut r);
     app.event(Event::Resized { width_px: w, height_px: h, scale: 1.0 });
     app.frame(&mut r, 0.0);
