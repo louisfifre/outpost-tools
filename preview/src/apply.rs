@@ -442,12 +442,12 @@ mod tests {
         assert!(std::fs::read_to_string(t.config()).unwrap().contains("\"nope\""));
         let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
     }
-    /// The real file of the pack, when `MINECRAFT_MODS_DIR` names the repository: every key of the panel is found
+    /// The real file of the pack, when `OUTPOST_REPO` names the pack repository: every key of the panel is found
     /// once, and applying the pack's own values changes nothing in a copy.
     #[test]
     fn the_real_config_is_understood() {
-        let Some(dir) = std::env::var_os("MINECRAFT_MODS_DIR") else {
-            println!("skipped: MINECRAFT_MODS_DIR names no repository");
+        let Some(dir) = std::env::var_os("OUTPOST_REPO") else {
+            println!("skipped: OUTPOST_REPO names no pack repository");
             return;
         };
         let text = std::fs::read_to_string(Path::new(&dir).join("pack").join("config").join("tectonic.json")).unwrap();
