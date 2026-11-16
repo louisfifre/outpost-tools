@@ -1,13 +1,18 @@
 [package]
 name = "relief"
 description = "The world preview's relief from a real out folder: terrain in 3D, in a window or as a PNG."
-version.workspace = true
-edition.workspace = true
-publish.workspace = true
+version = "0.1.0"
+edition = "2024"
+publish = false
 license = "GPL-3.0-only"
 
 [dependencies]
-mere-base.workspace = true
-mere-png.workspace = true
-mere-win32.workspace = true
+mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
 preview = { path = "../preview" }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
