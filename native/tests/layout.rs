@@ -29,31 +29,47 @@ fn l1_side_by_side_up_to_the_cap() {
         let inner = w as f32 - 56.0;
         let used = inner.min(launcher_native::home::COLUMNS_MAX);
         let left = 28.0 + (inner - used) / 2.0;
-        let half = (used - 48.0) / 2.0;
+        let half = (used - launcher_native::home::COLUMNS_GAP) / 2.0;
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
         assert!((a.x - left).abs() < 0.01 && (a.y - 50.0).abs() < 0.01 && (a.w - half).abs() < 0.01, "profiles at {w}: {a:?}");
-        assert!((b.x - (left + half + 48.0)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
+        assert!((b.x - (left + half + launcher_native::home::COLUMNS_GAP)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
     }
 }
 
-/// L4: at 1400 x 940, the page's rows: lines 154 (header of 34), 172-176 (a row of 56 pulled 8 px out on each
-/// side), 160 (30 px squares) and 162 (the second pulled 1 px over the first). At 1400 the columns are at their
-/// cap of 1120, centred: 112 px of room on each side beyond the padding of 28, two parts of 536.
+/// L4: at 1400 x 940, the page's rows in the kit's measures: a header as tall as an icon square and its hairline,
+/// a row with `inset` all round pulled `inset` out on each side, its two lines (the name's 19.5 and the small
+/// line's 16.5) taller than the squares, and the second square pulled a frame over the first. At 1400 the columns
+/// are at their cap of 1120, centred: 112 px of room on each side beyond the padding of 28, two parts of 536.
 #[test]
 fn l4_the_numbers_at_1400() {
+    use launcher_native::home::COLUMNS_GAP;
+    use nui_ui::tokens::{FRAME, ICON_SQUARE, INSET};
     let (ui, ids, _) = home_at(1400.0, 940.0);
-    rect_is(ui.rect(ids.profiles_header).unwrap(), 140.0, 50.0, 536.0, 34.0, "header");
+    let (left, part, top) = (140.0, (1120.0 - COLUMNS_GAP) / 2.0, 50.0);
+    rect_is(ui.rect(ids.profiles_header).unwrap(), left, top, part, ICON_SQUARE + FRAME, "header");
     let r = |id| ui.rect(id).unwrap();
     // The hairline is the header's last pixel row.
-    assert_eq!(r(ids.profiles_header).y + r(ids.profiles_header).h - 1.0, 83.0);
+    let below = top + ICON_SQUARE + FRAME;
+    assert_eq!(r(ids.profiles_header).y + r(ids.profiles_header).h - FRAME, below - FRAME);
     let first = &ids.rows[0];
     assert_eq!(first.profile, "exploration", "the profile played last comes first");
-    rect_is(r(first.row), 132.0, 84.0, 552.0, 56.0, "first row");
-    rect_is(r(first.play), 617.0, 97.0, 30.0, 30.0, "play");
-    rect_is(r(first.settings), 646.0, 97.0, 30.0, 30.0, "settings");
-    rect_is(r(ids.server_row), 716.0, 84.0, 552.0, 56.0, "server row");
-    rect_is(r(ids.server_play), 1201.0, 97.0, 30.0, 30.0, "start");
-    rect_is(r(ids.server_settings), 1230.0, 97.0, 30.0, 30.0, "server settings");
+    let row_h = 2.0 * INSET + 19.5 + 16.5;
+    let square_y = below + (row_h - ICON_SQUARE) / 2.0;
+    // The squares sit at the row's right, inside its inset, the second over the first by a frame.
+    let squares = |row_x: f32| {
+        let settings = row_x + part + 2.0 * INSET - INSET - ICON_SQUARE;
+        (settings - ICON_SQUARE + FRAME, settings)
+    };
+    let row_x = left - INSET;
+    rect_is(r(first.row), row_x, below, part + 2.0 * INSET, row_h, "first row");
+    let (play, settings) = squares(row_x);
+    rect_is(r(first.play), play, square_y, ICON_SQUARE, ICON_SQUARE, "play");
+    rect_is(r(first.settings), settings, square_y, ICON_SQUARE, ICON_SQUARE, "settings");
+    let row_x = left + part + COLUMNS_GAP - INSET;
+    rect_is(r(ids.server_row), row_x, below, part + 2.0 * INSET, row_h, "server row");
+    let (start, settings) = squares(row_x);
+    rect_is(r(ids.server_play), start, square_y, ICON_SQUARE, ICON_SQUARE, "start");
+    rect_is(r(ids.server_settings), settings, square_y, ICON_SQUARE, ICON_SQUARE, "server settings");
 }
 
 fn texts(list: &nui_base::DrawList) -> Vec<(Vec2, String)> {
