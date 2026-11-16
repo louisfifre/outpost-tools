@@ -7,7 +7,7 @@
 //! preview.json there the page shows no preview) fills the stage (step 14).
 //! A run (step 17): Generate runs the engine (world_preview::run) on the world-preview repository --engine names (by
 //! default WORLD_PREVIEW_DIR; without either, Generate says the run failed), with --pack if given. Everything a run or an export writes (its out
-//! folder, its log, the learned pace, the exports) goes under --runs, which must lie inside this repository's
+//! folder, its log, the learned pace, the exports) goes under --runs, which must lie inside this crate's
 //! target\tmp for now: the rule is lifted once a real run has been exercised. The data of --data is never written.
 //! The colours (step 18): the window follows the system's light or dark setting and switches live, as the page does
 //! with `prefers-color-scheme`; `--theme dark` or `light` fixes them (`--light` is `--theme light`). A picture is dark
@@ -85,8 +85,8 @@ fn apply_view(state: &mut PreviewState, key: &str) {
     }
 }
 
-/// The only place a run may write for now: this repository's target\tmp.
-const TMP: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/tmp");
+/// The only place a run may write for now: this crate's target\tmp.
+const TMP: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/target/tmp");
 
 /// A canonical path in the plain form PowerShell and the generator take (without the `\\?\` prefix).
 fn plain(p: &Path) -> PathBuf {

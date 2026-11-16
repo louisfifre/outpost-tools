@@ -131,7 +131,7 @@ mod tests {
             frames += 1;
             assert!(frames < 600, "{name}: never came to rest");
         }
-        let path = format!("{}/../../target/tmp/interact-{name}.png", env!("CARGO_MANIFEST_DIR"));
+        let path = format!("{}/target/tmp/interact-{name}.png", env!("CARGO_MANIFEST_DIR"));
         std::fs::create_dir_all(Path::new(&path).parent().unwrap()).unwrap();
         std::fs::write(&path, mere_png::encode(SIZE.0, SIZE.1, &r.read_rgba().unwrap())).unwrap();
     }
@@ -224,7 +224,7 @@ mod tests {
         while app.frame(&mut r, 1.0 / 60.0) {}
         let small = r.read_rgba().unwrap();
         assert_eq!(small.len(), 480 * 600 * 4);
-        let path = format!("{}/../../target/tmp/interact-6-resized.png", env!("CARGO_MANIFEST_DIR"));
+        let path = format!("{}/target/tmp/interact-6-resized.png", env!("CARGO_MANIFEST_DIR"));
         std::fs::write(&path, mere_png::encode(480, 600, &small)).unwrap();
     }
 

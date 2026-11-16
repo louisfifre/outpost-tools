@@ -451,7 +451,7 @@ mod tests {
         p.learn(256, 32, 10.0, None);
         p.learn(256, 32, 10.0, Some(-1.0));
         assert_eq!(p, before);
-        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/tmp")).join("run_unit");
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/tmp")).join("run_unit");
         let file = dir.join("pace.json");
         p.learn(128, 64, 30.5, Some(20.25));
         p.save(&file).unwrap();
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn u9_progress_file() {
-        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/tmp")).join("run_unit_progress");
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/tmp")).join("run_unit_progress");
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(read_progress(&dir.join("nowhere")), None);
         std::fs::write(dir.join("progress.json"), r#"{"pass":"map","step":16,"done":4,"total":10}"#).unwrap();

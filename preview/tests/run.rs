@@ -253,7 +253,7 @@ fn r6_quitting_stops_the_run_under_way() {
 #[test]
 fn r7_the_stub_writes_nowhere_but_target_tmp() {
     let Some(_) = world() else { return };
-    let outside = plain(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target").as_path()).join("guard-outside");
+    let outside = plain(Path::new(env!("CARGO_MANIFEST_DIR")).join("target").as_path()).join("guard-outside");
     let _ = std::fs::remove_dir_all(&outside);
     let mut options = world_preview::Options::new(outside.clone());
     options.out = Some(outside.clone());

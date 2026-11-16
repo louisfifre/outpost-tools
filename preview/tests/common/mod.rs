@@ -1,5 +1,5 @@
 //! What the run and export tests share: the real data they need (a test says "skipped" without it), a stand-in for
-//! the engine, a root folder of their own under the repository's target\tmp, and the application driven offscreen
+//! the engine, a root folder of their own under the crate's target\tmp, and the application driven offscreen
 //! by events and frames as the window would.
 #![allow(dead_code)]
 
@@ -35,9 +35,9 @@ pub fn plain(p: &Path) -> PathBuf {
     PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s).to_string())
 }
 
-/// `<workspace>/target/tmp`, made.
+/// `<crate>/target/tmp`, made.
 pub fn tmp() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tmp");
     std::fs::create_dir_all(&dir).unwrap();
     plain(&dir)
 }
