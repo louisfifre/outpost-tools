@@ -1,5 +1,5 @@
 //! The launcher's Home (index.html lines 247-327 and the script 447-713): the profiles and the dev server, in two
-//! parts that fill the window, drawn with nui-ui and answered by the api through a `Bridge`.
+//! parts that fill the window, drawn with mere-ui and answered by the api through a `Bridge`.
 //!
 //! Layout is the page's without its breakpoints: two columns that widen continuously, with no switch, up to the
 //! page's cap of 1120 px (`COLUMNS_MAX`), then stay centred. The window's least is the preview's `MIN_SIZE` (about
@@ -10,10 +10,10 @@
 
 use std::any::Any;
 
-use nui_base::Vec2;
-use nui_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
-use nui_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
-use nui_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
+use mere_base::Vec2;
+use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
+use mere_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
+use mere_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
 
 /// The widest the two columns grow together, the page's cap (index.html line 145).
 pub const COLUMNS_MAX: f32 = 1120.0;
@@ -603,7 +603,7 @@ impl LauncherHome {
     }
 
     /// The lit box of a row under the pointer.
-    fn row_lit(ui: &Ui) -> nui_base::Color {
+    fn row_lit(ui: &Ui) -> mere_base::Color {
         let t = *ui.theme();
         mix(t.text, FADE_TINT, t.ground)
     }
@@ -734,7 +734,7 @@ impl LauncherHome {
         });
     }
 
-    fn folder_row(ui: &mut Ui, path: &str) -> nui_ui::Resp {
+    fn folder_row(ui: &mut Ui, path: &str) -> mere_ui::Resp {
         let mut resp = None;
         ui.node("folder", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
             ui.node("path", Style { grow: 1.0, min_w: Dim::Px(0.0), ..Style::default() }, |ui| ui.ellipsis(path, TextLook::body(Tone::Text)));
@@ -895,7 +895,7 @@ impl Home for LauncherHome {
             ..Style::default()
         };
         let mut y = self.scroll_y;
-        let r = ui.scroll("home", &mut y, scroll, nui_ui::ScrollOpts { fade: 0.0 }, |ui| {
+        let r = ui.scroll("home", &mut y, scroll, mere_ui::ScrollOpts { fade: 0.0 }, |ui| {
             // `.page` (line 145) without its cap and its 860 padding change; the top is the preview's.
             let page = Style { column: true, pad: PAGE.pad, ..Style::default() };
             self.ids.page = ui.node("homePage", page, |ui| {
@@ -995,7 +995,7 @@ impl Home for LauncherHome {
                 self.load_server();
                 wanted = true;
             }
-            // A stand-in for the page's reload on window focus (line 894): nui_base has no such event.
+            // A stand-in for the page's reload on window focus (line 894): mere_base has no such event.
             if now >= self.next_profiles {
                 self.load_profiles();
                 wanted = true;

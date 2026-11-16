@@ -9,9 +9,9 @@ use std::sync::Arc;
 use launcher_native::bridge::Bridge;
 use launcher_native::fake::{FakeApi, fixture};
 use launcher_native::home::{Calendar, LauncherHome};
-use nui_base::{App, Button, Cmd, Color, Event, Key, Mods, Rect, Vec2};
-use nui_ui::{Id, Theme};
-use nui_win32::Renderer;
+use mere_base::{App, Button, Cmd, Color, Event, Key, Mods, Rect, Vec2};
+use mere_ui::{Id, Theme};
+use mere_win32::Renderer;
 use preview::PreviewApp;
 use preview::world::World;
 use serde_json::{Value, json};
@@ -157,7 +157,7 @@ impl Rig {
     pub fn write(&mut self, name: &str) {
         let rgba = self.r.read_rgba().unwrap();
         let path = out_dir().join(name);
-        std::fs::write(&path, nui_png::encode(self.w, self.h, &rgba)).unwrap();
+        std::fs::write(&path, mere_png::encode(self.w, self.h, &rgba)).unwrap();
         println!("wrote {}", path.display());
     }
 }

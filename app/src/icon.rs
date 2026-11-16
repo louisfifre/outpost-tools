@@ -1,5 +1,5 @@
 // The launcher's icon, the grass block seen from above, as pixels: three faces of a cube. It lives in the library,
-// with no window in it, so the page launcher (tao) and the native one (nui-win32) show the same picture in the
+// with no window in it, so the page launcher (tao) and the native one (mere-win32) show the same picture in the
 // taskbar, each handing these pixels to its own window.
 
 /// The side of the square picture, in pixels.

@@ -1,6 +1,6 @@
 //! The pictures of the native launcher: Home over a sweep of widths, light, its settings and menu, a launch, a
 //! short window, and the world preview tool inside it. They go to target\tmp; the ones worth keeping are copied
-//! into rust-native-ui's docs\shots. Every picture comes from the fake api and the fixed date.
+//! into mere-ui's docs\shots. Every picture comes from the fake api and the fixed date.
 
 mod common;
 
@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use common::*;
 use launcher_native::fake::fixture;
-use nui_base::{App, DrawList, Gfx, Vec2};
-use nui_ui::Theme;
-use nui_win32::Renderer;
+use mere_base::{App, DrawList, Gfx, Vec2};
+use mere_ui::Theme;
+use mere_win32::Renderer;
 use preview::{Mode, PreviewState, picture_with_home};
 use serde_json::json;
 
@@ -24,7 +24,7 @@ fn draw(list: &DrawList, theme: Theme, w: u32, h: u32) -> Vec<u8> {
 
 fn save(rgba: &[u8], w: u32, h: u32, name: &str) {
     let path = out_dir().join(name);
-    std::fs::write(&path, nui_png::encode(w, h, rgba)).unwrap();
+    std::fs::write(&path, mere_png::encode(w, h, rgba)).unwrap();
     println!("wrote {}", path.display());
 }
 
@@ -48,7 +48,7 @@ fn home_pictures_over_the_sweep() {
     let rgba = home_picture(1400, 940, false);
     save(&rgba, 1400, 940, "home_1400_light.png");
     // The light ground, the light theme's `bg-ground`.
-    let g = nui_ui::tokens::palette::GREY_50;
+    let g = mere_ui::tokens::palette::GREY_50;
     assert_eq!(&rgba[..3], &[(g >> 16) as u8, (g >> 8) as u8, g as u8]);
 }
 
@@ -88,7 +88,7 @@ fn the_settings_with_the_menu_open() {
     let b = rig.rect(rig.home().ids().open_on);
     rig.click_at(centre(b));
     // "a server", the third row, under the pointer.
-    rig.hover_at(Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + 2.0 * nui_ui::MENU_ROW + 10.0));
+    rig.hover_at(Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + 2.0 * mere_ui::MENU_ROW + 10.0));
     assert!(rig.says("a server") && rig.says("the game menu"));
     rig.write("home_settings_1400.png");
 }
@@ -123,7 +123,7 @@ fn preview_rig(w: u32, h: u32, dark: bool) -> Option<Rig> {
     let mut r = Renderer::offscreen(pw, ph, 1.0).unwrap();
     let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), Some(world), None, home_over(api.clone()), true);
     app.start(&mut r);
-    app.event(nui_base::Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
+    app.event(mere_base::Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
     app.set_clock(Some(1.0));
     app.state_mut().mode = Mode::Preview;
     let mut rig = Rig { app, r, api, theme, w: pw, h: ph, clock: 1.0 };

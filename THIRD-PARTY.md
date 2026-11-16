@@ -39,4 +39,4 @@ SOFTWARE.
 
 The stop square is a plain square drawn on the same 24-pixel grid.
 
-The native launcher (`native`) draws the same Pixelarticons paths, with the same licence and notice, through rust-native-ui.
+The native launcher (`native`) draws the same Pixelarticons paths, with the same licence and notice, through mere-ui.
