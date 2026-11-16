@@ -12,10 +12,21 @@ use std::any::Any;
 
 use nui_base::Vec2;
 use nui_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
+use nui_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
 use nui_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
 
 /// The widest the two columns grow together, the page's cap (index.html line 145).
 pub const COLUMNS_MAX: f32 = 1120.0;
+/// The gap between the two columns.
+pub const COLUMNS_GAP: f32 = REGION;
+/// The width of the memory field and of the whitelist toggle, which line up: two digits and a unit fit, on the 4 px grid.
+pub const SHORT_W: f32 = 56.0;
+/// The height of the Java arguments' field: room for two lines, on the 4 px grid.
+pub const JAVA_H: f32 = 52.0;
+/// Every control of Home is a control's height, the select's own: a field's and the toggle's padding count the
+/// frame, around the 18 px line (`FRAME + INSET_TIGHT` above and below makes `CONTROL`).
+const PAD_V: f32 = FRAME + INSET_TIGHT;
+const _: () = assert!(18.0 + 2.0 * PAD_V == CONTROL);
 use preview::Home;
 use preview::PAGE;
 use preview::bar::icons;
@@ -560,11 +571,12 @@ impl LauncherHome {
         Style { column: true, min_w: Dim::Px(0.0), ..Style::default() }
     }
 
-    /// `.col header` (line 154): a row of 33 px and a hairline.
+    /// `.col header` (line 154): a row as tall as the back button's square, so that the header keeps its height
+    /// with or without it, and a hairline.
     fn header(&mut self, ui: &mut Ui, key: &str, back: bool, title: &str) -> Id {
         let t = *ui.theme();
         ui.node(key, Style { column: true, ..Style::default() }, |ui| {
-            ui.node("bar", Style { min_h: Dim::Px(33.0), align_items: Align::Center, gap: Vec2::new(8.0, 0.0), ..Style::default() }, |ui| {
+            ui.node("bar", Style { min_h: Dim::Px(ICON_SQUARE), align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                 if back {
                     let r = ui.icon_button("back", own_icons::back(), IconLook::Bare, IconOpts::default());
                     ui.title(r.id, text::BACK);
@@ -575,30 +587,37 @@ impl LauncherHome {
                 }
                 ui.text(&title.to_uppercase(), TextLook::heading());
             });
-            ui.fill(Style { h: Dim::Px(1.0), shrink: 0.0, ..Style::default() }, t.edge);
+            ui.fill(Style { h: Dim::Px(FRAME), shrink: 0.0, ..Style::default() }, t.edge);
         })
     }
 
-    /// A `.profile` row's look (lines 172-176).
+    /// A `.profile` row's look (lines 172-176): `inset` all round, pulled out by as much on each side so that its
+    /// words line up with the column while its lit box overhangs it.
     fn row_style() -> Style {
         Style {
             align_items: Align::Center,
-            pad: Edges::vh(10.0, 8.0),
-            margin: Margin { left: Side::Px(-8.0), right: Side::Px(-8.0), ..Margin::default() },
+            pad: Edges::vh(INSET, INSET),
+            margin: Margin { left: Side::Px(-INSET), right: Side::Px(-INSET), ..Margin::default() },
             ..Style::default()
         }
     }
 
+    /// The lit box of a row under the pointer.
+    fn row_lit(ui: &Ui) -> nui_base::Color {
+        let t = *ui.theme();
+        mix(t.text, FADE_TINT, t.ground)
+    }
+
     fn who(ui: &mut Ui, name: &str, line: &str, now: bool) {
-        ui.node("who", Style { column: true, grow: 1.0, min_w: Dim::Px(0.0), pad: Edges::new(0.0, 10.0, 0.0, 0.0), ..Style::default() }, |ui| {
+        ui.node("who", Style { column: true, grow: 1.0, min_w: Dim::Px(0.0), pad: Edges::new(0.0, GAP_WIDE, 0.0, 0.0), ..Style::default() }, |ui| {
             ui.ellipsis(name, TextLook { size: 13.0, line: 19.5, ..TextLook::body(Tone::Text) });
             ui.paragraph(line, TextLook::small(if now { Tone::Text } else { Tone::Muted }));
         });
     }
 
-    /// A label above its field (line 184): muted, 4 px under it.
+    /// A label above its field (line 184): muted, `gap-tight` over it.
     fn label(ui: &mut Ui, words: &str) {
-        ui.node("label", Style { margin: Margin { bottom: Side::Px(4.0), ..Margin::default() }, ..Style::default() }, |ui| ui.text(words, TextLook::body(Tone::Muted)));
+        ui.node("label", Style { margin: Margin { bottom: Side::Px(GAP_TIGHT), ..Margin::default() }, ..Style::default() }, |ui| ui.text(words, TextLook::body(Tone::Muted)));
     }
 
     fn field(ui: &mut Ui, key: &str, words: &str, body: impl FnOnce(&mut Ui)) {
@@ -609,9 +628,8 @@ impl LauncherHome {
     }
 
     fn profiles_part(&mut self, ui: &mut Ui) {
-        let t = *ui.theme();
         let clock = ui.clock();
-        let lit = mix(t.text, 0.06, t.ground);
+        let lit = Self::row_lit(ui);
         match self.current.clone() {
             None => {
                 self.ids.profiles_header = self.header(ui, "header", false, text::PROFILES_GROUP);
@@ -645,7 +663,7 @@ impl LauncherHome {
         }
         if !self.status.is_empty() {
             let note = self.status.clone();
-            self.ids.note = ui.node("note", Style { margin: Margin { top: Side::Px(12.0), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
+            self.ids.note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
         }
     }
 
@@ -654,7 +672,7 @@ impl LauncherHome {
         let locked = self.locked;
         let max = self.mem_max();
         let labels: Vec<String> = self.form.options.iter().map(|(_, l)| l.clone()).collect();
-        let fields = Style { column: true, gap: Vec2::new(0.0, 12.0), pad: Edges::new(12.0, 0.0, 0.0, 0.0), ..Style::default() };
+        let fields = Style { column: true, gap: Vec2::new(0.0, GAP_WIDE), pad: Edges::new(GAP_WIDE, 0.0, 0.0, 0.0), ..Style::default() };
         ui.node("fields", fields, |ui| {
             Self::field(ui, "openOn", text::OPEN_ON, |ui| {
                 let mut at = self.form.open_on;
@@ -670,7 +688,7 @@ impl LauncherHome {
                     self.wants.push(Want::SaveProfile);
                 }
                 if is_server {
-                    ui.node("address", Style { margin: Margin { top: Side::Px(6.0), ..Margin::default() }, ..Style::default() }, |ui| {
+                    ui.node("address", Style { margin: Margin { top: Side::Px(GAP_TIGHT), ..Margin::default() }, ..Style::default() }, |ui| {
                         let before = self.form.address.clone();
                         let opts = FieldOpts { placeholder: text::SERVER_ADDRESS, width: Dim::Pct(100.0), focus: std::mem::take(&mut self.focus_address), disabled: locked, ..FieldOpts::default() };
                         let r = ui.text_field("field", &mut self.form.address, opts);
@@ -682,10 +700,10 @@ impl LauncherHome {
                 }
             });
             Self::field(ui, "memory", text::MEMORY, |ui| {
-                ui.node("memory", Style { align_items: Align::Center, gap: Vec2::new(8.0, 0.0), ..Style::default() }, |ui| {
+                ui.node("memory", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                     let before = self.form.memory;
                     let spec = NumberSpec { min: 2.0, max, step: 1.0 };
-                    let r = ui.number_with("field", &mut self.form.memory, spec, NumberOpts { width: Dim::Px(57.6), right: true, pad_v: 4.0, disabled: locked });
+                    let r = ui.number_with("field", &mut self.form.memory, spec, NumberOpts { width: Dim::Px(SHORT_W), right: true, pad_v: PAD_V, disabled: locked });
                     self.ids.memory = r.resp.id;
                     if r.blurred {
                         self.form.memory = round_clamp(self.form.memory, 2.0, max);
@@ -698,7 +716,7 @@ impl LauncherHome {
             });
             Self::field(ui, "java", text::JAVA_ARGS, |ui| {
                 let before = self.form.java.clone();
-                let opts = FieldOpts { width: Dim::Pct(100.0), height: Dim::Px(52.0), disabled: locked, ..FieldOpts::default() };
+                let opts = FieldOpts { width: Dim::Pct(100.0), height: Dim::Px(JAVA_H), disabled: locked, ..FieldOpts::default() };
                 let r = ui.text_field("field", &mut self.form.java, opts);
                 self.ids.java = r.resp.id;
                 if left(&mut self.tracks.java, &before, &self.form.java, &r) {
@@ -718,7 +736,7 @@ impl LauncherHome {
 
     fn folder_row(ui: &mut Ui, path: &str) -> nui_ui::Resp {
         let mut resp = None;
-        ui.node("folder", Style { align_items: Align::Center, gap: Vec2::new(8.0, 0.0), ..Style::default() }, |ui| {
+        ui.node("folder", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
             ui.node("path", Style { grow: 1.0, min_w: Dim::Px(0.0), ..Style::default() }, |ui| ui.ellipsis(path, TextLook::body(Tone::Text)));
             resp = Some(ui.button_with("open", text::OPEN, ButtonLook::Underlined, ButtonOpts::default()));
         });
@@ -727,8 +745,7 @@ impl LauncherHome {
 
     /// The server's part (lines 285-324).
     fn server_part(&mut self, ui: &mut Ui) {
-        let t = *ui.theme();
-        let lit = mix(t.text, 0.06, t.ground);
+        let lit = Self::row_lit(ui);
         self.ids.server_header = self.header(ui, "header", false, text::SERVER_GROUP);
         let line = self.server_line();
         let (running, busy) = self.server.as_ref().map_or((false, false), |s| (s.state == "running", s.busy()));
@@ -769,7 +786,7 @@ impl LauncherHome {
         }
         if !self.server_note.is_empty() {
             let note = self.server_note.clone();
-            self.ids.server_note = ui.node("note", Style { margin: Margin { top: Side::Px(12.0), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
+            self.ids.server_note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
         }
     }
 
@@ -779,15 +796,16 @@ impl LauncherHome {
         let (busy, props) = self.server.as_ref().map_or((false, false), |s| (s.busy(), s.props.is_some()));
         let off = busy || !props;
         let dir = self.server.as_ref().map(|s| s.dir.clone()).unwrap_or_default();
-        let fields = Style { column: true, gap: Vec2::new(0.0, 12.0), pad: Edges::new(12.0, 0.0, 0.0, 0.0), ..Style::default() };
+        let fields = Style { column: true, gap: Vec2::new(0.0, GAP_WIDE), pad: Edges::new(GAP_WIDE, 0.0, 0.0, 0.0), ..Style::default() };
         let half = Style { column: true, grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
-        let pair = Style { gap: Vec2::new(16.0, 0.0), ..Style::default() };
+        // The pairs keep the fields' own vertical gap across, so the fields stand on one even grid.
+        let pair = Style { gap: Vec2::new(GAP_WIDE, 0.0), ..Style::default() };
         ui.node("fields", fields, |ui| {
             Self::field(ui, "memory", text::MEMORY, |ui| {
-                ui.node("memory", Style { align_items: Align::Center, gap: Vec2::new(8.0, 0.0), ..Style::default() }, |ui| {
+                ui.node("memory", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                     let before = self.sform.memory;
                     let spec = NumberSpec { min: 2.0, max, step: 1.0 };
-                    let r = ui.number_with("field", &mut self.sform.memory, spec, NumberOpts { width: Dim::Px(57.6), right: true, pad_v: 4.0, disabled: busy });
+                    let r = ui.number_with("field", &mut self.sform.memory, spec, NumberOpts { width: Dim::Px(SHORT_W), right: true, pad_v: PAD_V, disabled: busy });
                     self.ids.s_memory = r.resp.id;
                     if r.blurred {
                         self.sform.memory = round_clamp(self.sform.memory, 2.0, max);
@@ -800,7 +818,7 @@ impl LauncherHome {
             });
             Self::field(ui, "java", text::JAVA_ARGS, |ui| {
                 let before = self.sform.java.clone();
-                let opts = FieldOpts { width: Dim::Pct(100.0), height: Dim::Px(52.0), disabled: busy, ..FieldOpts::default() };
+                let opts = FieldOpts { width: Dim::Pct(100.0), height: Dim::Px(JAVA_H), disabled: busy, ..FieldOpts::default() };
                 let r = ui.text_field("field", &mut self.sform.java, opts);
                 self.ids.s_java = r.resp.id;
                 if left(&mut self.tracks.s_java, &before, &self.sform.java, &r) {
@@ -814,7 +832,7 @@ impl LauncherHome {
                         Self::label(ui, $words);
                         let before = self.sform.$value;
                         let spec = NumberSpec { min: $min, max: $max, step: 1.0 };
-                        let r = ui.number_with("field", &mut self.sform.$value, spec, NumberOpts { width: Dim::Pct(100.0), right: false, pad_v: 4.0, disabled: off });
+                        let r = ui.number_with("field", &mut self.sform.$value, spec, NumberOpts { width: Dim::Pct(100.0), right: false, pad_v: PAD_V, disabled: off });
                         self.ids.$id = r.resp.id;
                         if r.blurred {
                             self.sform.$value = round_clamp(self.sform.$value, $min, $max);
@@ -834,9 +852,9 @@ impl LauncherHome {
                 number!(ui, "port", text::PORT, 1024.0, 65535.0, port, s_port, s_port);
             });
             // `.toggle` (lines 202-205).
-            ui.node("toggle", Style { align_items: Align::Center, gap: Vec2::new(10.0, 0.0), ..Style::default() }, |ui| {
+            ui.node("toggle", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                 ui.node("label", Style { grow: 1.0, ..Style::default() }, |ui| ui.text(text::WHITELIST, TextLook::body(Tone::Muted)));
-                let opts = ToggleOpts { min_w: Dim::Px(57.6), pad: Edges::vh(4.0, 7.0), disabled: off };
+                let opts = ToggleOpts { min_w: Dim::Px(SHORT_W), pad: Edges::vh(PAD_V, FRAME + INSET), disabled: off };
                 let r = ui.toggle_with("whitelist", &mut self.sform.whitelist, text::ON, text::OFF, opts);
                 self.ids.s_whitelist = r.id;
                 if r.clicked {
@@ -886,7 +904,7 @@ impl Home for LauncherHome {
                 let columns = Style {
                     display: Display::Grid,
                     cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]),
-                    gap: Vec2::new(48.0, 0.0),
+                    gap: Vec2::new(COLUMNS_GAP, 0.0),
                     align_items: Align::Start,
                     w: Dim::Pct(100.0),
                     max_w: Dim::Px(COLUMNS_MAX),
