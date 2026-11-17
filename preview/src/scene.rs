@@ -33,23 +33,56 @@ fn grid(world: &World) -> (usize, usize, f32) {
     (skip, m, side)
 }
 
-/// The land on `grid`'s vertices. The square is centred on the origin, so the camera can turn around it.
-pub fn land(world: &World) -> Mesh {
+/// Vertex (col, row) of the grid, on sample (col * skip, row * skip): where it stands, and the middle of that
+/// sample's texel, so each cell of the map lies under its own vertex.
+fn point(world: &World, col: usize, row: usize) -> Vertex {
     let n = world.samples;
     let step = world.step as f32;
-    let (skip, m, side) = grid(world);
-    let mut vertices = Vec::with_capacity(m * m);
+    let (skip, _, side) = grid(world);
+    let (sc, sr) = (col * skip, row * skip);
+    Vertex {
+        pos: [(sc as f32) * step - side / 2.0, world.heights[sr * n + sc] as f32, (sr as f32) * step - side / 2.0],
+        uv: [(sc as f32 + 0.5) / n as f32, (sr as f32 + 0.5) / n as f32],
+    }
+}
+
+/// The grid's (col, row) round its border, one list per side, each walked so that the square lies on the same
+/// hand: north with x growing, east with z growing, south with x falling, west with z falling. A corner is in
+/// two lists.
+fn border(m: usize) -> [Vec<(usize, usize)>; 4] {
+    [
+        (0..m).map(|c| (c, 0)).collect(),
+        (0..m).map(|r| (m - 1, r)).collect(),
+        (0..m).rev().map(|c| (c, m - 1)).collect(),
+        (0..m).rev().map(|r| (0, r)).collect(),
+    ]
+}
+
+/// The sheet of water's height: half a block under the sea level, so ground at that level is land and does not
+/// lie in the sheet.
+fn sea(world: &World) -> f32 {
+    world.sea_level as f32 - 0.5
+}
+
+/// Where the walls round the land end: one step between two samples under both the lowest ground and the sheet
+/// of water. Every wall then reaches under the ground and the sea beside it, and where the border is the lowest
+/// ground the land still reads as a slab, not a sheet.
+pub fn base(world: &World) -> f32 {
+    let (lowest, _) = world.height_range();
+    (lowest as f32).min(sea(world)) - world.step as f32
+}
+
+/// The land on `grid`'s vertices, closed round its border. The square is centred on the origin, so the camera can
+/// turn around it.
+pub fn land(world: &World) -> Mesh {
+    let (_, m, _) = grid(world);
+    let mut vertices = Vec::with_capacity(m * m + 4 * m);
     for row in 0..m {
         for col in 0..m {
-            let (sc, sr) = (col * skip, row * skip);
-            vertices.push(Vertex {
-                pos: [(sc as f32) * step - side / 2.0, world.heights[sr * n + sc] as f32, (sr as f32) * step - side / 2.0],
-                // The middle of the sample's texel, so each cell of the map lies under its own vertex.
-                uv: [(sc as f32 + 0.5) / n as f32, (sr as f32 + 0.5) / n as f32],
-            });
+            vertices.push(point(world, col, row));
         }
     }
-    let mut indices = Vec::with_capacity((m - 1) * (m - 1) * 6);
+    let mut indices = Vec::with_capacity((m - 1) * (m - 1) * 6 + 4 * (m - 1) * 6);
     for row in 0..m - 1 {
         for col in 0..m - 1 {
             let a = (row * m + col) as u32;
@@ -57,19 +90,59 @@ pub fn land(world: &World) -> Mesh {
             indices.extend_from_slice(&[a, c, b, b, c, d]);
         }
     }
+    // The skirt: under each side a wall from the border's vertices down to `base`, its foot keeping the vertex's
+    // uv so the wall takes the colour of the border's texel. Without it the land is an open sheet, and from a low
+    // angle one sees under it. The renderer culls no face; the walls face out all the same, as the land faces up.
+    let base = base(world);
+    for edge in border(m) {
+        let foot = vertices.len() as u32;
+        for &(col, row) in &edge {
+            let top = vertices[row * m + col];
+            vertices.push(Vertex { pos: [top.pos[0], base, top.pos[2]], uv: top.uv });
+        }
+        for k in 0..edge.len() - 1 {
+            let ((ca, ra), (cb, rb)) = (edge[k], edge[k + 1]);
+            let (a, b) = ((ra * m + ca) as u32, (rb * m + cb) as u32);
+            let (a_foot, b_foot) = (foot + k as u32, foot + k as u32 + 1);
+            indices.extend_from_slice(&[a, b, a_foot, b, b_foot, a_foot]);
+        }
+    }
     Mesh { vertices, indices }
 }
 
-/// Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water. The
-/// sheet ends where the land does.
+/// The sheet of water at `sea`, ending where the land does, and closed on its sides: where the border's ground
+/// lies under the sheet, a strip goes from the sheet down to that ground, meeting the land's skirt there.
 pub fn water(world: &World) -> Mesh {
-    let half = grid(world).2 / 2.0;
-    let y = world.sea_level as f32 - 0.5;
-    let v = |x: f32, z: f32| Vertex { pos: [x, y, z], uv: [0.0, 0.0] };
-    Mesh {
-        vertices: vec![v(-half, -half), v(half, -half), v(-half, half), v(half, half)],
-        indices: vec![0, 2, 1, 1, 2, 3],
+    let (_, m, side) = grid(world);
+    let half = side / 2.0;
+    let y = sea(world);
+    let at = |p: [f32; 3]| Vertex { pos: p, uv: [0.0, 0.0] };
+    let mut vertices = vec![at([-half, y, -half]), at([half, y, -half]), at([-half, y, half]), at([half, y, half])];
+    let mut indices = vec![0, 2, 1, 1, 2, 3];
+    // Each piece is added with its own vertices, in the order that faces out, as the land's skirt does.
+    let mut add = |points: &[[f32; 3]], order: &[u32]| {
+        let first = vertices.len() as u32;
+        vertices.extend(points.iter().map(|&p| at(p)));
+        indices.extend(order.iter().map(|i| first + i));
+    };
+    for edge in border(m) {
+        for k in 0..edge.len() - 1 {
+            let (p, q) = (point(world, edge[k].0, edge[k].1).pos, point(world, edge[k + 1].0, edge[k + 1].1).pos);
+            let (p_top, q_top) = ([p[0], y, p[2]], [q[0], y, q[2]]);
+            // Where the ground between p and q, a straight line as the land's border draws it, meets the sheet.
+            let cross = || {
+                let t = (y - p[1]) / (q[1] - p[1]);
+                [p[0] + (q[0] - p[0]) * t, y, p[2] + (q[2] - p[2]) * t]
+            };
+            match (p[1] < y, q[1] < y) {
+                (true, true) => add(&[p_top, q_top, p, q], &[0, 1, 2, 1, 3, 2]),
+                (true, false) => add(&[p_top, cross(), p], &[0, 1, 2]),
+                (false, true) => add(&[cross(), q_top, q], &[0, 1, 2]),
+                (false, false) => {}
+            }
+        }
     }
+    Mesh { vertices, indices }
 }
 
 /// The ground's height under (x, z) of the centred square, between the four nearest vertices of the mesh as its
@@ -169,8 +242,9 @@ mod tests {
     #[test]
     fn land_has_a_vertex_per_sample_and_two_triangles_per_cell() {
         let m = land(&world(256));
-        assert_eq!(m.vertices.len(), 256 * 256);
-        assert_eq!(m.indices.len(), 255 * 255 * 6);
+        // The grid, then a foot under each vertex of the four sides and two triangles per segment of side.
+        assert_eq!(m.vertices.len(), 256 * 256 + 4 * 256);
+        assert_eq!(m.indices.len(), 255 * 255 * 6 + 4 * 255 * 6);
         assert!(m.indices.iter().all(|&i| (i as usize) < m.vertices.len()));
         // Centred on the origin, 255 steps across.
         assert_eq!(m.vertices[0].pos[0], -255.0 * 16.0 / 2.0);
@@ -180,16 +254,118 @@ mod tests {
 
     #[test]
     fn a_wide_grid_is_thinned() {
-        let m = land(&world(1024));
-        assert_eq!(m.vertices.len(), 512 * 512);
+        let w = world(1024);
+        let m = land(&w);
+        assert_eq!(m.vertices.len(), 512 * 512 + 4 * 512);
+        assert_eq!(m.indices.len(), 511 * 511 * 6 + 4 * 511 * 6);
+        assert!(m.indices.iter().all(|&i| (i as usize) < m.vertices.len()));
+        let b = base(&w);
+        assert!(m.vertices[512 * 512..].iter().all(|v| v.pos[1] == b));
+    }
+
+    /// (v1 - v0) x (v2 - v0) of triangle `t`: the side it faces, with the land's winding.
+    fn normal(mesh: &Mesh, t: usize) -> [f32; 3] {
+        let p = |k: usize| mesh.vertices[mesh.indices[3 * t + k] as usize].pos;
+        let (a, b, c) = (p(0), p(1), p(2));
+        let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+        [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]
+    }
+
+    /// Whether triangle `t` is upright and faces away from the square's middle, as a wall round it does.
+    fn faces_out(mesh: &Mesh, t: usize) -> bool {
+        let n = normal(mesh, t);
+        let at = |k: usize| mesh.vertices[mesh.indices[3 * t + k] as usize].pos;
+        let middle = [(at(0)[0] + at(1)[0] + at(2)[0]) / 3.0, (at(0)[2] + at(1)[2] + at(2)[2]) / 3.0];
+        n[1] == 0.0 && n[0] * middle[0] + n[2] * middle[1] > 0.0
+    }
+
+    /// Whether (x, z) lies on the border of a square `half` from the middle.
+    fn on_border(p: [f32; 3], half: f32) -> bool {
+        p[0].abs() == half || p[2].abs() == half
+    }
+
+    #[test]
+    fn the_land_is_closed_by_walls_down_to_the_base() {
+        let w = world(16);
+        let (m, half) = (16, 15.0 * 16.0 / 2.0);
+        let land = land(&w);
+        let (grid_vertices, grid_indices) = (m * m, (m - 1) * (m - 1) * 6);
+        assert_eq!(land.vertices.len(), grid_vertices + 4 * m);
+        assert_eq!(land.indices.len(), grid_indices + 4 * (m - 1) * 6);
+        assert!(land.indices.iter().all(|&i| (i as usize) < land.vertices.len()));
+        // The base is under the lowest ground and under the sheet of water.
+        let b = base(&w);
+        assert!(b < w.height_range().0 as f32 && b < water(&w).vertices[0].pos[1], "base {b}");
+        // Every foot is at the base, straight under a vertex of the border, with that vertex's uv.
+        for foot in &land.vertices[grid_vertices..] {
+            assert_eq!(foot.pos[1], b);
+            let top = land.vertices[..grid_vertices]
+                .iter()
+                .find(|v| (v.pos[0], v.pos[2]) == (foot.pos[0], foot.pos[2]))
+                .expect("a vertex of the grid above the foot");
+            assert!(on_border(top.pos, half), "{:?} is on the border", top.pos);
+            assert_eq!(top.uv, foot.uv);
+        }
+        // The land faces up; each wall triangle faces out, wound the same way.
+        assert!((0..grid_indices / 3).all(|t| normal(&land, t)[1] > 0.0));
+        assert!((grid_indices / 3..land.indices.len() / 3).all(|t| faces_out(&land, t)));
+    }
+
+    #[test]
+    fn the_skirt_leaves_the_cameras_ground_on_top_of_the_land() {
+        let w = world(16);
+        let land = land(&w);
+        let half = 15.0 * 16.0 / 2.0;
+        // At every vertex of the grid, the border's included, the ground is the vertex's height, never the base.
+        for v in &land.vertices[..16 * 16] {
+            assert_eq!(ground_at(&w, v.pos[0], v.pos[2]), Some(v.pos[1]));
+        }
+        assert_eq!(ground_at(&w, half + 1.0, 0.0), None);
+    }
+
+    #[test]
+    fn a_sea_over_the_whole_border_is_closed_down_to_the_ground() {
+        let mut w = world(16);
+        w.heights = vec![40; 16 * 16];
+        let (water, land) = (water(&w), land(&w));
+        let half = 15.0 * 16.0 / 2.0;
+        // The sheet, then a quad on every segment of the four sides.
+        assert_eq!(water.indices.len(), 6 + 4 * 15 * 6);
+        assert!(water.indices.iter().all(|&i| (i as usize) < water.vertices.len()));
+        for v in &water.vertices[4..] {
+            assert!(on_border(v.pos, half), "{:?} is on the border", v.pos);
+            // From the sheet down to the ground, whose points are the land's own border.
+            assert!(v.pos[1] == 62.5 || land.vertices.iter().any(|l| l.pos == v.pos), "{:?}", v.pos);
+        }
+        assert!((2..water.indices.len() / 3).all(|t| faces_out(&water, t)));
+    }
+
+    #[test]
+    fn land_over_the_sea_has_no_strip_and_a_shore_has_a_triangle() {
+        let mut w = world(16);
+        w.heights = vec![70; 16 * 16];
+        assert_eq!(water(&w).indices.len(), 6);
+        // The five western columns at 70, the rest at 40: the ground crosses the sea between columns 4 and 5.
+        w.heights = (0..16 * 16).map(|i| if i % 16 < 5 { 70 } else { 40 }).collect();
+        let water = water(&w);
+        // North and south: ten segments under the sea and the shore's triangle each; east fifteen; west none.
+        assert_eq!(water.indices.len(), 6 + 2 * (10 * 6 + 3) + 15 * 6);
+        assert!(water.indices.iter().all(|&i| (i as usize) < water.vertices.len()));
+        // From 70 to 40 the ground meets 62.5 a quarter of the way: 4 blocks east of column 4, at x -56.
+        let half = 15.0 * 16.0 / 2.0;
+        for z in [-half, half] {
+            assert!(water.vertices.iter().any(|v| v.pos == [-52.0, 62.5, z]), "the shore's point at z {z}");
+        }
+        assert!((2..water.indices.len() / 3).all(|t| faces_out(&water, t)));
     }
 
     #[test]
     fn water_is_one_quad_below_the_sea_level() {
         let w = world(256);
         let m = water(&w);
-        assert_eq!(m.indices.len(), 6);
-        assert!(m.vertices.iter().all(|v| v.pos[1] == 62.5));
+        // The sheet is the first quad; the strips on its sides come after it.
+        assert_eq!(&m.indices[..6], &[0, 2, 1, 1, 2, 3]);
+        assert!(m.vertices[..4].iter().all(|v| v.pos[1] == 62.5));
         // The sheet ends at the land's last vertex, 255 steps across, not at the area's 256.
         let land = land(&w);
         assert_eq!(m.vertices[3].pos[0], land.vertices[255].pos[0]);
