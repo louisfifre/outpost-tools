@@ -1,6 +1,6 @@
 # outpost-tools
 
-Outpost Tools: one Windows application that holds Minecraft Java Edition tools in one window (a launcher, the world preview, a test server), shipped without any modpack. The product's intention, journeys and limits are written in the private pack repository's `specs/launcher.md`; this repository is the code. It is meant to be public on the maintainer's GitHub under GPL-3, and is not published yet.
+Outpost Tools: one Windows application that holds Minecraft Java Edition tools in one window (a launcher, the world preview, a test server), shipped without any modpack. The product's intention, journeys and limits are written in the private pack repository's `specs/launcher.md`; this repository is the code. It is public on the maintainer's GitHub (github.com/louisfifre/outpost-tools) under GPL-3.
 
 ## Rules that hold everywhere
 
@@ -14,7 +14,9 @@ Outpost Tools: one Windows application that holds Minecraft Java Edition tools i
 
 - `app/`: the shared api and the page launcher. `src/api.rs` routes each request to one file per part in `src/api/` (`profiles.rs`: Prism instances; `dev_server.rs`: the test server; `preview.rs`: the world preview; `key_value.rs`: the settings files). `src/system.rs` holds what is read from Windows (processes, the single-instance lock `Local\outpost-tools`, shared by both forms so they never run together). The binary (feature `window`) is a frameless tao window with a wry page, answering the page through its own protocol with no port; `--serve <port>` serves the page on localhost with no window, for `shots.ps1`.
 - `index.html`: the page launcher's page, found by going up from the program to the first folder that holds it, and read at each load.
-- `native/`: the native launcher, the default one. It is the world preview's window from mere-ui with the launcher's Home, calling `app`'s api in process. It depends on mere-ui by path (`../../mere-ui`), written in its `Cargo.toml` alone. Its tests (`cargo test`) use a fake api and a fixed date. They start no game, server or script, and write their pictures to `native/target/tmp`. The preview's pictures need a world preview out folder at `PREVIEW_DATA_DIR`, and are skipped without it.
+- `native/`: the native launcher, the default one. It is the world preview's window (`preview/`) with the launcher's Home, calling `app`'s api in process. Its `Cargo.toml` takes mere-ui from GitHub by tag and `preview` by the path `../preview`; the README, under Building, says how to patch mere-ui with a local checkout. Its tests (`cargo test`) use a fake api and a fixed date. They start no game, server or script, and write their pictures to `native/target/tmp`. The preview's pictures need a world preview out folder at `PREVIEW_DATA_DIR`, and are skipped without it.
+- `preview/`: the world preview's window, a library for `native/` and a program of its own, over the `world-preview` engine taken from GitHub by tag. Its tests never run the real engine; those that draw a world need an out folder at `PREVIEW_DATA_DIR`, those that compare with the engine's page also need the `world-preview` checkout beside this repository (or `WORLD_PREVIEW_DIR`, or `WORLD_PREVIEW_HTML`) and Node, and one reads the pack repository named by `OUTPOST_REPO`. Each is skipped without what it needs.
+- `relief/`: the preview's relief in 3D, in a window or as a PNG, built on `preview/`. Its test needs an out folder at `PREVIEW_DATA_DIR`, and is skipped without it.
 - `docs/shots/`: the README's pictures, copied from `native/target/tmp`.
 
 ## The pack repository

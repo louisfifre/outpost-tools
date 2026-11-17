@@ -17,15 +17,14 @@ path = "src/main.rs"
 # The api and the system side of the page's launcher, as a library, without its window (tao and wry).
 launcher = { path = "../app", default-features = false }
 serde_json = "1"
-# The toolkit and the world preview, from mere-ui's checkout, the sibling folder of this repository.
-# Cargo takes no variable in a path dependency, so a worktree of this repository that sits elsewhere must point
-# these at mere-ui's folder for as long as it is tried there.
-mere-base = { path = "../../mere-ui/crates/mere-base" }
-mere-layout = { path = "../../mere-ui/crates/mere-layout" }
-mere-ui = { path = "../../mere-ui/crates/mere-ui" }
-mere-win32 = { path = "../../mere-ui/crates/mere-win32" }
-mere-png = { path = "../../mere-ui/crates/mere-png" }
-preview = { path = "../../mere-ui/demos/preview" }
+# The toolkit, pinned by tag.
+mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-layout = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-ui = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.12.0" }
+# The world preview's window, from this repository.
+preview = { path = "../preview" }
 
 [profile.release]
 opt-level = "s"

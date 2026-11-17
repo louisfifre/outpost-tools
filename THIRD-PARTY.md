@@ -40,3 +40,6 @@ SOFTWARE.
 The stop square is a plain square drawn on the same 24-pixel grid.
 
 The native launcher (`native`) draws the same Pixelarticons paths, with the same licence and notice, through mere-ui.
+
+The world preview's window (`preview`) draws them too: the icon paths of `preview/src/bar.rs` are the page's
+(`index.html`), drawn after Pixelarticons, with the same licence and notice.
