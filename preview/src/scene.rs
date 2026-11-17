@@ -111,15 +111,59 @@ pub fn land(world: &World) -> Mesh {
     Mesh { vertices, indices }
 }
 
-/// The sheet of water at `sea`, ending where the land does.
+/// The water at `sea`, only where the ground is under it: over each triangle of the land, the part where the
+/// triangle's ground lies below the sheet, cut along the straight line where it meets it. A sheet over the whole
+/// square would lie under the land wherever the land is higher, and from a low angle past the edge it showed as a
+/// flat blue slab under the land.
 pub fn water(world: &World) -> Mesh {
-    let half = grid(world).2 / 2.0;
+    let (_, m, _) = grid(world);
     let y = sea(world);
-    let v = |x: f32, z: f32| Vertex { pos: [x, y, z], uv: [0.0, 0.0] };
-    Mesh {
-        vertices: vec![v(-half, -half), v(half, -half), v(-half, half), v(half, half)],
-        indices: vec![0, 2, 1, 1, 2, 3],
+    let ground: Vec<[f32; 3]> = (0..m * m).map(|i| point(world, i % m, i / m).pos).collect();
+    let at = |p: [f32; 3]| Vertex { pos: [p[0], y, p[2]], uv: [0.0, 0.0] };
+    // Every vertex of the grid, at the sheet's height, for the triangles wholly under it; the cut ones add their own.
+    let mut vertices: Vec<Vertex> = ground.iter().map(|&p| at(p)).collect();
+    let mut indices = Vec::new();
+    // Where the edge (i, j) meets the sheet, worked out from its lower index first so that the two triangles that
+    // share the edge get the very same point and leave no crack.
+    let cross = |i: usize, j: usize| {
+        let (p, q) = if i < j { (ground[i], ground[j]) } else { (ground[j], ground[i]) };
+        let t = (y - p[1]) / (q[1] - p[1]);
+        [p[0] + (q[0] - p[0]) * t, y, p[2] + (q[2] - p[2]) * t]
+    };
+    for row in 0..m - 1 {
+        for col in 0..m - 1 {
+            let a = row * m + col;
+            let (b, c, d) = (a + 1, a + m, a + m + 1);
+            // The land's own two triangles, in its order, so the water faces up as the land does.
+            for tri in [[a, c, b], [b, c, d]] {
+                let under = tri.map(|i| ground[i][1] < y);
+                if under.iter().all(|&u| u) {
+                    indices.extend(tri.map(|i| i as u32));
+                } else if under.iter().any(|&u| u) {
+                    let mut part = Vec::with_capacity(4);
+                    for k in 0..3 {
+                        let (i, j) = (tri[k], tri[(k + 1) % 3]);
+                        if under[k] {
+                            part.push(ground[i]);
+                        }
+                        if under[k] != under[(k + 1) % 3] {
+                            part.push(cross(i, j));
+                        }
+                    }
+                    let first = vertices.len() as u32;
+                    vertices.extend(part.iter().map(|&p| at(p)));
+                    for k in 1..part.len() as u32 - 1 {
+                        indices.extend_from_slice(&[first, first + k, first + k + 1]);
+                    }
+                }
+            }
+        }
     }
+    // A world without sea still gets a mesh: mere-ui refuses an empty buffer, and would keep the last world's water.
+    if indices.is_empty() {
+        indices.extend_from_slice(&[0, 0, 0]);
+    }
+    Mesh { vertices, indices }
 }
 
 /// The walls that close the land and the sea round the square: under each side, from the higher of the border's
@@ -393,16 +437,36 @@ mod tests {
         assert_eq!(wall_rgba(WallColour::Earth, Color::hex(0xfafaf8)), [r, g, b, 255]);
     }
 
+    /// Twice the area of the water's triangles seen from above, positive when they face up as the land does.
+    fn twice_area_up(mesh: &Mesh) -> f32 {
+        (0..mesh.indices.len() / 3).map(|t| normal(mesh, t)[1]).sum()
+    }
+
     #[test]
-    fn water_is_one_quad_below_the_sea_level() {
-        let w = world(256);
-        let m = water(&w);
-        assert_eq!(m.indices.len(), 6);
-        assert!(m.vertices.iter().all(|v| v.pos[1] == 62.5));
-        // The sheet ends at the land's last vertex, 255 steps across, not at the area's 256.
-        let land = land(&w);
-        assert_eq!(m.vertices[3].pos[0], land.vertices[255].pos[0]);
-        assert_eq!(m.vertices[0].pos[0], land.vertices[0].pos[0]);
+    fn water_lies_only_where_the_ground_is_under_the_sea() {
+        let mut w = world(16);
+        let cell = 16.0f32;
+        // All under: the land's two triangles per cell, at the sheet, on the grid's own vertices.
+        w.heights = vec![40; 16 * 16];
+        let under = water(&w);
+        assert_eq!(under.indices.len(), 15 * 15 * 6);
+        assert!(under.vertices.iter().all(|v| v.pos[1] == 62.5));
+        assert!((twice_area_up(&under) - 2.0 * (15.0 * cell).powi(2)).abs() < 1.0);
+        // All above: no water, only the one empty triangle the renderer needs.
+        w.heights = vec![70; 16 * 16];
+        let none = water(&w);
+        assert_eq!(none.indices, vec![0, 0, 0]);
+        assert_eq!(twice_area_up(&none), 0.0);
+        // The five western columns at 70, the rest at 40: the shore is the line a quarter of the way from column 4
+        // to column 5, x -52, so the sea is 172 blocks wide and 240 long.
+        w.heights = (0..16 * 16).map(|i| if i % 16 < 5 { 70 } else { 40 }).collect();
+        let shore = water(&w);
+        assert!(shore.indices.iter().all(|&i| (i as usize) < shore.vertices.len()));
+        let used: Vec<[f32; 3]> = shore.indices.iter().map(|&i| shore.vertices[i as usize].pos).collect();
+        assert!(used.iter().all(|p| p[1] == 62.5 && p[0] >= -52.0 - 1e-3), "no water over the land");
+        assert!((twice_area_up(&shore) - 2.0 * 172.0 * 240.0).abs() < 1.0, "{}", twice_area_up(&shore));
+        // Every triangle faces up, as the land's do.
+        assert!((0..shore.indices.len() / 3).all(|t| normal(&shore, t)[1] > 0.0));
     }
 
     #[test]
@@ -413,10 +477,14 @@ mod tests {
         let m = 512;
         let (lo, hi) = (land.vertices[0].pos[0], land.vertices[m * m - 1].pos[0]);
         assert_eq!(lo, -hi);
-        // The water's corners are the land's.
+        // The water reaches the land's edges and never passes them.
         let water = water(&w);
-        assert_eq!((water.vertices[0].pos[0], water.vertices[0].pos[2]), (lo, lo));
-        assert_eq!((water.vertices[3].pos[0], water.vertices[3].pos[2]), (hi, hi));
+        let used: Vec<[f32; 3]> = water.indices.iter().map(|&i| water.vertices[i as usize].pos).collect();
+        assert!(used.iter().all(|p| (lo..=hi).contains(&p[0]) && (lo..=hi).contains(&p[2])));
+        for k in [0, 2] {
+            assert_eq!(used.iter().map(|p| p[k]).fold(f32::MAX, f32::min), lo);
+            assert_eq!(used.iter().map(|p| p[k]).fold(f32::MIN, f32::max), hi);
+        }
         // The camera's ground is the height of the vertex under it, at the edges as in the middle.
         for i in [0, 1, m - 1, m, m * m / 2 + 7, m * m - 1] {
             let v = land.vertices[i].pos;
