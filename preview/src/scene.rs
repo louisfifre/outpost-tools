@@ -21,15 +21,23 @@ pub struct Mesh {
     pub indices: Vec<u32>,
 }
 
-/// One vertex per sample up to 512 a side; a wider grid gives one vertex every other sample, which the eye
-/// does not miss at that distance (the page does the same). The square is centred on the origin, so the
-/// camera can turn around it.
+/// The grid the land is drawn on, which the water and the camera's ground follow: one vertex every `skip`
+/// samples, `m` vertices a side, `side` blocks from the first vertex to the last. One vertex per sample up to 512
+/// a side; a wider grid gives one vertex every other sample (or fewer), which the eye does not miss at that
+/// distance (the page does the same).
+fn grid(world: &World) -> (usize, usize, f32) {
+    let n = world.samples;
+    let skip = n.div_ceil(512);
+    let m = (n - 1) / skip + 1;
+    let side = ((m - 1) * skip) as f32 * world.step as f32;
+    (skip, m, side)
+}
+
+/// The land on `grid`'s vertices. The square is centred on the origin, so the camera can turn around it.
 pub fn land(world: &World) -> Mesh {
     let n = world.samples;
     let step = world.step as f32;
-    let skip = n.div_ceil(512);
-    let m = (n - 1) / skip + 1;
-    let side = ((m - 1) * skip) as f32 * step;
+    let (skip, m, side) = grid(world);
     let mut vertices = Vec::with_capacity(m * m);
     for row in 0..m {
         for col in 0..m {
@@ -52,9 +60,10 @@ pub fn land(world: &World) -> Mesh {
     Mesh { vertices, indices }
 }
 
-/// Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water.
+/// Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water. The
+/// sheet ends where the land does.
 pub fn water(world: &World) -> Mesh {
-    let half = world.span() as f32 / 2.0;
+    let half = grid(world).2 / 2.0;
     let y = world.sea_level as f32 - 0.5;
     let v = |x: f32, z: f32| Vertex { pos: [x, y, z], uv: [0.0, 0.0] };
     Mesh {
@@ -63,20 +72,23 @@ pub fn water(world: &World) -> Mesh {
     }
 }
 
-/// The ground's height under (x, z) of the centred square, between the four nearest points as the mesh's
+/// The ground's height under (x, z) of the centred square, between the four nearest vertices of the mesh as its
 /// triangles do closely enough; None outside the square.
 pub fn ground_at(world: &World, x: f32, z: f32) -> Option<f32> {
     let n = world.samples;
-    let step = world.step as f32;
-    let half = (n - 1) as f32 * step / 2.0;
-    let (c, r) = ((x + half) / step, (z + half) / step);
-    let top = (n - 1) as f32;
+    let (skip, m, side) = grid(world);
+    // Blocks between two vertices of the mesh.
+    let cell = (skip as f64 * world.step) as f32;
+    let half = side / 2.0;
+    let (c, r) = ((x + half) / cell, (z + half) / cell);
+    let top = (m - 1) as f32;
     if !(0.0..=top).contains(&c) || !(0.0..=top).contains(&r) {
         return None;
     }
-    let (c0, r0) = ((c.floor() as usize).min(n - 2), (r.floor() as usize).min(n - 2));
+    let (c0, r0) = ((c.floor() as usize).min(m - 2), (r.floor() as usize).min(m - 2));
     let (fc, fr) = (c - c0 as f32, r - r0 as f32);
-    let h = |col: usize, row: usize| world.heights[row * n + col] as f32;
+    // Vertex (col, row) of the mesh stands on sample (col * skip, row * skip).
+    let h = |col: usize, row: usize| world.heights[row * skip * n + col * skip] as f32;
     let north = h(c0, r0) + (h(c0 + 1, r0) - h(c0, r0)) * fc;
     let south = h(c0, r0 + 1) + (h(c0 + 1, r0 + 1) - h(c0, r0 + 1)) * fc;
     Some(north + (south - north) * fr)
@@ -174,10 +186,39 @@ mod tests {
 
     #[test]
     fn water_is_one_quad_below_the_sea_level() {
-        let m = water(&world(256));
+        let w = world(256);
+        let m = water(&w);
         assert_eq!(m.indices.len(), 6);
         assert!(m.vertices.iter().all(|v| v.pos[1] == 62.5));
-        assert_eq!(m.vertices[3].pos[0], 2048.0);
+        // The sheet ends at the land's last vertex, 255 steps across, not at the area's 256.
+        let land = land(&w);
+        assert_eq!(m.vertices[3].pos[0], land.vertices[255].pos[0]);
+        assert_eq!(m.vertices[0].pos[0], land.vertices[0].pos[0]);
+    }
+
+    #[test]
+    fn a_thinned_grid_keeps_the_water_and_the_ground_on_the_drawn_land() {
+        // 2048 samples a side: one vertex every 4 samples, 512 a side, as a real wide run gives.
+        let w = world(2048);
+        let land = land(&w);
+        let m = 512;
+        let (lo, hi) = (land.vertices[0].pos[0], land.vertices[m * m - 1].pos[0]);
+        assert_eq!(lo, -hi);
+        // The water's corners are the land's.
+        let water = water(&w);
+        assert_eq!((water.vertices[0].pos[0], water.vertices[0].pos[2]), (lo, lo));
+        assert_eq!((water.vertices[3].pos[0], water.vertices[3].pos[2]), (hi, hi));
+        // The camera's ground is the height of the vertex under it, at the edges as in the middle.
+        for i in [0, 1, m - 1, m, m * m / 2 + 7, m * m - 1] {
+            let v = land.vertices[i].pos;
+            assert_eq!(ground_at(&w, v[0], v[2]), Some(v[1]), "vertex {i}");
+        }
+        // Halfway between two vertices of a row, the mean of the two, as the mesh's edge draws it.
+        let (a, b) = (land.vertices[m + 3].pos, land.vertices[m + 4].pos);
+        assert_eq!(ground_at(&w, (a[0] + b[0]) / 2.0, a[2]), Some((a[1] + b[1]) / 2.0));
+        // Past the drawn edge there is no ground, even though the area's samples go further.
+        assert_eq!(ground_at(&w, hi + 1.0, 0.0), None);
+        assert_eq!(ground_at(&w, 0.0, lo - 1.0), None);
     }
 
     #[test]
