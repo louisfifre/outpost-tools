@@ -56,6 +56,7 @@ impl App for Relief {
         // The relief tab's picture in the dark theme, with nothing chosen.
         gfx.upload_image(MAP, n, n, &paint(&self.world, View::Height, true, &BTreeSet::new()));
         scene::upload(gfx, &self.world);
+        scene::upload_wall(gfx, GROUND);
     }
 
     fn event(&mut self, event: Event) -> bool {

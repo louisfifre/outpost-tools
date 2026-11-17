@@ -4,13 +4,32 @@
 
 use mere_base::{Color, Gfx, ImageId, Material, MeshId, Orbit, Rect, Vec3, Vertex};
 
+use crate::colour::steep_colour;
 use crate::paint::View;
 use crate::world::World;
 
 pub const LAND_MESH: MeshId = MeshId(15);
 pub const WATER_MESH: MeshId = MeshId(16);
+pub const WALL_MESH: MeshId = MeshId(19);
+/// The walls' one pixel of colour.
+pub const WALL_IMAGE: ImageId = ImageId(20);
 /// The page's water (line 1901).
 pub const WATER_COLOUR: Color = Color::hex(0x2f5c9e);
+
+/// What the walls round the land are painted.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum WallColour {
+    /// The stage's own ground: the land reads as cut clean, and nothing shows under it.
+    Ground,
+    /// The Flat view's steep ground (`colour::steep_colour`), a dark neutral earth that holds on both themes.
+    Earth,
+}
+
+/// The one place the walls' colour is chosen.
+pub const WALL: WallColour = WallColour::Ground;
+
+/// Where every vertex of the walls samples `WALL_IMAGE`: its one texel.
+pub const WALL_UV: [f32; 2] = [0.5, 0.5];
 
 // Blocks kept between the camera and the ground under it: the near plane is ten blocks, and the camera must not
 // pass through the land it is turning round.
@@ -72,17 +91,16 @@ pub fn base(world: &World) -> f32 {
     (lowest as f32).min(sea(world)) - world.step as f32
 }
 
-/// The land on `grid`'s vertices, closed round its border. The square is centred on the origin, so the camera can
-/// turn around it.
+/// The land on `grid`'s vertices. The square is centred on the origin, so the camera can turn around it.
 pub fn land(world: &World) -> Mesh {
     let (_, m, _) = grid(world);
-    let mut vertices = Vec::with_capacity(m * m + 4 * m);
+    let mut vertices = Vec::with_capacity(m * m);
     for row in 0..m {
         for col in 0..m {
             vertices.push(point(world, col, row));
         }
     }
-    let mut indices = Vec::with_capacity((m - 1) * (m - 1) * 6 + 4 * (m - 1) * 6);
+    let mut indices = Vec::with_capacity((m - 1) * (m - 1) * 6);
     for row in 0..m - 1 {
         for col in 0..m - 1 {
             let a = (row * m + col) as u32;
@@ -90,59 +108,73 @@ pub fn land(world: &World) -> Mesh {
             indices.extend_from_slice(&[a, c, b, b, c, d]);
         }
     }
-    // The skirt: under each side a wall from the border's vertices down to `base`, its foot keeping the vertex's
-    // uv so the wall takes the colour of the border's texel. Without it the land is an open sheet, and from a low
-    // angle one sees under it. The renderer culls no face; the walls face out all the same, as the land faces up.
-    let base = base(world);
+    Mesh { vertices, indices }
+}
+
+/// The sheet of water at `sea`, ending where the land does.
+pub fn water(world: &World) -> Mesh {
+    let half = grid(world).2 / 2.0;
+    let y = sea(world);
+    let v = |x: f32, z: f32| Vertex { pos: [x, y, z], uv: [0.0, 0.0] };
+    Mesh {
+        vertices: vec![v(-half, -half), v(half, -half), v(-half, half), v(half, half)],
+        indices: vec![0, 2, 1, 1, 2, 3],
+    }
+}
+
+/// The walls that close the land and the sea round the square: under each side, from the higher of the border's
+/// ground and the sheet of water down to `base`. Without them the land is an open sheet, and from a low angle one
+/// sees under it. A mesh of its own, every vertex on `WALL_UV`, so the walls are one plain colour and, drawn with
+/// an image, write depth as the land does (the water's Flat material only tests it).
+pub fn walls(world: &World) -> Mesh {
+    let (_, m, _) = grid(world);
+    let (y, base) = (sea(world), base(world));
+    let at = |p: [f32; 3]| Vertex { pos: p, uv: WALL_UV };
+    let (mut vertices, mut indices) = (Vec::new(), Vec::new());
     for edge in border(m) {
-        let foot = vertices.len() as u32;
-        for &(col, row) in &edge {
-            let top = vertices[row * m + col];
-            vertices.push(Vertex { pos: [top.pos[0], base, top.pos[2]], uv: top.uv });
+        // The wall's top along this side: each border vertex at the higher of its ground and the sheet, and between
+        // two vertices on either side of the sheet, the point where the ground's straight line meets it.
+        let mut tops: Vec<[f32; 3]> = Vec::with_capacity(edge.len() + 2);
+        for k in 0..edge.len() {
+            let q = point(world, edge[k].0, edge[k].1).pos;
+            if k > 0 {
+                let p = point(world, edge[k - 1].0, edge[k - 1].1).pos;
+                if (p[1] < y) != (q[1] < y) {
+                    let t = (y - p[1]) / (q[1] - p[1]);
+                    tops.push([p[0] + (q[0] - p[0]) * t, y, p[2] + (q[2] - p[2]) * t]);
+                }
+            }
+            tops.push([q[0], q[1].max(y), q[2]]);
         }
-        for k in 0..edge.len() - 1 {
-            let ((ca, ra), (cb, rb)) = (edge[k], edge[k + 1]);
-            let (a, b) = ((ra * m + ca) as u32, (rb * m + cb) as u32);
-            let (a_foot, b_foot) = (foot + k as u32, foot + k as u32 + 1);
+        let first = vertices.len() as u32;
+        for t in &tops {
+            vertices.push(at(*t));
+            vertices.push(at([t[0], base, t[2]]));
+        }
+        // Each top, then its foot; wound to face out as the land faces up (the renderer culls no face all the same).
+        for k in 0..tops.len() as u32 - 1 {
+            let (a, a_foot, b, b_foot) = (first + 2 * k, first + 2 * k + 1, first + 2 * k + 2, first + 2 * k + 3);
             indices.extend_from_slice(&[a, b, a_foot, b, b_foot, a_foot]);
         }
     }
     Mesh { vertices, indices }
 }
 
-/// The sheet of water at `sea`, ending where the land does, and closed on its sides: where the border's ground
-/// lies under the sheet, a strip goes from the sheet down to that ground, meeting the land's skirt there.
-pub fn water(world: &World) -> Mesh {
-    let (_, m, side) = grid(world);
-    let half = side / 2.0;
-    let y = sea(world);
-    let at = |p: [f32; 3]| Vertex { pos: p, uv: [0.0, 0.0] };
-    let mut vertices = vec![at([-half, y, -half]), at([half, y, -half]), at([-half, y, half]), at([half, y, half])];
-    let mut indices = vec![0, 2, 1, 1, 2, 3];
-    // Each piece is added with its own vertices, in the order that faces out, as the land's skirt does.
-    let mut add = |points: &[[f32; 3]], order: &[u32]| {
-        let first = vertices.len() as u32;
-        vertices.extend(points.iter().map(|&p| at(p)));
-        indices.extend(order.iter().map(|i| first + i));
-    };
-    for edge in border(m) {
-        for k in 0..edge.len() - 1 {
-            let (p, q) = (point(world, edge[k].0, edge[k].1).pos, point(world, edge[k + 1].0, edge[k + 1].1).pos);
-            let (p_top, q_top) = ([p[0], y, p[2]], [q[0], y, q[2]]);
-            // Where the ground between p and q, a straight line as the land's border draws it, meets the sheet.
-            let cross = || {
-                let t = (y - p[1]) / (q[1] - p[1]);
-                [p[0] + (q[0] - p[0]) * t, y, p[2] + (q[2] - p[2]) * t]
-            };
-            match (p[1] < y, q[1] < y) {
-                (true, true) => add(&[p_top, q_top, p, q], &[0, 1, 2, 1, 3, 2]),
-                (true, false) => add(&[p_top, cross(), p], &[0, 1, 2]),
-                (false, true) => add(&[cross(), q_top, q], &[0, 1, 2]),
-                (false, false) => {}
-            }
+/// The walls' pixel for `choice`, over a stage whose ground is `ground`.
+pub fn wall_rgba(choice: WallColour, ground: Color) -> [u8; 4] {
+    let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    match choice {
+        WallColour::Ground => [byte(ground.r), byte(ground.g), byte(ground.b), 255],
+        WallColour::Earth => {
+            let [r, g, b] = steep_colour();
+            [r, g, b, 255]
         }
     }
-    Mesh { vertices, indices }
+}
+
+/// The walls' image, in `WALL`'s colour: uploaded with the drape, which is painted again when the theme changes.
+pub fn upload_wall(gfx: &mut dyn Gfx, ground: Color) {
+    gfx.upload_image(WALL_IMAGE, 1, 1, &wall_rgba(WALL, ground));
 }
 
 /// The ground's height under (x, z) of the centred square, between the four nearest vertices of the mesh as its
@@ -194,6 +226,8 @@ pub fn upload(gfx: &mut dyn Gfx, world: &World) {
     gfx.upload_mesh(LAND_MESH, &land.vertices, &land.indices);
     let water = water(world);
     gfx.upload_mesh(WATER_MESH, &water.vertices, &water.indices);
+    let walls = walls(world);
+    gfx.upload_mesh(WALL_MESH, &walls.vertices, &walls.indices);
 }
 
 /// Line 1903: the water is thinner over the height view, whose colours are the ground's own.
@@ -209,7 +243,9 @@ pub fn draw(gfx: &mut dyn Gfx, viewport: Rect, orbit: &Orbit, image: ImageId, wa
     }
     let view_proj = orbit.view_proj(viewport.w / viewport.h);
     gfx.draw_mesh(viewport, LAND_MESH, &view_proj, Material::Image { image, nearest: true });
-    // After the land: the sheet is tested against it but leaves no depth of its own.
+    // `upload_wall` must have given the walls their pixel.
+    gfx.draw_mesh(viewport, WALL_MESH, &view_proj, Material::Image { image: WALL_IMAGE, nearest: true });
+    // After the land and the walls: the sheet is tested against it but leaves no depth of its own.
     gfx.draw_mesh(viewport, WATER_MESH, &view_proj, Material::Flat { color: WATER_COLOUR.with_alpha(water_alpha) });
 }
 
@@ -242,9 +278,8 @@ mod tests {
     #[test]
     fn land_has_a_vertex_per_sample_and_two_triangles_per_cell() {
         let m = land(&world(256));
-        // The grid, then a foot under each vertex of the four sides and two triangles per segment of side.
-        assert_eq!(m.vertices.len(), 256 * 256 + 4 * 256);
-        assert_eq!(m.indices.len(), 255 * 255 * 6 + 4 * 255 * 6);
+        assert_eq!(m.vertices.len(), 256 * 256);
+        assert_eq!(m.indices.len(), 255 * 255 * 6);
         assert!(m.indices.iter().all(|&i| (i as usize) < m.vertices.len()));
         // Centred on the origin, 255 steps across.
         assert_eq!(m.vertices[0].pos[0], -255.0 * 16.0 / 2.0);
@@ -255,12 +290,11 @@ mod tests {
     #[test]
     fn a_wide_grid_is_thinned() {
         let w = world(1024);
-        let m = land(&w);
-        assert_eq!(m.vertices.len(), 512 * 512 + 4 * 512);
-        assert_eq!(m.indices.len(), 511 * 511 * 6 + 4 * 511 * 6);
-        assert!(m.indices.iter().all(|&i| (i as usize) < m.vertices.len()));
-        let b = base(&w);
-        assert!(m.vertices[512 * 512..].iter().all(|v| v.pos[1] == b));
+        assert_eq!(land(&w).vertices.len(), 512 * 512);
+        // The walls follow the thinned grid: a top and a foot per border vertex, plus one per shore point.
+        let walls = walls(&w);
+        assert!(walls.vertices.len() >= 4 * 512 * 2);
+        assert!(walls.indices.iter().all(|&i| (i as usize) < walls.vertices.len()));
     }
 
     /// (v1 - v0) x (v2 - v0) of triangle `t`: the side it faces, with the land's winding.
@@ -284,88 +318,87 @@ mod tests {
         p[0].abs() == half || p[2].abs() == half
     }
 
-    #[test]
-    fn the_land_is_closed_by_walls_down_to_the_base() {
-        let w = world(16);
-        let (m, half) = (16, 15.0 * 16.0 / 2.0);
-        let land = land(&w);
-        let (grid_vertices, grid_indices) = (m * m, (m - 1) * (m - 1) * 6);
-        assert_eq!(land.vertices.len(), grid_vertices + 4 * m);
-        assert_eq!(land.indices.len(), grid_indices + 4 * (m - 1) * 6);
-        assert!(land.indices.iter().all(|&i| (i as usize) < land.vertices.len()));
-        // The base is under the lowest ground and under the sheet of water.
-        let b = base(&w);
-        assert!(b < w.height_range().0 as f32 && b < water(&w).vertices[0].pos[1], "base {b}");
-        // Every foot is at the base, straight under a vertex of the border, with that vertex's uv.
-        for foot in &land.vertices[grid_vertices..] {
-            assert_eq!(foot.pos[1], b);
-            let top = land.vertices[..grid_vertices]
-                .iter()
-                .find(|v| (v.pos[0], v.pos[2]) == (foot.pos[0], foot.pos[2]))
-                .expect("a vertex of the grid above the foot");
-            assert!(on_border(top.pos, half), "{:?} is on the border", top.pos);
-            assert_eq!(top.uv, foot.uv);
+    /// The checks every wall mesh passes: indices in range, one plain colour, tops on the border at the higher of
+    /// the ground and the sheet, feet at the base, every triangle facing out.
+    fn check_walls(w: &World) -> Mesh {
+        let walls = walls(w);
+        let half = grid(w).2 / 2.0;
+        let (y, b) = (sea(w), base(w));
+        assert!(walls.indices.iter().all(|&i| (i as usize) < walls.vertices.len()));
+        assert!(walls.vertices.iter().all(|v| v.uv == WALL_UV), "every wall vertex has the plain colour's uv");
+        for pair in walls.vertices.chunks(2) {
+            let (top, foot) = (pair[0].pos, pair[1].pos);
+            assert!(on_border(top, half), "{top:?} is on the border");
+            assert_eq!((foot[0], foot[1], foot[2]), (top[0], b, top[2]));
+            let ground = ground_at(w, top[0], top[2]).expect("the top is over the land");
+            assert!((top[1] - ground.max(y)).abs() < 1e-3, "{top:?} over ground {ground}");
         }
-        // The land faces up; each wall triangle faces out, wound the same way.
-        assert!((0..grid_indices / 3).all(|t| normal(&land, t)[1] > 0.0));
-        assert!((grid_indices / 3..land.indices.len() / 3).all(|t| faces_out(&land, t)));
+        assert!((0..walls.indices.len() / 3).all(|t| faces_out(&walls, t)));
+        walls
     }
 
     #[test]
-    fn the_skirt_leaves_the_cameras_ground_on_top_of_the_land() {
+    fn the_walls_close_the_land_down_to_the_base_in_one_plain_colour() {
+        let w = world(16);
+        // The base is under the lowest ground and under the sheet of water.
+        let b = base(&w);
+        assert!(b < w.height_range().0 as f32 && b < water(&w).vertices[0].pos[1], "base {b}");
+        check_walls(&w);
+        // Land over the sea all round: a quad per segment of each side, with no shore point.
+        let mut high = world(16);
+        high.heights = vec![70; 16 * 16];
+        let walls = check_walls(&high);
+        assert_eq!((walls.vertices.len(), walls.indices.len()), (4 * 16 * 2, 4 * 15 * 6));
+        // The land faces up, the way the walls are wound to match.
+        let land = land(&w);
+        assert!((0..land.indices.len() / 3).all(|t| normal(&land, t)[1] > 0.0));
+    }
+
+    #[test]
+    fn under_the_sea_the_wall_rises_to_the_sheet_and_a_shore_has_its_point() {
+        let mut w = world(16);
+        w.heights = vec![40; 16 * 16];
+        // All under the sea: every top is at the sheet.
+        assert!(check_walls(&w).vertices.chunks(2).all(|p| p[0].pos[1] == 62.5));
+        // The five western columns at 70, the rest at 40: the ground crosses the sheet between columns 4 and 5.
+        w.heights = (0..16 * 16).map(|i| if i % 16 < 5 { 70 } else { 40 }).collect();
+        let walls = check_walls(&w);
+        // From 70 to 40 the ground meets 62.5 a quarter of the way: 4 blocks east of column 4, at x -52.
+        let half = 15.0 * 16.0 / 2.0;
+        for z in [-half, half] {
+            assert!(walls.vertices.iter().any(|v| v.pos == [-52.0, 62.5, z]), "the shore's point at z {z}");
+        }
+        // North and south each get one shore point: two more columns of wall than segments.
+        assert_eq!(walls.vertices.len(), (4 * 16 + 2) * 2);
+    }
+
+    #[test]
+    fn the_walls_leave_the_cameras_ground_on_top_of_the_land() {
         let w = world(16);
         let land = land(&w);
         let half = 15.0 * 16.0 / 2.0;
         // At every vertex of the grid, the border's included, the ground is the vertex's height, never the base.
-        for v in &land.vertices[..16 * 16] {
+        for v in &land.vertices {
             assert_eq!(ground_at(&w, v.pos[0], v.pos[2]), Some(v.pos[1]));
         }
         assert_eq!(ground_at(&w, half + 1.0, 0.0), None);
     }
 
     #[test]
-    fn a_sea_over_the_whole_border_is_closed_down_to_the_ground() {
-        let mut w = world(16);
-        w.heights = vec![40; 16 * 16];
-        let (water, land) = (water(&w), land(&w));
-        let half = 15.0 * 16.0 / 2.0;
-        // The sheet, then a quad on every segment of the four sides.
-        assert_eq!(water.indices.len(), 6 + 4 * 15 * 6);
-        assert!(water.indices.iter().all(|&i| (i as usize) < water.vertices.len()));
-        for v in &water.vertices[4..] {
-            assert!(on_border(v.pos, half), "{:?} is on the border", v.pos);
-            // From the sheet down to the ground, whose points are the land's own border.
-            assert!(v.pos[1] == 62.5 || land.vertices.iter().any(|l| l.pos == v.pos), "{:?}", v.pos);
-        }
-        assert!((2..water.indices.len() / 3).all(|t| faces_out(&water, t)));
-    }
-
-    #[test]
-    fn land_over_the_sea_has_no_strip_and_a_shore_has_a_triangle() {
-        let mut w = world(16);
-        w.heights = vec![70; 16 * 16];
-        assert_eq!(water(&w).indices.len(), 6);
-        // The five western columns at 70, the rest at 40: the ground crosses the sea between columns 4 and 5.
-        w.heights = (0..16 * 16).map(|i| if i % 16 < 5 { 70 } else { 40 }).collect();
-        let water = water(&w);
-        // North and south: ten segments under the sea and the shore's triangle each; east fifteen; west none.
-        assert_eq!(water.indices.len(), 6 + 2 * (10 * 6 + 3) + 15 * 6);
-        assert!(water.indices.iter().all(|&i| (i as usize) < water.vertices.len()));
-        // From 70 to 40 the ground meets 62.5 a quarter of the way: 4 blocks east of column 4, at x -56.
-        let half = 15.0 * 16.0 / 2.0;
-        for z in [-half, half] {
-            assert!(water.vertices.iter().any(|v| v.pos == [-52.0, 62.5, z]), "the shore's point at z {z}");
-        }
-        assert!((2..water.indices.len() / 3).all(|t| faces_out(&water, t)));
+    fn the_wall_colour_is_the_stage_ground_or_the_steep_earth() {
+        assert_eq!(wall_rgba(WallColour::Ground, Color::hex(0x000000)), [0, 0, 0, 255]);
+        assert_eq!(wall_rgba(WallColour::Ground, Color::hex(0xfafaf8)), [0xfa, 0xfa, 0xf8, 255]);
+        let [r, g, b] = steep_colour();
+        assert_eq!(wall_rgba(WallColour::Earth, Color::hex(0x000000)), [r, g, b, 255]);
+        assert_eq!(wall_rgba(WallColour::Earth, Color::hex(0xfafaf8)), [r, g, b, 255]);
     }
 
     #[test]
     fn water_is_one_quad_below_the_sea_level() {
         let w = world(256);
         let m = water(&w);
-        // The sheet is the first quad; the strips on its sides come after it.
-        assert_eq!(&m.indices[..6], &[0, 2, 1, 1, 2, 3]);
-        assert!(m.vertices[..4].iter().all(|v| v.pos[1] == 62.5));
+        assert_eq!(m.indices.len(), 6);
+        assert!(m.vertices.iter().all(|v| v.pos[1] == 62.5));
         // The sheet ends at the land's last vertex, 255 steps across, not at the area's 256.
         let land = land(&w);
         assert_eq!(m.vertices[3].pos[0], land.vertices[255].pos[0]);
