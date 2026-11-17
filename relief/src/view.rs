@@ -54,7 +54,9 @@ impl App for Relief {
     fn start(&mut self, gfx: &mut dyn Gfx) {
         let n = self.world.samples as u32;
         // The relief tab's picture in the dark theme, with nothing chosen.
-        gfx.upload_image(MAP, n, n, &paint(&self.world, View::Height, true, &BTreeSet::new()));
+        let drape = paint(&self.world, View::Height, true, &BTreeSet::new());
+        gfx.upload_image(MAP, n, n, &drape);
+        scene::upload_sides(gfx, &self.world, &drape);
         scene::upload(gfx, &self.world);
         scene::upload_wall(gfx, GROUND);
     }
