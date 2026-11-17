@@ -1095,8 +1095,8 @@ fn small_icon(ui: &mut Ui, key: &str, icon: &'static Icon, line: f32, margin: Ma
 }
 
 /// A help open over its row until it is closed: a framed box on the ground colour that covers the row and what
-/// follows it without moving anything (`Ui::overlay`), from the row's top down, or from its bottom up for a row in the
-/// lower half of the window, where there is more room above. The title (a setting's label) has the close cross on its
+/// follows it without moving anything (`Ui::overlay`), from the row's top down; at the very bottom of the
+/// window, where it would not fit, it is raised until it does. The title (a setting's label) has the close cross on its
 /// first line at the top right and wraps in the room the cross leaves; the hint and the facts (Tectonic's own value,
 /// the pack's, the range; none for the filter) take the panel's whole width under them. `about` is the key, title,
 /// hint and facts.
@@ -1105,11 +1105,21 @@ fn help_panel(ui: &mut Ui, ids: &mut ShellIds, row: Id, about: (&str, &str, &str
     let (key, title_text, hint, facts) = about;
     let title_look = TextLook { weight: Weight::SemiBold, ..TextLook::body(Tone::Text) };
     let hint_look = TextLook::body(Tone::Muted);
-    // Judged on where the row stood in the last frame, which is where it was clicked.
-    let low = ui.rect(row).is_some_and(|r| r.y + r.h / 2.0 > ui.size().y / 2.0);
-    let zero = Dim::Px(0.0);
-    let inset = if low { Insets { left: zero, right: zero, bottom: zero, ..Insets::default() } } else { Insets { left: zero, right: zero, top: zero, ..Insets::default() } };
     let pad = FRAME + INSET;
+    // The panel's top is its row's top, so that the cross is at the end of the line whose "?" opened it. Only a panel
+    // that would pass the window's bottom is raised, by what it passes. Judged on where the row stood in the last
+    // frame, which is where it was clicked; the height is counted here, as the layout does not give it before the
+    // panel is laid out.
+    let raise = ui.rect(row).map_or(0.0, |r| {
+        let inner = r.w - 2.0 * pad;
+        let lines = |text: &str, look: TextLook, w: f32| wrap_lines(text, look, w).len().max(1) as f32 * look.line;
+        let head = lines(title_text, title_look, inner - GAP - MARK_W).max(TextLook::body(Tone::Text).line);
+        let facts_h = if facts.is_empty() { 0.0 } else { GAP_TIGHT + lines(facts, TextLook::small(Tone::Muted), inner) };
+        let h = 2.0 * pad + head + GAP_TIGHT + lines(hint, hint_look, inner) + facts_h;
+        (r.y + h - ui.size().y).max(0.0).ceil()
+    });
+    let zero = Dim::Px(0.0);
+    let inset = Insets { left: zero, right: zero, top: Dim::Px(-raise), ..Insets::default() };
     let style = Style { position: Position::Absolute, inset, column: true, pad: Edges::new(pad, pad, pad, pad), gap: Vec2::new(0.0, GAP_TIGHT), ..Style::default() };
     ids.help_facts = Id::ROOT;
     ids.help = ui.overlay(&format!("{key}Help"), style, |ui| {
