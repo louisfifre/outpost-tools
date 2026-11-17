@@ -25,11 +25,32 @@ pub enum WallColour {
     Earth,
 }
 
-/// The one place the walls' colour is chosen.
-pub const WALL: WallColour = WallColour::Ground;
+/// How the land's edge is finished.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Edge {
+    /// No wall: past the edge one sees the land's underside, a grey surface lit from below (`underside`).
+    Underside,
+    /// A wall round the square down to `base`, in one plain colour (`walls`).
+    Wall(WallColour),
+}
+
+/// The one place the edge, and the walls' colour, are chosen.
+pub const EDGE: Edge = Edge::Underside;
 
 /// Where every vertex of the walls samples `WALL_IMAGE`: its one texel.
 pub const WALL_UV: [f32; 2] = [0.5, 0.5];
+
+pub const UNDER_MESH: MeshId = MeshId(21);
+/// The underside's shades, one texel per vertex of the grid.
+pub const UNDER_IMAGE: ImageId = ImageId(22);
+/// Blocks between the land's top and its underside. The two share the grid's triangles, so the underside is under
+/// the top at every point and the depth test keeps the top in front from above (the depth is 32-bit float and
+/// reversed, so half a block holds at any distance the camera reaches).
+pub const UNDER_GAP: f32 = 0.5;
+/// Towards the light that shades the underside: from below, off to one side, so the slopes seen from under read.
+const UNDER_LIGHT: [f32; 3] = [-0.4, -0.8, -0.45];
+/// The underside's darkest and lightest grey: a face turned away from the light, and one turned to it.
+const UNDER_GREYS: (f32, f32) = (60.0, 200.0);
 
 // Blocks kept between the camera and the ground under it: the near plane is ten blocks, and the camera must not
 // pass through the land it is turning round.
@@ -216,9 +237,81 @@ pub fn wall_rgba(choice: WallColour, ground: Color) -> [u8; 4] {
     }
 }
 
-/// The walls' image, in `WALL`'s colour: uploaded with the drape, which is painted again when the theme changes.
+/// The walls' image, in `EDGE`'s colour: uploaded with the drape, which is painted again when the theme changes.
+/// Nothing to do when the edge shows the underside.
 pub fn upload_wall(gfx: &mut dyn Gfx, ground: Color) {
-    gfx.upload_image(WALL_IMAGE, 1, 1, &wall_rgba(WALL, ground));
+    if let Edge::Wall(colour) = EDGE {
+        gfx.upload_image(WALL_IMAGE, 1, 1, &wall_rgba(colour, ground));
+    }
+}
+
+/// Where vertex `i` of the grid samples `UNDER_IMAGE`: the middle of its own texel.
+fn under_uv(i: usize, m: usize) -> [f32; 2] {
+    [((i % m) as f32 + 0.5) / m as f32, ((i / m) as f32 + 0.5) / m as f32]
+}
+
+/// The land's underside: the grid again, `UNDER_GAP` under the top, its triangles wound to face down, and a rim
+/// round the border that closes the gap between the two, so the edge is one clean line. Each vertex samples its
+/// own shade in `underside_image`.
+pub fn underside(world: &World) -> Mesh {
+    let (_, m, _) = grid(world);
+    let mut vertices: Vec<Vertex> = (0..m * m)
+        .map(|i| {
+            let p = point(world, i % m, i / m).pos;
+            Vertex { pos: [p[0], p[1] - UNDER_GAP, p[2]], uv: under_uv(i, m) }
+        })
+        .collect();
+    let mut indices = Vec::with_capacity((m - 1) * (m - 1) * 6 + 4 * (m - 1) * 6);
+    for row in 0..m - 1 {
+        for col in 0..m - 1 {
+            let a = (row * m + col) as u32;
+            let (b, c, d) = (a + 1, a + m as u32, a + m as u32 + 1);
+            // The land's [a, c, b, b, c, d] turned over.
+            indices.extend_from_slice(&[a, b, c, b, d, c]);
+        }
+    }
+    // The rim: for each side, the border's top vertices (with the underside's shade), then quads down to the
+    // underside's own border vertices, facing out.
+    for edge in border(m) {
+        let first = vertices.len() as u32;
+        for &(col, row) in &edge {
+            let i = row * m + col;
+            vertices.push(Vertex { pos: point(world, col, row).pos, uv: under_uv(i, m) });
+        }
+        for k in 0..edge.len() - 1 {
+            let ((ca, ra), (cb, rb)) = (edge[k], edge[k + 1]);
+            let (a, b) = (first + k as u32, first + k as u32 + 1);
+            let (a_low, b_low) = ((ra * m + ca) as u32, (rb * m + cb) as u32);
+            indices.extend_from_slice(&[a, b, a_low, b, b_low, a_low]);
+        }
+    }
+    Mesh { vertices, indices }
+}
+
+/// The underside's shades, `m` by `m` RGBA: grey by how much the face under each vertex turns to `UNDER_LIGHT`,
+/// its normal being the top's, from the heights around the vertex, turned over.
+pub fn underside_image(world: &World) -> (u32, Vec<u8>) {
+    let (skip, m, _) = grid(world);
+    let cell = (skip as f64 * world.step) as f32;
+    let h = |col: usize, row: usize| point(world, col, row).pos[1];
+    let len = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    let light = UNDER_LIGHT.map(|c| c / len(UNDER_LIGHT));
+    let mut rgba = Vec::with_capacity(m * m * 4);
+    for row in 0..m {
+        for col in 0..m {
+            // The slope across the neighbours on each side, or the one neighbour at the border.
+            let (c0, c1) = (col.saturating_sub(1), (col + 1).min(m - 1));
+            let (r0, r1) = (row.saturating_sub(1), (row + 1).min(m - 1));
+            let dx = (h(c1, row) - h(c0, row)) / ((c1 - c0) as f32 * cell);
+            let dz = (h(col, r1) - h(col, r0)) / ((r1 - r0) as f32 * cell);
+            // The top's normal is (-dx, 1, -dz); the underside's points the other way.
+            let down = [dx, -1.0, dz];
+            let lit = ((down[0] * light[0] + down[1] * light[1] + down[2] * light[2]) / len(down)).max(0.0);
+            let grey = (UNDER_GREYS.0 + (UNDER_GREYS.1 - UNDER_GREYS.0) * lit).round() as u8;
+            rgba.extend_from_slice(&[grey, grey, grey, 255]);
+        }
+    }
+    (m as u32, rgba)
 }
 
 /// The ground's height under (x, z) of the centred square, between the four nearest vertices of the mesh as its
@@ -270,8 +363,19 @@ pub fn upload(gfx: &mut dyn Gfx, world: &World) {
     gfx.upload_mesh(LAND_MESH, &land.vertices, &land.indices);
     let water = water(world);
     gfx.upload_mesh(WATER_MESH, &water.vertices, &water.indices);
-    let walls = walls(world);
-    gfx.upload_mesh(WALL_MESH, &walls.vertices, &walls.indices);
+    match EDGE {
+        Edge::Underside => {
+            let under = underside(world);
+            gfx.upload_mesh(UNDER_MESH, &under.vertices, &under.indices);
+            // The shades depend on the heights only, not on the theme.
+            let (m, rgba) = underside_image(world);
+            gfx.upload_image(UNDER_IMAGE, m, m, &rgba);
+        }
+        Edge::Wall(_) => {
+            let walls = walls(world);
+            gfx.upload_mesh(WALL_MESH, &walls.vertices, &walls.indices);
+        }
+    }
 }
 
 /// Line 1903: the water is thinner over the height view, whose colours are the ground's own.
@@ -287,9 +391,13 @@ pub fn draw(gfx: &mut dyn Gfx, viewport: Rect, orbit: &Orbit, image: ImageId, wa
     }
     let view_proj = orbit.view_proj(viewport.w / viewport.h);
     gfx.draw_mesh(viewport, LAND_MESH, &view_proj, Material::Image { image, nearest: true });
-    // `upload_wall` must have given the walls their pixel.
-    gfx.draw_mesh(viewport, WALL_MESH, &view_proj, Material::Image { image: WALL_IMAGE, nearest: true });
-    // After the land and the walls: the sheet is tested against it but leaves no depth of its own.
+    match EDGE {
+        // Smooth: each vertex's uv is the middle of its own texel, so the shades blend across the triangles.
+        Edge::Underside => gfx.draw_mesh(viewport, UNDER_MESH, &view_proj, Material::Image { image: UNDER_IMAGE, nearest: false }),
+        // `upload_wall` must have given the walls their pixel.
+        Edge::Wall(_) => gfx.draw_mesh(viewport, WALL_MESH, &view_proj, Material::Image { image: WALL_IMAGE, nearest: true }),
+    }
+    // After the land and its edge: the water is tested against it but leaves no depth of its own.
     gfx.draw_mesh(viewport, WATER_MESH, &view_proj, Material::Flat { color: WATER_COLOUR.with_alpha(water_alpha) });
 }
 
@@ -435,6 +543,53 @@ mod tests {
         let [r, g, b] = steep_colour();
         assert_eq!(wall_rgba(WallColour::Earth, Color::hex(0x000000)), [r, g, b, 255]);
         assert_eq!(wall_rgba(WallColour::Earth, Color::hex(0xfafaf8)), [r, g, b, 255]);
+    }
+
+    #[test]
+    fn the_underside_is_the_land_turned_over_just_under_it_with_a_closed_rim() {
+        let w = world(16);
+        let m = 16;
+        let (land, under) = (land(&w), underside(&w));
+        // The grid again, then the rim's top vertices round the four sides.
+        assert_eq!(under.vertices.len(), m * m + 4 * m);
+        assert_eq!(under.indices.len(), (m - 1) * (m - 1) * 6 + 4 * (m - 1) * 6);
+        assert!(under.indices.iter().all(|&i| (i as usize) < under.vertices.len()));
+        // Every vertex of the grid has its underside straight under it, the gap lower, on its own shade's texel.
+        for (i, (top, low)) in land.vertices.iter().zip(&under.vertices[..m * m]).enumerate() {
+            assert_eq!(low.pos, [top.pos[0], top.pos[1] - UNDER_GAP, top.pos[2]]);
+            assert_eq!(low.uv, under_uv(i, m));
+        }
+        // The underside faces down; the rim joins the top's border to it and faces out.
+        let grid_triangles = (m - 1) * (m - 1) * 2;
+        assert!((0..grid_triangles).all(|t| normal(&under, t)[1] < 0.0));
+        assert!((grid_triangles..under.indices.len() / 3).all(|t| faces_out(&under, t)));
+        let half = 15.0 * 16.0 / 2.0;
+        for v in &under.vertices[m * m..] {
+            assert!(on_border(v.pos, half));
+            assert!(land.vertices.iter().any(|l| l.pos == v.pos), "a rim's top is a vertex of the land's border");
+        }
+        // The camera's ground is still the top.
+        for v in &land.vertices {
+            assert_eq!(ground_at(&w, v.pos[0], v.pos[2]), Some(v.pos[1]));
+        }
+    }
+
+    #[test]
+    fn the_underside_is_grey_and_lit_from_below() {
+        let mut w = world(16);
+        w.heights = vec![70; 16 * 16];
+        let (m, flat) = underside_image(&w);
+        assert_eq!((m, flat.len()), (16, 16 * 16 * 4));
+        // Grey, opaque, and one shade on flat ground.
+        assert!(flat.chunks(4).all(|p| p[0] == p[1] && p[1] == p[2] && p[3] == 255 && p[0] == flat[0]));
+        // Ground falling to the east: seen from under, its face turns down and west, towards the light (x < 0),
+        // and is lighter than flat ground; rising to the east it turns away and is darker.
+        w.heights = (0..16 * 16).map(|i| (i % 16) as i16 * 8).collect();
+        let rising = underside_image(&w).1;
+        w.heights = (0..16 * 16).map(|i| (15 - i % 16) as i16 * 8).collect();
+        let falling = underside_image(&w).1;
+        let middle = (8 * 16 + 8) * 4;
+        assert!(falling[middle] > flat[middle] && flat[middle] > rising[middle], "{} {} {}", falling[middle], flat[middle], rising[middle]);
     }
 
     /// Twice the area of the water's triangles seen from above, positive when they face up as the land does.
