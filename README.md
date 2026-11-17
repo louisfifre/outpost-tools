@@ -33,7 +33,7 @@ The pictures come from the native launcher's own tests (`cargo test` in `native/
 
 ## What it needs today
 
-The native launcher builds from a clone of this repository alone: cargo fetches mere-ui and the `world-preview` engine from GitHub, each pinned by a tag in the `Cargo.toml` files. **mere-ui is not published yet at the time of writing**, so until it is, only its maintainer can build the native launcher.
+The native launcher builds from a clone of this repository alone: cargo fetches mere-ui and the `world-preview` engine from GitHub, each pinned by a tag in the `Cargo.toml` files.
 
 To build and run Outpost Tools you need:
 
@@ -53,7 +53,6 @@ What stands between today and the goal (download one exe, double-click, play):
 - **Profiles as data.** Profiles would be added from a modpack file and kept in Outpost Tools' folder, instead of the paths a pack's scripts write.
 - **The Rust port.** What runs in PowerShell today (the pack's sync, the test server) would move to Rust, as the preview's generation already has, so the PC needs nothing else.
 - **Signing.** The exe is not signed: Windows warns once on the first download, and Smart App Control blocks it. Signing names the publisher, but the warning stays until the app has a reputation.
-- **mere-ui, published** with a licence, so this repository can be built by others.
 
 Also not built: the bar's cube is a placeholder icon.
 
