@@ -24,10 +24,10 @@ use crate::json::Json;
 use crate::map::MAP_IMAGE;
 use crate::paint::{View, paint};
 use crate::apply::{self, Fail, Host, Notice, Outcome, SystemHost, Target};
-use crate::run::{self, Ask, DETAIL_BLOCKS, Follow, Pace, Runs, Steps};
+use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Runs, Steps};
 use crate::scene;
 use crate::section::Shown;
-use crate::shell::{Mode, PreviewState, RunEnd, ShellIds, Want, build, raise_to_min};
+use crate::shell::{Mode, PreviewState, RunEnd, ShellIds, Want, build_run, raise_to_min};
 use crate::text;
 use crate::world::World;
 
@@ -97,6 +97,9 @@ pub struct PreviewApp {
     applying: Option<(JoinHandle<Outcome>, [f64; 43])>,
     /// The form's values as `draft.json` holds them; None without runs, where nothing is kept.
     draft_saved: Option<[f64; 43]>,
+    /// The run's own picture, which the stage shows over `world` while the run goes on: its last sketch, then its
+    /// map (`follow.drawn` says which). None outside a run and before its first sketch.
+    drawn: Option<World>,
 }
 
 type CutKey = (usize, usize, usize, usize, usize, bool, BTreeSet<String>, u32);
@@ -137,6 +140,7 @@ impl PreviewApp {
             apply_host: None,
             applying: None,
             draft_saved: None,
+            drawn: None,
         };
         // Line 2815: the map that opens the page is kept like any other (in memory until there are runs).
         app.remember();
@@ -312,7 +316,7 @@ impl PreviewApp {
     /// What the map's picture should be painted for now, or None when the frame shows no map picture (no
     /// world, the section, or the structures' view of a preview without structures).
     fn wanted(&self) -> Option<(View, bool, BTreeSet<String>)> {
-        let world = self.world.as_ref()?;
+        let world = self.stage()?;
         let view = View::from_index(self.state.view)?;
         // The 3D view drapes the same picture over the land.
         if view == View::Structures && world.structures.is_none() {
@@ -322,6 +326,61 @@ impl PreviewApp {
         let chosen = if view == View::Structures { BTreeSet::new() } else { self.state.chosen[view.index()].clone() };
         Some((view, self.dark, chosen))
     }
+
+    /// The world the stage shows: the run's picture while there is one, else the map.
+    fn stage(&self) -> Option<&World> {
+        self.drawn.as_ref().or(self.world.as_ref())
+    }
+
+    /// Once a second while a run goes on, as the page's `look` (lines 2629-2648): the map once the run is past it
+    /// (its cuts and structures are still to come), else the last sketch when it is finer than the one shown. The
+    /// app removed both files before the run, so what is found is this run's.
+    fn draw_run(&mut self) {
+        let (Some(follow), Some(runs)) = (self.state.follow.as_ref(), self.runs.as_ref()) else { return };
+        let out = runs.out();
+        let (next, drawn) = if follow.pass_key.starts_with("extras") {
+            if follow.drawn == Drawn::Map {
+                return;
+            }
+            (World::load(&out), Drawn::Map)
+        } else {
+            let finer = |step: u32| match follow.drawn {
+                Drawn::Nothing => true,
+                Drawn::Sketch(shown) => step < shown,
+                Drawn::Map => false,
+            };
+            let step = std::fs::read_to_string(out.join("coarse.json")).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| j.get("step").and_then(Json::num));
+            match step.map(|s| s as u32).filter(|s| finer(*s)) {
+                Some(step) => (World::load_sketch(&out), Drawn::Sketch(step)),
+                None => return,
+            }
+        };
+        match next {
+            Ok(world) => {
+                // A wider or narrower square puts the camera back, as a new map does (line 1873).
+                if self.stage().map(World::span) != Some(world.span()) {
+                    self.state.orbit = None;
+                }
+                observe!(Info, "the stage shows the run's {drawn:?}: {} points a side every {} blocks", world.samples, world.step);
+                self.drawn = Some(world);
+                if let Some(f) = self.state.follow.as_mut() {
+                    f.drawn = drawn;
+                }
+                self.restage();
+            }
+            // Read again at the next look: a file may be between two writes.
+            Err(e) => observe!(Debug, "the run's {drawn:?} is not readable yet: {e}"),
+        }
+    }
+
+    /// The stage's world changed: its pictures are painted again and its meshes uploaded by the next frame.
+    fn restage(&mut self) {
+        self.painted = None;
+        self.nav_painted = None;
+        self.cut_painted = None;
+        self.shown = None;
+        self.upload_pending = true;
+    }
 }
 
 impl PreviewApp {
@@ -329,7 +388,7 @@ impl PreviewApp {
     /// and when another cut is asked for, dropped outside the section view. A cut that is not the one last looked
     /// at starts with a fresh look; coming back to the same one keeps it.
     fn sync_cut(&mut self) {
-        let Some(section) = self.world.as_ref().filter(|w| self.state.view == 5 && !w.coarse()).and_then(|w| w.section.as_ref()) else {
+        let Some(section) = self.drawn.as_ref().or(self.world.as_ref()).filter(|w| self.state.view == 5 && !w.coarse()).and_then(|w| w.section.as_ref()) else {
             self.shown = None;
             return;
         };
@@ -342,7 +401,7 @@ impl PreviewApp {
             self.state.cut_look = CutLook::FRESH;
         }
         let started = Instant::now();
-        self.shown = self.world.as_ref().and_then(|w| Shown::new(w, at));
+        self.shown = self.drawn.as_ref().or(self.world.as_ref()).and_then(|w| Shown::new(w, at));
         self.last_at = Some(at);
         observe!(Info, "cut {} of {}: ground and ore figures played in {} ms", at + 1, section.cuts.len(), started.elapsed().as_millis());
     }
@@ -350,7 +409,7 @@ impl PreviewApp {
     /// Uploads the strip and the part of the cut in sight when what they show has changed: the strip once per cut
     /// and width, the sheet whenever the sight, the choice or the drawn layer changes. Before the list is drawn.
     fn upload_cut(&mut self, gfx: &mut dyn Gfx) {
-        let (Some(world), Some(shown)) = (self.world.as_ref(), self.shown.as_mut()) else { return };
+        let (Some(world), Some(shown)) = (self.drawn.as_ref().or(self.world.as_ref()), self.shown.as_mut()) else { return };
         let Some(section) = world.section.as_ref() else { return };
         let Some(nav) = self.ui.rect(self.ids.nav).filter(|_| self.ids.nav != Id::ROOT) else { return };
         let width = nav.w.round() as u32;
@@ -391,9 +450,10 @@ impl PreviewApp {
         if let Some(status) = self.ended.take() {
             self.finish(status, Some(&mut *gfx));
         }
-        // A run that ended while hidden left its meshes for the first frame that has the device.
+        // A run that ended while hidden left its meshes for the first frame that has the device, and so does a new
+        // picture of the run under way.
         if std::mem::take(&mut self.upload_pending) {
-            if let Some(world) = self.world.as_ref() {
+            if let Some(world) = self.stage() {
                 scene::upload(gfx, world);
             }
         }
@@ -433,6 +493,7 @@ impl PreviewApp {
             if follow.pass_key != before {
                 observe!(Debug, "run pass '{}' at {} s", follow.pass_key, follow.seconds);
             }
+            self.draw_run();
         }
     }
 
@@ -506,6 +567,16 @@ impl PreviewApp {
         // `tell(finished ? 'ready' : trouble ? 'failed' : 'idle')` (line 2673).
         if !finished {
             self.state.ended = if !self.state.trouble.is_empty() { RunEnd::Failed } else { RunEnd::Idle };
+        }
+        // The run's picture leaves the stage: a finished run's map took its place above; a stopped or failed one
+        // leaves the map it found (line 2670), drawn again.
+        if let Some(drawn) = self.drawn.take() {
+            if !finished {
+                if self.world.as_ref().map(World::span) != Some(drawn.span()) {
+                    self.state.orbit = None;
+                }
+                self.restage();
+            }
         }
         // A run that ends while another tool is on screen has not been seen (the launcher's line 881).
         if self.state.mode != Mode::Preview && self.state.ended != RunEnd::Idle {
@@ -711,7 +782,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         self.nav_painted = None;
         self.cut_painted = None;
         // Also after a device rebuild, which has lost the meshes.
-        if let Some(world) = &self.world {
+        if let Some(world) = self.stage() {
             scene::upload(gfx, world);
         }
     }
@@ -752,7 +823,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
             self.state.account = h.account();
         }
         // Before building, so the frame shows the settled pose.
-        let moving = match (&mut self.state.orbit, &self.world) {
+        let moving = match (&mut self.state.orbit, self.drawn.as_ref().or(self.world.as_ref())) {
             (Some(orbit), Some(world)) => scene::settle(orbit, world, seconds),
             _ => false,
         };
@@ -765,7 +836,8 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
             let before = self.state.clone();
             self.sync_cut();
             self.ui.begin_frame(self.size);
-            self.ids = build(&mut self.ui, &mut self.state, self.size, self.world.as_ref(), self.shown.as_ref(), self.home.as_mut().map(|h| &mut **h as &mut dyn Home));
+            let stage = self.drawn.as_ref().or(self.world.as_ref());
+            self.ids = build_run(&mut self.ui, &mut self.state, self.size, self.world.as_ref(), stage, self.shown.as_ref(), self.home.as_mut().map(|h| &mut **h as &mut dyn Home));
             list = self.ui.end_frame().clone();
             if let Some(want) = self.state.want.take() {
                 self.act(want);
@@ -799,7 +871,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
             }
         }
         // Before the list is drawn, so that the first frame already shows the picture.
-        if let (Some(world), Some(key)) = (&self.world, self.wanted()) {
+        if let (Some(world), Some(key)) = (self.stage(), self.wanted()) {
             if self.painted.as_ref() != Some(&key) {
                 let started = Instant::now();
                 let rgba = paint(world, key.0, key.1, &key.2);
