@@ -131,7 +131,7 @@ fn s2_zoomed_terrain_is_cut_at_the_frame_edges() {
     let mut orbit = scene::orbit(&world, None);
     orbit.zoom(NOTCHES);
     let mut frames = 0;
-    while scene::settle(&mut orbit, &world, 1.0 / 60.0) {
+    while scene::settle(&mut orbit, &world, scene::Level::default(), 1.0 / 60.0) {
         frames += 1;
         assert!(frames < 600, "never came to rest");
     }

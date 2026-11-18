@@ -1,4 +1,4 @@
-//! preview [--data DIR] [--theme dark|light|system] [--light] [--size WxH] [--shot out.png] [--view k[,k]] [--view-only] [--biome id,..]
+//! preview [--data DIR] [--theme dark|light|system] [--light] [--size WxH] [--shot out.png] [--view k[,k]] [--level slopes|blocks|fine] [--view-only] [--biome id,..]
 //!         [--structure surface|under|id,..] [--look k,x,y] [--camera cx,cy,cz] [--cut N] [--ore kind,..] [--cut-look k,x,y]
 //!         [--runs DIR] [--engine DIR] [--pack DIR]
 //!
@@ -15,7 +15,8 @@
 //! With --pack, the settings panel's Apply to pack writes its values into the pack's config/tectonic.json (only the\n//! values that differ, comments kept); nothing else is written there.
 //! The history and the run before (`history.json`, `before.json`) are kept in --runs, the page's localStorage as files.
 //! The view keys, --biome and --structure are the page's own `?view=`, `&biome=` and `&structure=`; --camera is its
-//! `?camera=`, the 3D view's start in widths of the area (step 15). In the section view (`--view section`, step 16),
+//! `?camera=`, the 3D view's start in widths of the area (step 15); --level is how finely the 3D view draws the land
+//! (`scene::Level`), which the page does not have. In the section view (`--view section`, step 16),
 //! --cut is the cut shown (0-based, kept within the cuts), --ore the ores chosen in the list (their kind names, as
 //! the cut then draws them alone) and --cut-look the look at the cut: k pixels a block, and the corner at x, y pixels
 //! (settled on the first frame, so a place outside the cut is brought back into it).
@@ -34,7 +35,7 @@ use preview::{MIN_SIZE, PreviewApp, PreviewState, text};
 
 fn usage() -> ! {
     eprintln!(
-        "usage: preview [--data DIR] [--theme dark|light|system] [--light] [--size WxH] [--shot out.png] [--view k[,k]] [--view-only] [--biome id,..] [--structure surface|under|id,..] [--look k,x,y] [--camera cx,cy,cz] [--cut N] [--ore kind,..] [--cut-look k,x,y] [--runs DIR] [--engine DIR] [--pack DIR] [--setting-help KEY]"
+        "usage: preview [--data DIR] [--theme dark|light|system] [--light] [--size WxH] [--shot out.png] [--view k[,k]] [--level slopes|blocks|fine] [--view-only] [--biome id,..] [--structure surface|under|id,..] [--look k,x,y] [--camera cx,cy,cz] [--cut N] [--ore kind,..] [--cut-look k,x,y] [--runs DIR] [--engine DIR] [--pack DIR] [--setting-help KEY]"
     );
     std::process::exit(2);
 }
@@ -150,6 +151,7 @@ fn main() {
     let (mut camera, mut cut, mut ores, mut cut_look) = (None, None, String::new(), None);
     let (mut runs, mut engine_dir, mut pack) = (None::<PathBuf>, std::env::var_os("WORLD_PREVIEW_DIR").map(PathBuf::from), None::<PathBuf>);
     let mut help = None::<String>;
+    let mut level = None::<scene::Level>;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| usage());
@@ -168,6 +170,7 @@ fn main() {
             "--data" => data = Some(PathBuf::from(value())),
             "--view" => views.extend(value().split(',').map(str::to_string)),
             "--view-only" => view_only = true,
+            "--level" => level = Some(scene::Level::from_key(&value()).unwrap_or_else(|| usage())),
             "--biome" => biomes = value(),
             "--structure" => structures = value(),
             "--look" => look = Some(parse_look(&value()).unwrap_or_else(|| usage())),
@@ -204,6 +207,9 @@ fn main() {
     let mut state = PreviewState::for_world(world.as_ref());
     state.trouble = trouble;
     state.view_only = view_only;
+    if let Some(level) = level {
+        state.level = level;
+    }
     for key in &views {
         apply_view(&mut state, key);
     }

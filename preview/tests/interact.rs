@@ -242,7 +242,7 @@ fn rig_3d(world: World) -> Rig {
 fn rest(r: &mut Rig) -> mere_base::Vec3 {
     let orbit = r.s.orbit.as_mut().expect("the orbit was made");
     for _ in 0..600 {
-        if !scene::settle(orbit, &r.world, 1.0 / 60.0) {
+        if !scene::settle(orbit, &r.world, scene::Level::default(), 1.0 / 60.0) {
             return orbit.eye();
         }
     }
@@ -334,4 +334,119 @@ fn o4_a_drag_that_leaves_the_stage_keeps_turning_until_the_release() {
     let eye = rest(&mut r);
     let want = -std::f32::consts::TAU * 100.0 / rect.w;
     assert!((yaw(eye) - want).abs() < 0.01, "yaw {} against {want}", yaw(eye));
+}
+
+// The 3D view's levels.
+
+/// The middle of the rect of `id`.
+fn middle(ui: &Ui, id: mere_ui::Id) -> Vec2 {
+    let r = ui.rect(id).expect("the part is built");
+    Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
+}
+
+#[test]
+fn l1_the_levels_are_under_the_3d_view_and_a_click_chooses_one() {
+    let Some(world) = load() else { return };
+    // In 2D there is no level to choose.
+    let flat = Rig::new(world.clone(), PreviewState::default());
+    assert_eq!(flat.ids.levels, [mere_ui::Id::ROOT; 3]);
+    let mut r = rig_3d(world);
+    // Showing them moves nothing else: the stage's square and Export are where they are in 2D.
+    assert_eq!(r.ui.rect(r.ids.frame), flat.ui.rect(flat.ids.frame));
+    assert_eq!(r.ui.rect(r.ids.export), flat.ui.rect(flat.ids.export));
+    // They sit in the row under the view, before Export, from the lightest to the finest.
+    let (view, export) = (r.relief(), r.ui.rect(r.ids.export).unwrap());
+    let tabs: Vec<Rect> = r.ids.levels.iter().map(|id| r.ui.rect(*id).expect("a level's tab")).collect();
+    assert!(tabs.iter().all(|t| t.y >= view.y + view.h && t.x >= view.x && t.x + t.w <= export.x), "{tabs:?} against {view:?} and {export:?}");
+    assert!(tabs[0].x + tabs[0].w <= tabs[1].x && tabs[1].x + tabs[1].w <= tabs[2].x);
+    // A window opens on the blocks; a click on a level chooses it.
+    assert_eq!(r.s.level, scene::Level::Blocks);
+    for level in [scene::Level::Fine, scene::Level::Slopes, scene::Level::Blocks] {
+        let at = middle(&r.ui, r.ids.levels[level.index()]);
+        r.click(at);
+        assert_eq!(r.s.level, level);
+    }
+    // The camera is not put back by a change of level.
+    rest(&mut r);
+    let before = r.s.orbit.clone();
+    let at = middle(&r.ui, r.ids.levels[0]);
+    r.click(at);
+    assert_eq!((r.s.level, &r.s.orbit), (scene::Level::Slopes, &before));
+}
+
+/// A device that counts the meshes it is sent.
+struct Counting<'a> {
+    inner: &'a mut Renderer,
+    meshes: usize,
+}
+
+impl mere_base::Gfx for Counting<'_> {
+    fn size_px(&self) -> (u32, u32) {
+        self.inner.size_px()
+    }
+    fn scale(&self) -> f32 {
+        self.inner.scale()
+    }
+    fn upload_image(&mut self, id: mere_base::ImageId, width: u32, height: u32, rgba: &[u8]) {
+        self.inner.upload_image(id, width, height, rgba)
+    }
+    fn upload_mesh(&mut self, id: mere_base::MeshId, vertices: &[mere_base::Vertex], indices: &[u32]) {
+        self.meshes += 1;
+        self.inner.upload_mesh(id, vertices, indices)
+    }
+    fn begin(&mut self, ground: mere_base::Color) {
+        self.inner.begin(ground)
+    }
+    fn draw_mesh(&mut self, viewport: Rect, mesh: mere_base::MeshId, view_proj: &mere_base::Mat4, material: mere_base::Material) {
+        self.inner.draw_mesh(viewport, mesh, view_proj, material)
+    }
+    fn draw_list(&mut self, list: &mere_base::DrawList) {
+        self.inner.draw_list(list)
+    }
+    fn end(&mut self) {
+        self.inner.end()
+    }
+}
+
+#[test]
+fn l2_a_level_is_built_when_the_3d_view_shows_it_and_draws_its_own_land() {
+    let Some(world) = load() else { return };
+    let (w, h) = (1400u32, 940u32);
+    let mut app = PreviewApp::new(Theme::dark(), true, SIZE, PreviewState::default(), Some(world.clone()));
+    let mut r = Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
+    let mut device = Counting { inner: &mut r, meshes: 0 };
+    app.start(&mut device);
+    app.event(Event::Resized { width_px: w, height_px: h, scale: 1.0 });
+    app.frame(&mut device, 0.0);
+    assert_eq!(device.meshes, 0, "a window that stays in 2D builds no mesh");
+
+    app.state_mut().in3d = true;
+    let mut pictures = Vec::new();
+    for level in scene::Level::ALL {
+        // The fine blocks of a wide map are too heavy for a test: the scene's own tests cover them.
+        if level == scene::Level::Fine && world.samples > 1024 {
+            continue;
+        }
+        app.state_mut().level = level;
+        let before = device.meshes;
+        app.frame(&mut device, 0.0);
+        assert!(device.meshes > before, "{level:?} is built when the 3D view shows it");
+        let built = device.meshes;
+        app.frame(&mut device, 0.0);
+        assert_eq!(device.meshes, built, "{level:?} is built once");
+        pictures.push(device.inner.read_rgba().unwrap());
+    }
+    assert_ne!(pictures[0], pictures[1], "the slopes and the blocks are not the same land");
+    // The fine blocks are the blocks on a map the blocks do not thin.
+    if let Some(fine) = pictures.get(2) {
+        assert_eq!(*fine != pictures[1], world.samples > scene::COARSE_MOST);
+    }
+
+    // To 2D and back: the device still holds the level's meshes.
+    let built = device.meshes;
+    app.state_mut().in3d = false;
+    app.frame(&mut device, 0.0);
+    app.state_mut().in3d = true;
+    app.frame(&mut device, 0.0);
+    assert_eq!(device.meshes, built);
 }
