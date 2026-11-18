@@ -53,6 +53,8 @@ pub const SECTION: &str = "Section";
 pub const SHAPES: [&str; 2] = ["2D", "3D"];
 /// How finely the 3D view draws the land, in `scene::Level::ALL`'s order, and what each one's title says.
 pub const LEVELS: [&str; 3] = ["Slopes", "Blocks", "Fine blocks"];
+/// The same in a narrow view, where the long words would push Export to a line of its own.
+pub const LEVELS_SHORT: [&str; 3] = ["Slopes", "Blocks", "Fine"];
 pub const LEVEL_HINTS: [&str; 3] = [
     "A sloped surface: the lightest, for any machine.",
     "One block per point of the land, 512 a side at most.",

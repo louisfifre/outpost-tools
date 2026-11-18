@@ -1183,11 +1183,14 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
             // "Another cut" is there in the section view only, when there is a section (line 2527).
             let cuts = if view.is_none() { world.and_then(|w| w.section.as_ref()).map_or(0, |sec| sec.cuts.len()) } else { 0 };
             ids.under = ui.node("under", under, |ui| {
-                // It wraps: in a narrow view the 3D levels and Export do not fit on one line, and Export goes under them,
-                // at the right where it always is, rather than out of the view.
+                // It wraps: in a narrow view the text, the 3D levels and Export do not fit on one line. The text then
+                // keeps the first line and the levels go under it with Export, at the right where Export always is.
                 let row = Style { wrap: true, justify: Justify::End, gap: Vec2::new(18.0, 6.0), align_items: Align::Baseline, ..Style::default() };
                 ui.node("probeRow", row, |ui| {
-                    let probe = Style { grow: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
+                    // Beside the levels the text asks for some room of its own, so that the row wraps before the text
+                    // is cut down to a letter; without them it takes what Export leaves, as it always did.
+                    let room = if ids.relief != Id::ROOT { PROBE_BESIDE_LEVELS } else { 0.0 };
+                    let probe = Style { grow: 1.0, basis: Dim::Px(room), min_w: Dim::Px(0.0), ..Style::default() };
                     ids.probe = ui.node("probe", probe, |ui| ui.ellipsis(&probe_text, TextLook::body(Tone::Muted)));
                     if cuts > 0 {
                         let r = ui.button("nextCut", text::NEXT_CUT, ButtonLook::Link);
@@ -1203,7 +1206,8 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                         ui.node("levels", choice_style(), |ui| {
                             for level in Level::ALL {
                                 let i = level.index();
-                                let r = ui.tab(&format!("level{i}"), text::LEVELS[i], TabLook::Choice, TabOpts { pressed: s.level == level, disabled: false });
+                                let words = if side < LEVELS_LONG_FROM { text::LEVELS_SHORT } else { text::LEVELS };
+                                let r = ui.tab(&format!("level{i}"), words[i], TabLook::Choice, TabOpts { pressed: s.level == level, disabled: false });
                                 ids.levels[i] = r.id;
                                 ui.title(r.id, text::LEVEL_HINTS[i]);
                                 if r.clicked {
@@ -1224,6 +1228,11 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
         });
     });
 }
+
+/// The least width the text under the view keeps on the line of the 3D levels: under it, the levels go to the next line.
+const PROBE_BESIDE_LEVELS: f32 = 140.0;
+/// The view's width from which the levels are written in full: under it the short words keep them on one line with Export.
+const LEVELS_LONG_FROM: f32 = 300.0;
 
 /// `#steps` (lines 263-273, 2563-2581, 2800-2813): a run's steps under a hairline that fills as the wait goes, or the
 /// notice of where an export went. While a run is followed they are read from it; after it, from the state.
