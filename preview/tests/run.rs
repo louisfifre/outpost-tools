@@ -272,6 +272,14 @@ fn note_on(rig: &mut Rig, view: usize) -> String {
     rig.app.ids().note_text.clone()
 }
 
+/// Clicks the bar's tab of a view and says which view is on after it.
+fn click_view(rig: &mut Rig, view: usize) -> usize {
+    let tab = rig.app.ids().tabs[view];
+    rig.click_on(tab);
+    rig.park();
+    rig.app.state().view
+}
+
 #[test]
 fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     let Some(world) = world() else { return };
@@ -300,6 +308,8 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
     assert_eq!(note_on(&mut rig, 5), text::SECTION_PENDING);
     assert_eq!(note_on(&mut rig, 2), "");
+    assert_eq!(click_view(&mut rig, 4), 2, "Structures is greyed while the run has none");
+    assert_eq!(click_view(&mut rig, 5), 2, "Section is greyed while the run has none");
 
     // The map is there while the cuts, the ores and the structures are still being made.
     std::fs::write(out.join("go-map"), "").unwrap();
@@ -315,6 +325,8 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
     rig.shot("run_map_ready_structures.png");
     assert_eq!(note_on(&mut rig, 2), "");
+    assert_eq!(click_view(&mut rig, 4), 2, "Structures is still greyed beside the run's map");
+    assert_eq!(click_view(&mut rig, 5), 2);
 
     // The run's end: everything is there, the structures and the cuts included.
     std::fs::write(out.join("go-end"), "").unwrap();
@@ -323,6 +335,8 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     let rgba = rig.shot("run_finished.png");
     assert!(shows(&rig, &rgba, &paint(&map, View::Height, true, &BTreeSet::new()), map.samples));
     assert_eq!(rig.app.world().unwrap().made.as_ref().unwrap().seed, "r8-seed");
+    assert_eq!(click_view(&mut rig, 4), 4, "Structures can be chosen again");
+    assert_eq!(click_view(&mut rig, 2), 2);
     assert_eq!(note_on(&mut rig, 4), "");
     rig.shot("run_finished_structures.png");
     assert_eq!(rig.app.painted_view(), Some(View::Structures), "the structures are drawn");
