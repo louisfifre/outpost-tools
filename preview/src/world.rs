@@ -91,16 +91,33 @@ impl World {
     }
 
     pub fn load(dir: &Path) -> Result<World, String> {
+        let text = String::from_utf8(std::fs::read(dir.join("preview.json")).map_err(|e| format!("{}: {e}", dir.join("preview.json").display()))?)
+            .map_err(|_| "preview.json is not UTF-8".to_string())?;
+        World::load_grid(dir, &text, "", true)
+    }
+
+    /// The last sketch a run under way wrote (`loadSketch`, lines 1187-1200): `coarse.json` and the two files its step
+    /// names, so a finer sketch landing meanwhile is not paired with them. Only drawn: it has no cuts, no structures
+    /// and no run record, and its figures, measured on a coarser grid, are not shown.
+    pub fn load_sketch(dir: &Path) -> Result<World, String> {
+        let text = String::from_utf8(std::fs::read(dir.join("coarse.json")).map_err(|e| format!("{}: {e}", dir.join("coarse.json").display()))?)
+            .map_err(|_| "coarse.json is not UTF-8".to_string())?;
+        let step = Json::parse(&text)?.get("step").and_then(Json::num).ok_or("coarse.json has no step")?;
+        World::load_grid(dir, &text, &format!("coarse-{step}-"), false)
+    }
+
+    /// A grid's description (`text`) and its two files, `<prefix>heights.bin` and `<prefix>biomes.bin`; with `full`,
+    /// what comes beside a map as well: the structures, the section and the run record.
+    fn load_grid(dir: &Path, text: &str, prefix: &str, full: bool) -> Result<World, String> {
         let read = |name: &str| std::fs::read(dir.join(name)).map_err(|e| format!("{}: {e}", dir.join(name).display()));
-        let text = String::from_utf8(read("preview.json")?).map_err(|_| "preview.json is not UTF-8".to_string())?;
-        let json = Json::parse(&text)?;
-        let number = |key: &str| json.get(key).and_then(Json::num).ok_or_else(|| format!("preview.json has no number \"{key}\""));
+        let json = Json::parse(text)?;
+        let number = |key: &str| json.get(key).and_then(Json::num).ok_or_else(|| format!("the grid has no number \"{key}\""));
 
         let samples = number("samples")? as usize;
         let step = number("step")?;
         let n = samples * samples;
-        let heights_raw = read("heights.bin")?;
-        let biomes_raw = read("biomes.bin")?;
+        let heights_raw = read(&format!("{prefix}heights.bin"))?;
+        let biomes_raw = read(&format!("{prefix}biomes.bin"))?;
         if samples < 2 || heights_raw.len() != n * 2 || biomes_raw.len() != n * 2 {
             return Err(format!(
                 "{samples} samples a side need {} bytes in heights.bin and biomes.bin, found {} and {}",
@@ -146,12 +163,12 @@ impl World {
             biomes,
             colours,
             flat_at,
-            structures: load_structures(dir),
-            section: Section::load(dir),
+            structures: if full { load_structures(dir) } else { None },
+            section: if full { Section::load(dir) } else { None },
             biome_total,
             absent: Vec::new(),
             measured: Measured::default(),
-            made: load_made(dir),
+            made: if full { load_made(dir) } else { None },
         };
         world.measured = measure(&world, absent.clone(), possible.is_some());
         world.absent = absent;
@@ -294,6 +311,33 @@ mod tests {
         assert_eq!((section.cuts.len(), section.length, section.height, section.min_y), (4, 4096, 384, -64.0));
         assert!(section.cuts.iter().all(|c| c.cells.is_some()), "every cut's cells are read");
         assert!(w.flat_at.iter().any(|&f| f == 1));
+    }
+
+    #[test]
+    fn a_sketch_is_read_from_the_files_its_step_names() {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/tmp")).join("world_unit_sketch");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(World::load_sketch(&dir).is_err(), "no sketch before the first pass");
+        let grid = |samples: usize, step: u32| {
+            format!(r#"{{"seed":"s","samples":{samples},"step":{step},"originX":-64,"originZ":-64,"seaLevel":63,"biomes":[{{"id":"minecraft:plains","temperature":0.8}}]}}"#)
+        };
+        let bins = |prefix: &str, samples: usize, height: i16| {
+            std::fs::write(dir.join(format!("{prefix}heights.bin")), height.to_le_bytes().repeat(samples * samples)).unwrap();
+            std::fs::write(dir.join(format!("{prefix}biomes.bin")), vec![0u8; samples * samples * 2]).unwrap();
+        };
+        // The sketch of 64 blocks, then a full map's files and a run record beside it, which a sketch does not take.
+        bins("coarse-64-", 2, 70);
+        bins("", 8, 90);
+        std::fs::write(dir.join("coarse.json"), grid(2, 64)).unwrap();
+        std::fs::write(dir.join("run.json"), r#"{"seed":"s","tectonic":{}}"#).unwrap();
+        let w = World::load_sketch(&dir).unwrap();
+        assert_eq!((w.samples, w.step, w.heights[0], w.made.is_none(), w.structures.is_none(), w.section.is_none()), (2, 64.0, 70, true, true, true));
+        // A finer sketch's description landed before its files: what it names is not there yet.
+        std::fs::write(dir.join("coarse.json"), grid(4, 32)).unwrap();
+        assert!(World::load_sketch(&dir).is_err());
+        bins("coarse-32-", 4, 75);
+        assert_eq!(World::load_sketch(&dir).unwrap().heights[0], 75);
     }
 
     #[test]
