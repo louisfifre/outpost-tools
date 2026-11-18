@@ -22,10 +22,12 @@ pub const WALL_IMAGE: ImageId = ImageId(20);
 pub const WATER_COLOUR: Color = Color::hex(0x2f5c9e);
 /// The columns' upright sides, in `SIDE_IMAGE`.
 pub const SIDE_MESH: MeshId = MeshId(23);
-/// The map's colour of each column, shaded for each of the four directions a side can face (`side_image`).
+/// The map's colour of each column, in each of the two shades a side can take (`side_image`).
 pub const SIDE_IMAGE: ImageId = ImageId(24);
 /// The shade of a side facing north, east, south and west: the game's own, so the steps read as its blocks do.
+/// Two sides that face each other share a shade, so the picture holds two shades, not four.
 pub const SIDE_SHADE: [f32; 4] = [0.8, 0.6, 0.8, 0.6];
+const _: () = assert!(SIDE_SHADE[0] == SIDE_SHADE[2] && SIDE_SHADE[1] == SIDE_SHADE[3]);
 
 /// What the walls round the land are painted.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -52,21 +54,17 @@ pub const EDGE: Edge = Edge::Underside;
 pub const WALL_UV: [f32; 2] = [0.5, 0.5];
 
 pub const UNDER_MESH: MeshId = MeshId(21);
-/// The underside's five greys: the bottoms, then a side facing north, east, south and west (`underside_image`).
+/// The underside's shades, one texel per point it hangs from (`underside_image`).
 pub const UNDER_IMAGE: ImageId = ImageId(22);
-/// Blocks between the land and its underside. The underside is the blocks again, this much lower, so it is under
-/// the land everywhere and the depth test keeps the land in front from above (the depth is 32-bit float and
-/// reversed, so half a block holds at any distance the camera reaches).
+/// Blocks between the land and its underside, at the least. The underside hangs from the lowest top round each of
+/// its points, this much lower, so it is under the land everywhere and the depth test keeps the land in front from
+/// above (the depth is 32-bit float and reversed, so half a block holds at any distance the camera reaches).
 pub const UNDER_GAP: f32 = 0.5;
-/// Blocks between a column's side on the land and the underside's side behind it: two faces cannot share a plane,
-/// and a wider gap leaves pockets whose ends showed the land's colours from below as thin lines. A 64th of a
-/// block is far under a pixel at any distance the camera reaches, and still clear of the depth's precision.
-pub const UNDER_INSET: f32 = 1.0 / 64.0;
-/// Towards the light that shades the underside: from below, off to the north-west, so the steps seen from under
+/// Towards the light that shades the underside: from below, off to the north-west, so its slopes seen from under
 /// read.
 const UNDER_LIGHT: [f32; 3] = [-0.4, -0.8, -0.45];
 /// The underside's darkest and lightest grey: a face turned away from the light, and one turned to it. The darkest
-/// stays well off black, so the steps still read on the sides the light does not reach.
+/// stays well off black, so the relief still reads on the sides the light does not reach.
 const UNDER_GREYS: (f32, f32) = (100.0, 200.0);
 
 // Blocks kept between the camera and the ground under it: the near plane is ten blocks, and the camera must not
@@ -194,10 +192,10 @@ pub fn land(world: &World) -> Mesh {
     mesh
 }
 
-/// Where side `d` of column (col, row) samples `SIDE_IMAGE`: one quarter of the image per direction.
+/// Where side `d` of column (col, row) samples `SIDE_IMAGE`: one half of the image per shade, north and south in
+/// the first, east and west in the second.
 fn side_uv(m: usize, col: usize, row: usize, d: usize) -> [f32; 2] {
-    let (qx, qy) = ((d % 2) * m, (d / 2) * m);
-    [((qx + col) as f32 + 0.5) / (2 * m) as f32, ((qy + row) as f32 + 0.5) / (2 * m) as f32]
+    [(((d % 2) * m + col) as f32 + 0.5) / (2 * m) as f32, (row as f32 + 0.5) / m as f32]
 }
 
 /// The columns' upright sides: one wherever a neighbour is lower, from the column's top down to the neighbour's,
@@ -225,64 +223,70 @@ pub fn sides(world: &World) -> Mesh {
     mesh
 }
 
-/// `SIDE_IMAGE`, 2m by 2m RGBA, from the map's picture `drape` (samples by samples, RGBA): for each direction a
-/// quarter holding every column's colour times `SIDE_SHADE`.
-pub fn side_image(world: &World, drape: &[u8]) -> (u32, Vec<u8>) {
+/// `SIDE_IMAGE`, 2m wide and m high, RGBA, from the map's picture `drape` (samples by samples, RGBA): for each of
+/// the two shades a half holding every column's colour times it.
+pub fn side_image(world: &World, drape: &[u8]) -> (u32, u32, Vec<u8>) {
     let (skip, m, _) = grid(world);
     let n = world.samples;
     let w = 2 * m;
-    let mut rgba = vec![0u8; w * w * 4];
-    for (d, shade) in SIDE_SHADE.iter().enumerate() {
-        let (qx, qy) = ((d % 2) * m, (d / 2) * m);
+    let mut rgba = vec![0u8; w * m * 4];
+    for (half, shade) in SIDE_SHADE[..2].iter().enumerate() {
+        // A byte times a shade, worked out once for the 256 bytes.
+        let shaded: [u8; 256] = std::array::from_fn(|c| (c as f32 * shade).round() as u8);
         for row in 0..m {
             for col in 0..m {
                 let from = (row * skip * n + col * skip) * 4;
-                let to = ((qy + row) * w + qx + col) * 4;
+                let to = (row * w + half * m + col) * 4;
                 for k in 0..3 {
-                    rgba[to + k] = (drape[from + k] as f32 * shade).round() as u8;
+                    rgba[to + k] = shaded[drape[from + k] as usize];
                 }
                 rgba[to + 3] = 255;
             }
         }
     }
-    (w as u32, rgba)
+    (w as u32, m as u32, rgba)
 }
 
 /// Uploads the map's picture for the 3D view's sides, after the picture itself: it follows the view and the theme
 /// as the picture does.
 pub fn upload_sides(gfx: &mut dyn Gfx, world: &World, drape: &[u8]) {
-    let (w, rgba) = side_image(world, drape);
-    gfx.upload_image(SIDE_IMAGE, w, w, &rgba);
+    let (w, h, rgba) = side_image(world, drape);
+    gfx.upload_image(SIDE_IMAGE, w, h, &rgba);
 }
 
 /// The water at `sea`, flat over each column whose ground is under it, so it ends at the shores and at the
 /// square's edge. A sheet over the whole square would lie under the land wherever the land is higher, and from a
 /// low angle past the edge it showed as a flat blue slab under the land.
 pub fn water(world: &World) -> Mesh {
-    let (_, m, _) = grid(world);
+    let (_, m, cell) = grid(world);
     let y = sea(world);
     let h = half(world);
-    let (_, _, cell) = grid(world);
-    // The corners of all the columns, at the water's height, shared by the squares of water side by side.
+    // The columns' corners, at the water's height, shared by the squares of water side by side: a corner gets its
+    // vertex when a first square needs it, so land without water carries none.
     let corners = m + 1;
-    let vertices: Vec<Vertex> = (0..corners * corners)
-        .map(|i| Vertex { pos: [(i % corners) as f32 * cell - h, y, (i / corners) as f32 * cell - h], uv: [0.0, 0.0] })
-        .collect();
-    let mut indices = Vec::new();
+    let mut vertex_of = vec![u32::MAX; corners * corners];
+    let mut mesh = Mesh::new();
     for row in 0..m {
         for col in 0..m {
             if height(world, col, row) < y {
-                let a = (row * corners + col) as u32;
-                let corner = [a, a + 1, a + corners as u32, a + corners as u32 + 1];
-                indices.extend(IN.iter().map(|&k| corner[k as usize]));
+                let a = row * corners + col;
+                let corner = [a, a + 1, a + corners, a + corners + 1].map(|i| {
+                    if vertex_of[i] == u32::MAX {
+                        vertex_of[i] = mesh.vertices.len() as u32;
+                        mesh.vertices.push(Vertex { pos: [(i % corners) as f32 * cell - h, y, (i / corners) as f32 * cell - h], uv: [0.0, 0.0] });
+                    }
+                    vertex_of[i]
+                });
+                mesh.indices.extend(IN.iter().map(|&k| corner[k as usize]));
             }
         }
     }
     // mere-ui refuses an empty buffer, and would keep the last world's water.
-    if indices.is_empty() {
-        indices.extend_from_slice(&[0, 0, 0]);
+    if mesh.indices.is_empty() {
+        mesh.vertices.push(Vertex::default());
+        mesh.indices.extend_from_slice(&[0, 0, 0]);
     }
-    Mesh { vertices, indices }
+    mesh
 }
 
 /// The walls that close the land and the sea round the square: under each border column, from the higher of its
@@ -324,53 +328,102 @@ pub fn upload_wall(gfx: &mut dyn Gfx, ground: Color) {
     }
 }
 
-/// Where a face of the underside samples `UNDER_IMAGE`: texel 0 for the bottoms, 1 + d for a side facing `d`.
-fn under_uv(texel: usize) -> [f32; 2] {
-    [(texel as f32 + 0.5) / 5.0, 0.5]
+/// The points the underside hangs from, `k` a side and `cell` blocks apart over the square, with the height of
+/// the land at each. The surface drawn between them, `UNDER_GAP` lower, lies under the land everywhere.
+struct Lattice {
+    k: usize,
+    cell: f32,
+    half: f32,
+    y: Vec<f32>,
 }
 
-/// The land's underside: the blocks again, `UNDER_GAP` lower and seen from below. Each column has a flat bottom
-/// facing down; where a neighbour is lower, an upright side facing back into the column, set `UNDER_INSET` inside it
-/// so it stands behind the land's own side and never in its plane; and round the border a rim from the top down to
-/// the bottom, so the edge is one clean line.
-pub fn underside(world: &World) -> Mesh {
-    let (_, m, _) = grid(world);
-    let mut mesh = Mesh::new();
+/// The corners of the columns, each at the lowest of the tops that meet there: between four such corners the
+/// surface is under the column's top, and along an edge under both columns' tops, so under the side between them.
+fn lattice(world: &World) -> Lattice {
+    let (_, m, cell) = grid(world);
+    let k = m + 1;
+    let mut y = vec![f32::MAX; k * k];
     for row in 0..m {
         for col in 0..m {
-            let top = height(world, col, row);
-            mesh.quad(square(world, col, row, top - UNDER_GAP), under_uv(0), OUT);
-            for d in 0..4 {
-                match neighbour(m, col, row, d) {
-                    Some((c, r)) => {
-                        let low = height(world, c, r);
-                        if low < top {
-                            // Seen from under the column, it faces back into it: the direction opposite to d.
-                            let corners = face(world, col, row, d, UNDER_INSET, top - UNDER_GAP, low - UNDER_GAP);
-                            mesh.quad(corners, under_uv(1 + (d + 2) % 4), IN);
-                        }
-                    }
-                    None => mesh.quad(face(world, col, row, d, 0.0, top, top - UNDER_GAP), under_uv(1 + d), OUT),
-                }
+            let h = height(world, col, row);
+            for i in [row * k + col, row * k + col + 1, (row + 1) * k + col, (row + 1) * k + col + 1] {
+                y[i] = y[i].min(h);
             }
+        }
+    }
+    Lattice { k, cell, half: half(world), y }
+}
+
+/// The lattice's (col, row) round its border, one list per side, each walked so that the square lies on the same
+/// hand: north with x growing, east with z growing, south with x falling, west with z falling. A corner is in
+/// two lists.
+fn border(k: usize) -> [Vec<(usize, usize)>; 4] {
+    [(0..k).map(|c| (c, 0)).collect(), (0..k).map(|r| (k - 1, r)).collect(), (0..k).rev().map(|c| (c, k - 1)).collect(), (0..k).rev().map(|r| (0, r)).collect()]
+}
+
+/// Where point `i` of the lattice samples `UNDER_IMAGE`: the middle of its own texel.
+fn under_uv(i: usize, k: usize) -> [f32; 2] {
+    [((i % k) as f32 + 0.5) / k as f32, ((i / k) as f32 + 0.5) / k as f32]
+}
+
+/// The land's underside, seen only from past the edge at a low angle: one sloped surface hung `UNDER_GAP` under
+/// the lattice's points, facing down, and round the border a rim from each border column's top down to it, facing
+/// out, so the edge is one clean line. Each vertex samples its own shade in `underside_image`. The blocks are not
+/// drawn again from below: that doubled the land's triangles for a part hardly ever seen.
+pub fn underside(world: &World) -> Mesh {
+    let (_, m, _) = grid(world);
+    let l = lattice(world);
+    let k = l.k;
+    let at = |i: usize, y: f32| Vertex { pos: [(i % k) as f32 * l.cell - l.half, y, (i / k) as f32 * l.cell - l.half], uv: under_uv(i, k) };
+    let mut mesh = Mesh::new();
+    mesh.vertices.reserve(k * k + 8 * m);
+    mesh.vertices.extend((0..k * k).map(|i| at(i, l.y[i] - UNDER_GAP)));
+    mesh.indices.reserve((k - 1) * (k - 1) * 6 + 4 * m * 6);
+    for row in 0..k - 1 {
+        for col in 0..k - 1 {
+            let a = (row * k + col) as u32;
+            let (b, c, d) = (a + 1, a + k as u32, a + k as u32 + 1);
+            mesh.indices.extend_from_slice(&[a, b, c, b, d, c]);
+        }
+    }
+    for edge in border(k) {
+        for pair in edge.windows(2) {
+            let ((ca, ra), (cb, rb)) = (pair[0], pair[1]);
+            // The border column this stretch of the rim runs along, and its flat top.
+            let top = height(world, ca.min(cb).min(m - 1), ra.min(rb).min(m - 1));
+            let (low_a, low_b) = ((ra * k + ca) as u32, (rb * k + cb) as u32);
+            let first = mesh.vertices.len() as u32;
+            mesh.vertices.push(at(low_a as usize, top));
+            mesh.vertices.push(at(low_b as usize, top));
+            mesh.indices.extend_from_slice(&[first, first + 1, low_a, first + 1, low_b, low_a]);
         }
     }
     mesh
 }
 
-/// `UNDER_IMAGE`, 5 by 1 RGBA: a grey for the bottoms and one for a side facing each direction, by how much the
-/// face turns to `UNDER_LIGHT`.
-pub fn underside_image() -> (u32, Vec<u8>) {
-    let len = (UNDER_LIGHT.iter().map(|c| c * c).sum::<f32>()).sqrt();
-    let light = UNDER_LIGHT.map(|c| c / len);
-    let normals = [[0.0, -1.0, 0.0], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]];
-    let mut rgba = Vec::with_capacity(5 * 4);
-    for n in normals {
-        let lit = (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).max(0.0);
-        let grey = (UNDER_GREYS.0 + (UNDER_GREYS.1 - UNDER_GREYS.0) * lit).round() as u8;
-        rgba.extend_from_slice(&[grey, grey, grey, 255]);
+/// `UNDER_IMAGE`, `k` by `k` RGBA: a grey per point of the lattice, by how much the surface there, seen from
+/// under, turns to `UNDER_LIGHT`. Its normal is worked out from the points on each side, or the one at the border.
+pub fn underside_image(world: &World) -> (u32, Vec<u8>) {
+    let l = lattice(world);
+    let k = l.k;
+    let h = |col: usize, row: usize| l.y[row * k + col];
+    let len = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    let light = UNDER_LIGHT.map(|c| c / len(UNDER_LIGHT));
+    let mut rgba = Vec::with_capacity(k * k * 4);
+    for row in 0..k {
+        for col in 0..k {
+            let (c0, c1) = (col.saturating_sub(1), (col + 1).min(k - 1));
+            let (r0, r1) = (row.saturating_sub(1), (row + 1).min(k - 1));
+            let dx = (h(c1, row) - h(c0, row)) / ((c1 - c0) as f32 * l.cell);
+            let dz = (h(col, r1) - h(col, r0)) / ((r1 - r0) as f32 * l.cell);
+            // The top's normal is (-dx, 1, -dz); the underside's points the other way.
+            let down = [dx, -1.0, dz];
+            let lit = ((down[0] * light[0] + down[1] * light[1] + down[2] * light[2]) / len(down)).max(0.0);
+            let grey = (UNDER_GREYS.0 + (UNDER_GREYS.1 - UNDER_GREYS.0) * lit).round() as u8;
+            rgba.extend_from_slice(&[grey, grey, grey, 255]);
+        }
     }
-    (5, rgba)
+    (k as u32, rgba)
 }
 
 /// The ground's height under (x, z): the top of the column there; None outside the square.
@@ -419,8 +472,9 @@ pub fn upload(gfx: &mut dyn Gfx, world: &World) {
         Edge::Underside => {
             let under = underside(world);
             gfx.upload_mesh(UNDER_MESH, &under.vertices, &under.indices);
-            let (w, rgba) = underside_image();
-            gfx.upload_image(UNDER_IMAGE, w, 1, &rgba);
+            // The shades depend on the heights only, not on the theme.
+            let (k, rgba) = underside_image(world);
+            gfx.upload_image(UNDER_IMAGE, k, k, &rgba);
         }
         Edge::Wall(_) => {
             let walls = walls(world);
@@ -444,7 +498,8 @@ pub fn draw(gfx: &mut dyn Gfx, viewport: Rect, orbit: &Orbit, image: ImageId, wa
     gfx.draw_mesh(viewport, LAND_MESH, &view_proj, Material::Image { image, nearest: true });
     gfx.draw_mesh(viewport, SIDE_MESH, &view_proj, Material::Image { image: SIDE_IMAGE, nearest: true });
     match EDGE {
-        Edge::Underside => gfx.draw_mesh(viewport, UNDER_MESH, &view_proj, Material::Image { image: UNDER_IMAGE, nearest: true }),
+        // Smooth: each vertex's uv is the middle of its own texel, so the shades blend across the triangles.
+        Edge::Underside => gfx.draw_mesh(viewport, UNDER_MESH, &view_proj, Material::Image { image: UNDER_IMAGE, nearest: false }),
         // `upload_wall` must have given the walls their pixel.
         Edge::Wall(_) => gfx.draw_mesh(viewport, WALL_MESH, &view_proj, Material::Image { image: WALL_IMAGE, nearest: true }),
     }
@@ -559,11 +614,11 @@ mod tests {
         let w = world(16);
         // A picture whose red is the sample's column and green its row.
         let drape: Vec<u8> = (0..16 * 16).flat_map(|i| [(i % 16) as u8 * 10, (i / 16) as u8 * 10, 200, 255]).collect();
-        let (size, rgba) = side_image(&w, &drape);
-        assert_eq!((size, rgba.len()), (32, 32 * 32 * 4));
+        let (width, height, rgba) = side_image(&w, &drape);
+        assert_eq!((width, height, rgba.len()), (32, 16, 32 * 16 * 4));
         for d in 0..4 {
             let [u, v] = side_uv(16, 3, 7, d);
-            let at = (((v * 32.0) as usize) * 32 + (u * 32.0) as usize) * 4;
+            let at = (((v * 16.0) as usize) * 32 + (u * 32.0) as usize) * 4;
             let shade = |c: f32| (c * SIDE_SHADE[d]).round() as u8;
             assert_eq!(&rgba[at..at + 4], &[shade(30.0), shade(70.0), shade(200.0), 255], "direction {d}");
         }
@@ -623,59 +678,60 @@ mod tests {
     }
 
     #[test]
-    fn the_underside_is_the_blocks_again_lower_seen_from_below_with_a_rim() {
-        let w = shore();
-        let (land, under) = (land(&w), underside(&w));
-        // A bottom per column, the one step's side per row, and a rim round the border's 64 column faces.
-        assert_eq!(under.indices.len(), (16 * 16 + 16 + 4 * 16) * 6);
-        assert!(under.indices.iter().all(|&i| (i as usize) < under.vertices.len()));
-        // The bottoms: one per column, a whole footprint, its top `UNDER_GAP` lower, in the bottoms' grey.
-        let width = |q: &[Vertex]| q.iter().map(|v| v.pos[0]).fold(f32::MIN, f32::max) - q.iter().map(|v| v.pos[0]).fold(f32::MAX, f32::min);
-        let flat: Vec<&[Vertex]> = under.vertices.chunks(4).filter(|q| q.iter().all(|v| v.pos[1] == q[0].pos[1])).collect();
-        let bottoms: Vec<&[Vertex]> = flat.iter().copied().filter(|q| width(q) == 16.0).collect();
-        assert_eq!(bottoms.len(), 16 * 16);
-        for (top, bottom) in land.vertices.chunks(4).zip(&bottoms) {
-            for (a, b) in top.iter().zip(bottom.iter()) {
-                assert_eq!((b.pos, b.uv), ([a.pos[0], a.pos[1] - UNDER_GAP, a.pos[2]], under_uv(0)));
+    fn the_underside_hangs_under_every_top_and_side_with_a_rim_round_the_border() {
+        for w in [shore(), world(16)] {
+            let under = underside(&w);
+            let k = 17;
+            // A point per corner of the columns, two triangles per column, and a rim along each border column.
+            assert_eq!(under.vertices.len(), k * k + 4 * 16 * 2);
+            assert_eq!(under.indices.len(), (16 * 16 + 4 * 16) * 6);
+            assert!(under.indices.iter().all(|&i| (i as usize) < under.vertices.len()));
+            // Each corner is `UNDER_GAP` under the lowest of the tops that meet there, on its own shade's texel.
+            for (i, v) in under.vertices[..k * k].iter().enumerate() {
+                let (c, r) = (i % k, i / k);
+                let lowest = [(c.saturating_sub(1), r.saturating_sub(1)), (c.min(15), r.saturating_sub(1)), (c.saturating_sub(1), r.min(15)), (c.min(15), r.min(15))]
+                    .iter()
+                    .map(|&(col, row)| w.heights[row * 16 + col] as f32)
+                    .fold(f32::MAX, f32::min);
+                assert_eq!((v.pos, v.uv), ([c as f32 * 16.0 - 128.0, lowest - UNDER_GAP, r as f32 * 16.0 - 128.0], under_uv(i, k)));
+            }
+            // The surface faces down; the rim is upright, faces out, and starts at its border column's top.
+            let surface = 16 * 16 * 2;
+            assert!((0..surface).all(|t| normal(&under, t)[1] < 0.0));
+            for t in surface..under.indices.len() / 3 {
+                let f = facing(&under, t);
+                let p = under.vertices[under.indices[3 * t] as usize].pos;
+                assert!(f[1] == 0 && (p[0] * f[0] as f32 == 128.0 || p[2] * f[2] as f32 == 128.0), "rim triangle {t} faces out");
+            }
+            for pair in under.vertices[k * k..].chunks(2) {
+                let x = ((pair[0].pos[0] + pair[1].pos[0]) / 2.0).clamp(-127.0, 127.0);
+                let z = ((pair[0].pos[2] + pair[1].pos[2]) / 2.0).clamp(-127.0, 127.0);
+                let top = ground_at(&w, x, z).unwrap();
+                assert_eq!((pair[0].pos[1], pair[1].pos[1]), (top, top));
             }
         }
-        assert_eq!(flat.len(), 16 * 16, "the bottoms are the only flat faces");
-        let down: Vec<usize> = triangles(&under).filter(|&t| facing(&under, t) == [0, -1, 0]).collect();
-        assert_eq!(down.len(), 16 * 16 * 2);
-        assert!(triangles(&under).all(|t| down.contains(&t) || facing(&under, t)[1] == 0), "the rest is upright");
-        // The step's side stands `UNDER_INSET` inside the high column, facing back into it (west), never in the
-        // plane of the land's own side at x -48.
-        let upright = || triangles(&under).filter(|t| !down.contains(t));
-        let first_x = |t: usize| under.vertices[under.indices[3 * t] as usize].pos[0];
-        let step_sides: Vec<usize> = upright().filter(|&t| first_x(t) == -48.0 - UNDER_INSET).collect();
-        assert_eq!(step_sides.len(), 16 * 2);
-        assert!(step_sides.iter().all(|&t| facing(&under, t) == dir(3)));
-        // The rim faces out at the border, from each top down to its bottom.
-        let half = 128.0;
-        for t in upright().filter(|t| !step_sides.contains(t)) {
-            let f = facing(&under, t);
-            let p = under.vertices[under.indices[3 * t] as usize].pos;
-            assert!(p[0] * f[0] as f32 == half || p[2] * f[2] as f32 == half, "rim triangle {t} faces out");
-        }
         // The camera's ground is still the top.
-        assert_eq!(ground_at(&w, -100.0, 0.0), Some(70.0));
+        assert_eq!(ground_at(&shore(), -100.0, 0.0), Some(70.0));
     }
 
     #[test]
     fn the_underside_is_grey_and_lit_from_below() {
-        let (w, rgba) = underside_image();
-        assert_eq!((w, rgba.len()), (5, 20));
-        let grey: Vec<u8> = rgba.chunks(4).map(|p| {
-            assert!(p[0] == p[1] && p[1] == p[2] && p[3] == 255);
-            p[0]
-        }).collect();
-        // The light is below and to the north-west: the bottoms are the lightest, the sides facing north and west
-        // lighter than those facing south and east, which it does not reach.
-        assert!(grey[0] > grey[1] && grey[0] > grey[4]);
-        assert!(grey[1] > grey[3] && grey[4] > grey[2]);
-        assert_eq!((grey[2], grey[3]), (UNDER_GREYS.0 as u8, UNDER_GREYS.0 as u8));
+        let mut w = world(16);
+        w.heights = vec![70; 16 * 16];
+        let (k, flat) = underside_image(&w);
+        assert_eq!((k, flat.len()), (17, 17 * 17 * 4));
+        // Grey, opaque, and one shade under flat ground.
+        assert!(flat.chunks(4).all(|p| p[0] == p[1] && p[1] == p[2] && p[3] == 255 && p[0] == flat[0]));
+        // Ground falling to the east: seen from under, its face turns down and west, towards the light (x < 0),
+        // and is lighter than flat ground; rising to the east it turns away and is darker.
+        w.heights = (0..16 * 16).map(|i| (i % 16) as i16 * 8).collect();
+        let rising = underside_image(&w).1;
+        w.heights = (0..16 * 16).map(|i| (15 - i % 16) as i16 * 8).collect();
+        let falling = underside_image(&w).1;
+        let middle = (8 * 17 + 8) * 4;
+        assert!(falling[middle] > flat[middle] && flat[middle] > rising[middle], "{} {} {}", falling[middle], flat[middle], rising[middle]);
+        assert!(rising.iter().chain(&falling).all(|&g| g >= UNDER_GREYS.0 as u8), "never darker than the darkest grey");
     }
-
     #[test]
     fn the_walls_close_each_border_column_down_to_the_base() {
         let w = shore();
