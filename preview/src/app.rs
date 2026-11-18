@@ -805,6 +805,10 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                 let rgba = paint(world, key.0, key.1, &key.2);
                 let n = world.samples as u32;
                 gfx.upload_image(MAP_IMAGE, n, n, &rgba);
+                // The blocks' sides are the map's colours, shaded: they follow the picture.
+                scene::upload_sides(gfx, world, &rgba);
+                // The walls' colour follows the theme, as the drape does.
+                scene::upload_wall(gfx, self.theme.ground);
                 observe!(
                     Info,
                     "painted {} {} choice {:?} {n}x{n} in {} ms",

@@ -10,7 +10,7 @@ use mere_ui::Theme;
 use mere_win32::Renderer;
 use preview::paint::View;
 use preview::world::World;
-use preview::{PreviewApp, PreviewState, scene, text};
+use preview::{BAR_H, CONTENT_TOP, PreviewApp, PreviewState, panels, scene, text};
 
 const W: u32 = 1400;
 const H: u32 = 940;
@@ -105,7 +105,11 @@ fn tab_pixel(a: &[u8], app: &PreviewApp, index: usize) -> [u8; 3] {
 fn s1_stage_3d_relief_is_drawn_inside_the_frame_only() {
     let Some(world) = load() else { return };
     let (a, b, app, rect, _r) = take(&world, false, state_3d(2), "relief3d_1400.png");
-    // 28 + the settings panel (319) + 28 from the left; the middle column is 648 wide at 1400.\n    assert_eq!(rect, Rect::new(375.0, 50.0, 648.0, 648.0));
+    // The square is what the panels leave at their natural widths: the gap, the settings panel and the gap from the
+    // left, under the bar and its gap. At 1400 the middle column's width, not its height, sets the side.
+    let [left, right] = panels::natural();
+    let side = W as f32 - 4.0 * panels::GAP - left - right;
+    assert_eq!(rect, Rect::new(panels::GAP + left + panels::GAP, BAR_H + CONTENT_TOP, side, side));
     assert_eq!(app.ui().rect(app.ids().frame), Some(rect));
     assert_eq!(leaks(&a, &b, rect), 0, "the scene stays inside the square");
     let share = share_not(&a, rect, DARK_GROUND);
