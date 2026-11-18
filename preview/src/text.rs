@@ -110,6 +110,14 @@ pub fn step_last(step: u32) -> String {
 }
 /// Line 476.
 pub const STEP_EXTRAS: &str = "Cuts, ores and structures";
+/// Line 477: said after the clock while the stage shows a sketch.
+pub const SKETCH_READABLE: &str = "The sketch on the map can be read already.";
+/// Not the page's, which shows the map without marks and an empty cut: what a view says while the run that will
+/// give it is still under way.
+pub const STRUCTURES_PENDING: &str = "The structures come at the end of the run.";
+pub const SECTION_PENDING: &str = "The cuts come at the end of the run.";
+/// The title of a view greyed for that reason.
+pub const COMES_AT_THE_END: &str = "Comes at the end of the run.";
 /// Line 479.
 pub const STOPPED: &str = "Stopped. The map is the one from before.";
 /// Line 482.

@@ -17,6 +17,7 @@ use mere_layout::{Align, Dim, Display, Edges, Overflow, Position, Style, Track, 
 use mere_ui::{Icon, IconLook, IconOpts, MenuRow, Slide, TabLook, TabOpts, TextLook, Tone, Ui, strip_style};
 
 use crate::overflow::{self, Form, VIEW_COUNT};
+use crate::run::Drawn;
 use crate::shell::{BAR_H, Mode, PreviewState, RunEnd, ShellIds, Want};
 use crate::text;
 use crate::world::World;
@@ -128,16 +129,23 @@ pub fn window_title(s: &PreviewState) -> String {
 }
 
 /// The views that cannot be shown for this world: Flat, Structures and Section come after the full map only (line 2506).
-fn greyed(world: Option<&World>) -> [bool; VIEW_COUNT] {
+/// While the stage shows a run's own picture, Structures and Section are greyed until the run has made them.
+fn greyed(s: &PreviewState, world: Option<&World>) -> [bool; VIEW_COUNT] {
     let coarse = world.is_some_and(World::coarse);
-    std::array::from_fn(|i| coarse && matches!(i, 1 | 4 | 5))
+    let pending = pending(s);
+    std::array::from_fn(|i| (coarse && matches!(i, 1 | 4 | 5)) || (pending && matches!(i, 4 | 5)))
+}
+
+/// The stage shows the run's sketch or map, which have no structures and no cuts yet.
+fn pending(s: &PreviewState) -> bool {
+    s.follow.as_ref().is_some_and(|f| f.drawn != Drawn::Nothing)
 }
 
 /// What the bar shows at a window `width` wide: see `overflow.rs`. The views' arrangement is the one of the preview
 /// tool open, whatever tool is on, so the views do not shuffle while they slide; the brand's parts follow the
 /// tool on show, so Home, which has the room, keeps the account and the word.
 pub fn form_for(s: &PreviewState, world: Option<&World>, width: f32) -> (Form, Form) {
-    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), preview_open, pressed: s.view, disabled: greyed(world), shapes: s.view != 5 };
+    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != 5 };
     let open = overflow::plan(&inputs(true));
     let on_show = if s.mode == Mode::Preview { open.clone() } else { overflow::plan(&inputs(false)) };
     (open, on_show)
@@ -307,14 +315,15 @@ fn panel_toggle(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, which: us
 /// a gap and 2D and 3D. A disabled one carries the page's `needsFull` as its title, an enabled one its label.
 /// The views the form holds back are not tabs: they are the rows of "More", at the end of the views.
 fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&World>, form: &Form) {
-    let off = greyed(world);
+    let off = greyed(s, world);
+    let why = if pending(s) && !world.is_some_and(World::coarse) { text::COMES_AT_THE_END } else { text::NEEDS_FULL };
     for i in (0..VIEW_COUNT).filter(|i| !form.more.contains(i)) {
         let word = overflow::view_word(i);
         let disabled = off[i];
         let r = ui.tab(&format!("view{i}"), word, TabLook::Strip, TabOpts { pressed: i == s.view, disabled });
         ids.tabs.push(r.id);
         ids.bar_buttons.push(r.id);
-        ui.title(r.id, if disabled { text::NEEDS_FULL } else { word });
+        ui.title(r.id, if disabled { why } else { word });
         // `inert` while the tool is not the one on screen (the page's closing slide).
         if r.clicked && s.mode == Mode::Preview {
             s.view = i;

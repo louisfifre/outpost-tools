@@ -167,11 +167,24 @@ pub struct Follow {
     /// The engine's last line (a build, a download, the pack's sync): shown beside the first step, the long one
     /// whose progress the mod cannot count yet.
     pub said: String,
+    /// What of this run the stage shows: nothing yet (the map before, veiled), its last sketch, or its map while
+    /// the cuts and the structures are still being made.
+    pub drawn: Drawn,
+}
+
+/// The run's own picture on the stage, finer at each step.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Drawn {
+    #[default]
+    Nothing,
+    /// A sketch, every so many blocks.
+    Sketch(u32),
+    Map,
 }
 
 impl Follow {
     pub fn new(ask: Ask, expected: Option<u64>) -> Follow {
-        Follow { ask, done: Vec::new(), stage: text::STEP_START.to_string(), part: None, pass_key: String::new(), seconds: 0, expected, stopping: false, said: String::new() }
+        Follow { ask, done: Vec::new(), stage: text::STEP_START.to_string(), part: None, pass_key: String::new(), seconds: 0, expected, stopping: false, said: String::new(), drawn: Drawn::Nothing }
     }
 
     /// A line of the engine, as it comes.

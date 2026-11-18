@@ -11,7 +11,8 @@ use std::path::Path;
 
 use common::*;
 use preview::paint::{View, paint};
-use preview::run::{Pace, Steps, duration};
+use preview::run::{Drawn, Pace, Steps, duration};
+use preview::world::World;
 use preview::{PreviewState, text};
 
 fn pid_of(root: &Path) -> Option<u32> {
@@ -248,6 +249,122 @@ fn r6_quitting_stops_the_run_under_way() {
     assert!(alive(grandchild));
     drop(rig.app);
     assert!(gone_within(grandchild, 10), "the server outlived the application");
+}
+
+/// Whether the map's pixel a tenth of the way in is a texel of `img` (a world of `n` points a side) at full opacity:
+/// the picture is that world's, and nothing veils it. One point away from the grid lines, as in r1.
+fn shows(rig: &Rig, rgba: &[u8], img: &[u8], n: usize) -> bool {
+    let map = rig.rect(rig.app.ids().map);
+    let n = n as i32;
+    let (rx, ry) = ((0.1 * map.w) as i32, (0.1 * map.h) as i32);
+    let got = rig.px(rgba, map.x + rx as f32, map.y + ry as f32);
+    let (u, v) = (((rx as f32 + 0.5) / map.w * n as f32) as i32, ((ry as f32 + 0.5) / map.h * n as f32) as i32);
+    (-1..=1).flat_map(|dv| (-1..=1).map(move |du| (du, dv))).any(|(du, dv)| {
+        let i = (((v + dv) * n + u + du) as usize) * 4;
+        near(got, [img[i], img[i + 1], img[i + 2]], 2)
+    })
+}
+
+/// Puts the stage on a view (2 the height, 4 the structures, 5 the section) and says what its note says.
+fn note_on(rig: &mut Rig, view: usize) -> String {
+    rig.app.state_mut().view = view;
+    rig.park();
+    rig.app.ids().note_text.clone()
+}
+
+/// Clicks the bar's tab of a view and says which view is on after it.
+fn click_view(rig: &mut Rig, view: usize) -> usize {
+    let tab = rig.app.ids().tabs[view];
+    rig.click_on(tab);
+    rig.park();
+    rig.app.state().view
+}
+
+#[test]
+fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
+    let Some(world) = world() else { return };
+    let from = preview::world::data_dir();
+    if !from.join("coarse.json").exists() {
+        println!("skipped: the out folder PREVIEW_DATA_DIR names holds no sketch");
+        return;
+    }
+    let root = root("runs-r8");
+    let out = root.join("out");
+    let mut rig = start(&world, &root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))], "r8-seed");
+    let figures_before = rig.app.ids().figures_text.clone();
+    let g = rig.app.ids().generate;
+    rig.click_on(g);
+    assert!(rig.app.running());
+    let drawn = |r: &Rig| r.app.state().follow.as_ref().map(|f| f.drawn);
+
+    // The run has just started: its sketch is on the stage, unveiled, and the status says it can be read.
+    rig.until(30, "the run's sketch on the stage", |r| matches!(drawn(r), Some(Drawn::Sketch(_))));
+    let sketch = World::load_sketch(&out).unwrap();
+    rig.park();
+    let rgba = rig.shot("run_started.png");
+    assert!(shows(&rig, &rgba, &paint(&sketch, View::Height, true, &BTreeSet::new()), sketch.samples), "the stage shows the sketch, not veiled");
+    assert!(rig.app.ids().status_text.ends_with(text::SKETCH_READABLE), "{}", rig.app.ids().status_text);
+    assert_eq!(rig.app.ids().figures_text, figures_before, "the figures stay those of the map before");
+    assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
+    assert_eq!(note_on(&mut rig, 5), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 2), "");
+    assert_eq!(click_view(&mut rig, 4), 2, "Structures is greyed while the run has none");
+    assert_eq!(click_view(&mut rig, 5), 2, "Section is greyed while the run has none");
+
+    // The map is there while the cuts, the ores and the structures are still being made.
+    std::fs::write(out.join("go-map"), "").unwrap();
+    rig.until(30, "the run's map on the stage", |r| drawn(r) == Some(Drawn::Map));
+    let map = World::load(&out).unwrap();
+    rig.park();
+    let rgba = rig.shot("run_map_ready.png");
+    assert!(shows(&rig, &rgba, &paint(&map, View::Height, true, &BTreeSet::new()), map.samples), "the stage shows the run's map, not veiled");
+    assert!(rig.app.running(), "the run goes on");
+    assert!(!rig.app.ids().status_text.contains(text::SKETCH_READABLE), "a map is no sketch");
+    assert_eq!(rig.app.ids().steps_items.last().map(String::as_str), Some(format!("{} {}", text::NOW_MARK, text::STEP_EXTRAS).as_str()));
+    assert_eq!(note_on(&mut rig, 5), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
+    rig.shot("run_map_ready_structures.png");
+    assert_eq!(note_on(&mut rig, 2), "");
+    assert_eq!(click_view(&mut rig, 4), 2, "Structures is still greyed beside the run's map");
+    assert_eq!(click_view(&mut rig, 5), 2);
+
+    // The run's end: everything is there, the structures and the cuts included.
+    std::fs::write(out.join("go-end"), "").unwrap();
+    rig.until(30, "the run to end", |r| !r.app.running());
+    rig.park();
+    let rgba = rig.shot("run_finished.png");
+    assert!(shows(&rig, &rgba, &paint(&map, View::Height, true, &BTreeSet::new()), map.samples));
+    assert_eq!(rig.app.world().unwrap().made.as_ref().unwrap().seed, "r8-seed");
+    assert_eq!(click_view(&mut rig, 4), 4, "Structures can be chosen again");
+    assert_eq!(click_view(&mut rig, 2), 2);
+    assert_eq!(note_on(&mut rig, 4), "");
+    rig.shot("run_finished_structures.png");
+    assert_eq!(rig.app.painted_view(), Some(View::Structures), "the structures are drawn");
+    assert_eq!(note_on(&mut rig, 5), "");
+    rig.frame();
+    assert!(rig.app.shown().is_some(), "the section shows a cut");
+}
+
+#[test]
+fn r9_a_stopped_run_gives_the_stage_back_to_the_map_before() {
+    let Some(world) = world() else { return };
+    let from = preview::world::data_dir();
+    if !from.join("coarse.json").exists() {
+        println!("skipped: the out folder PREVIEW_DATA_DIR names holds no sketch");
+        return;
+    }
+    let root = root("runs-r9");
+    let mut rig = start(&world, &root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))], "r9-seed");
+    let g = rig.app.ids().generate;
+    rig.click_on(g);
+    rig.until(30, "the run's sketch on the stage", |r| r.app.state().follow.as_ref().is_some_and(|f| matches!(f.drawn, Drawn::Sketch(_))));
+    let stop = rig.app.ids().stop;
+    rig.click_on(stop);
+    rig.until(15, "the run to end", |r| !r.app.running());
+    rig.park();
+    let rgba = rig.shot("run_stopped.png");
+    assert!(shows(&rig, &rgba, &paint(&world, View::Height, true, &BTreeSet::new()), world.samples), "the stage shows the map before again");
+    assert_eq!(rig.app.ids().status_text, text::STOPPED);
 }
 
 #[test]

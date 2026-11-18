@@ -57,8 +57,8 @@ pub fn root(name: &str) -> PathBuf {
 /// work folder before it creates anything).
 ///
 /// `MERE_STUB` is the mode: "finish" (default) copies the finished out folder `MERE_STUB_FROM` names, "hold" stays in
-/// the map pass with a child process of its own, as the game server is, until it is stopped, and "fail" fails after
-/// its first progress.
+/// the map pass with a child process of its own, as the game server is, until it is stopped, "fail" fails after
+/// its first progress, and "stages" lands that folder's files stage by stage, each held until the test lets it go.
 pub fn stub(env: &[(&str, &str)]) -> Engine {
     let get = |k: &str| env.iter().find(|(key, _)| *key == k).map(|(_, v)| v.to_string());
     let mode = get("MERE_STUB").unwrap_or_else(|| "finish".to_string());
@@ -107,6 +107,9 @@ fn stub_run(o: &world_preview::Options, mode: &str, from: Option<&Path>, log: &m
     // The game starts: no progress file yet, only the engine's lines.
     log("Starting the server");
     pause(1200)?;
+    if mode == "stages" {
+        return stages(o, &out, from, &mut progress, &stopped, log);
+    }
     for at in [4 * step, 2 * step, step].into_iter().filter(|at| *at >= detail) {
         if at > detail {
             for done in 0..=4 {
@@ -138,14 +141,63 @@ fn stub_run(o: &world_preview::Options, mode: &str, from: Option<&Path>, log: &m
         return Err(format!("stub: unknown mode {mode}"));
     }
     let from = from.filter(|f| f.join("preview.json").exists()).ok_or("stub: MERE_STUB_FROM must name a folder with a preview.json.")?;
+    copy_from(from, &out, |name| {
+        ["preview.json", "heights.bin", "biomes.bin", "section.json", "ores.json", "structures.json"].contains(&name) || (name.starts_with("section-") && name.ends_with(".bin"))
+    })?;
+    finish_run(o, &out, log)
+}
+
+/// The files of `from` that `kept` names, copied into `out`.
+fn copy_from(from: &Path, out: &Path, kept: impl Fn(&str) -> bool) -> Result<(), String> {
     for entry in std::fs::read_dir(from).map_err(|e| e.to_string())?.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let kept = ["preview.json", "heights.bin", "biomes.bin", "section.json", "ores.json", "structures.json"].contains(&name.as_str())
-            || (name.starts_with("section-") && name.ends_with(".bin"));
-        if kept {
+        if kept(&name) {
             std::fs::copy(entry.path(), out.join(&name)).map_err(|e| e.to_string())?;
         }
     }
+    Ok(())
+}
+
+/// "stages": the run's files land as the real engine writes them, and the run waits at each landing until the test
+/// writes a gate file into the out folder, so that a test sees each stage for as long as it looks. The sketch
+/// (`coarse.json` and the files its step names) during the sketch pass, then `go-map`; the map (`preview.json` and
+/// its two files) and the extras pass, then `go-end`; the cuts, the ores and the structures, and the run's end.
+fn stages(
+    o: &world_preview::Options,
+    out: &Path,
+    from: Option<&Path>,
+    progress: &mut dyn FnMut(&str, u32, u32, u32) -> Result<(), String>,
+    stopped: &dyn Fn() -> bool,
+    log: &mut dyn FnMut(&str),
+) -> Result<PathBuf, String> {
+    let from = from.filter(|f| f.join("preview.json").exists() && f.join("coarse.json").exists()).ok_or("stub: MERE_STUB_FROM must name a folder with a preview.json and a coarse.json.")?;
+    let gate = |name: &str| -> Result<(), String> {
+        while !out.join(name).exists() {
+            if stopped() {
+                return Err(world_preview::STOPPED.to_string());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        Ok(())
+    };
+    let step = o.step;
+    progress("sketch", 2 * step, 0, 4)?;
+    // As the mod writes them: the two files first, the description that names them last.
+    copy_from(from, out, |name| name.starts_with("coarse-") && name.ends_with(".bin"))?;
+    copy_from(from, out, |name| name == "coarse.json")?;
+    progress("sketch", 2 * step, 4, 4)?;
+    gate("go-map")?;
+    progress("map", step, 10, 10)?;
+    copy_from(from, out, |name| ["heights.bin", "biomes.bin"].contains(&name))?;
+    copy_from(from, out, |name| name == "preview.json")?;
+    progress("extras", step, 0, 0)?;
+    gate("go-end")?;
+    copy_from(from, out, |name| ["section.json", "ores.json", "structures.json"].contains(&name) || (name.starts_with("section-") && name.ends_with(".bin")))?;
+    finish_run(o, out, log)
+}
+
+/// What every finished run leaves last: the mod's timing, then the run record the engine writes.
+fn finish_run(o: &world_preview::Options, out: &Path, log: &mut dyn FnMut(&str)) -> Result<PathBuf, String> {
     std::fs::write(out.join("timing.json"), r#"{"workMillis":1500}"#).map_err(|e| e.to_string())?;
     // As the engine's run record: a switch is kept as 1 or 0.
     let tectonic: Vec<String> = o
@@ -156,7 +208,7 @@ fn stub_run(o: &world_preview::Options, mode: &str, from: Option<&Path>, log: &m
     let seed = o.seed.replace('\\', "\\\\").replace('"', "\\\"");
     std::fs::write(out.join("run.json"), format!(r#"{{"seed":"{seed}","tectonic":{{{}}}}}"#, tectonic.join(","))).map_err(|e| e.to_string())?;
     log(&format!("Preview ready in {}", out.display()));
-    Ok(out)
+    Ok(out.to_path_buf())
 }
 
 /// The runs a test gives the application: the stub engine, with its mode in `env`.
