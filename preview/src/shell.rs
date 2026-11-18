@@ -15,7 +15,7 @@ use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
 use mere_ui::{
     ButtonLook, ButtonOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabOpts, TextLook, Theme, Tone, Ui,
-    details_style, scroll_style, wrap_lines, ASCENT_EM, DESCENT_EM, Icon,
+    details_style, scroll_style, wrap_lines, HelpText, Icon,
 };
 use mere_ui::tokens::GAP_TIGHT;
 
@@ -806,7 +806,7 @@ pub const FILTER_HELP: usize = SETTINGS.len();
 /// What a setting's label has beside its "?": the row (the panel less the scrollbar's gutter), less the gaps, the
 /// field and the mark. Read from the plan, as the layout does not give it before it is laid out.
 fn label_room(ids: &ShellIds) -> f32 {
-    ids.plan.widths[0] - mere_ui::GUTTER - 2.0 * panels::SETTING_GAP - panels::setting_field() - GAP_TIGHT - MARK_W
+    ids.plan.widths[0] - mere_ui::GUTTER - 2.0 * panels::SETTING_GAP - panels::setting_field() - GAP_TIGHT - mere_ui::HELP_MARK_W
 }
 
 /// The filter, on the grid of the settings' rows so that its toggle sits above their fields: a label that names the
@@ -828,13 +828,13 @@ fn view_only_row(ui: &mut Ui, filter: (&mut bool, usize), gutter: f32, help: &mu
     let mut row = setting_row();
     row.pad.right = gutter;
     let open = *help.open == Some(FILTER_HELP);
-    ui.node("view_only_place", help_place(), |ui| {
+    ui.node("view_only_place", mere_ui::help_anchor(), |ui| {
     let row_id = ui.hover_area("view_only", row, |ui, over| {
         let name = Style { position: Position::Relative, min_w: Dim::Px(0.0), ..Style::default() };
-        let (place, mark) = label_place(&label, room);
+        let (place, mark) = mere_ui::help_label(&label, room);
         ui.node("name", name, |ui| {
             ids.filter_label = ui.node("label", place, |ui| ui.paragraph(&label, body));
-            let r = help_mark(ui, mark, over.is_some(), open);
+            let r = ui.help_mark(text::HELP_MARK, mark, over.is_some(), open);
             ids.filter_mark = r.id;
             if r.clicked {
                 *help.open = if open { None } else { Some(FILTER_HELP) };
@@ -850,12 +850,6 @@ fn view_only_row(ui: &mut Ui, filter: (&mut bool, usize), gutter: f32, help: &mu
         help_panel(ui, ids, row_id, ("view_only", text::VIEW_ONLY_TITLE, text::VIEW_ONLY_HINT, ""), help.open);
     }
     });
-}
-
-/// What holds a row and the help that opens over it: the help is placed against this box and takes no room in it,
-/// so opening it moves nothing.
-fn help_place() -> Style {
-    Style { column: true, shrink: 0.0, position: Position::Relative, ..Style::default() }
 }
 
 /// A value as its field shows it: a number as the number field writes it, a switch as on or off.
@@ -919,7 +913,7 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
                     ui.node("title", row, |ui| {
                         ui.text(&text::GROUPS[g].to_uppercase(), TextLook::label());
                         if moved {
-                            let r = small_icon(ui, "reset", back_icon(), TextLook::label().line, Margin { left: Side::Auto, ..Margin::default() });
+                            let r = ui.small_icon("reset", back_icon(), TextLook::label().line, Margin { left: Side::Auto, ..Margin::default() });
                             ui.title(r.id, text::GROUP_RESET_HINT);
                             ids.group_resets[g] = r.id;
                             if r.clicked {
@@ -939,16 +933,16 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
                         let muted = TextLook::body(Tone::Muted);
                         let pack = (!same_value(values[i], baseline[i])).then(|| value_words(set.kind, baseline[i]));
                         let label_room = label_room - pack.as_ref().map_or(0.0, |p| muted.width(p));
-                        ui.node(&format!("{}Place", set.key), help_place(), |ui| {
+                        ui.node(&format!("{}Place", set.key), mere_ui::help_anchor(), |ui| {
                         ids.rows[i] = ui.hover_area(set.key, setting_row(), |ui, over| {
                             // The label, then the mark that opens its help, shown while the pointer is on the row.
                             // A label wider than its cell wraps onto more lines instead of being cut, and the mark
                             // follows its last word.
                             let name = Style { position: Position::Relative, min_w: Dim::Px(0.0), ..Style::default() };
-                            let (label, mark) = label_place(set.label, label_room);
+                            let (label, mark) = mere_ui::help_label(set.label, label_room);
                             ui.node("name", name, |ui| {
                                 ui.node("label", label, |ui| ui.paragraph(set.label, body));
-                                let r = help_mark(ui, mark, over.is_some(), *help.open == Some(i));
+                                let r = ui.help_mark(text::HELP_MARK, mark, over.is_some(), *help.open == Some(i));
                                 ids.help_marks[i] = r.id;
                                 if r.clicked {
                                     // The same mark again closes it; another one moves it to its own setting.
@@ -998,136 +992,38 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
     }
 }
 
-/// The box of a setting's label and where its "?" goes. The label wraps in `room` and its box is held to its widest
-/// line (a shrunk box would keep the whole room and leave a gap); the mark follows the end of the last line, as a
-/// word would, and the room was measured without it so it always fits.
-fn label_place(label: &str, room: f32) -> (Style, Vec2) {
-    let body = TextLook::body(Tone::Text);
-    let lines = wrap_lines(label, body, room);
-    let w = lines.iter().map(|l| body.width(l)).fold(0.0, f32::max);
-    let last = lines.last().map_or(0.0, |l| body.width(l));
-    let mark = Vec2::new(last + GAP_TIGHT, (lines.len().max(1) - 1) as f32 * body.line);
-    (Style { column: true, w: Dim::Px(w), shrink: 0.0, ..Style::default() }, mark)
-}
-
 /// The setting whose help is open.
 struct Help<'a> {
     open: &'a mut Option<usize>,
 }
 
-/// The hit box of the "?" after a label, and how far in its glyph sits: a few pixels each side of the glyph to aim at.
-const MARK_W: f32 = mere_ui::tokens::ICON;
-const MARK_IN: f32 = mere_ui::tokens::INSET_TIGHT;
-
-/// Where a glyph of `look` is drawn below the top of its line: the CSS half leading, as the kit draws its text.
-fn glyph_top(look: TextLook) -> f32 {
-    (look.line - (ASCENT_EM + DESCENT_EM) * look.size) / 2.0
-}
-
-/// The "?" after a setting's label: hidden until the pointer is on its row (`row`), then muted; in the text colour
-/// under the pointer and while its help is open (brighter on the dark theme, darker on the light one), with the hand
-/// of what can be clicked. `at` is its place in the label's box. Hidden, it keeps its place, so nothing moves.
-fn help_mark(ui: &mut Ui, at: Vec2, row: bool, open: bool) -> mere_ui::Resp {
-    let look = TextLook::body(Tone::Muted);
-    let t = *ui.theme();
-    let style = Style {
-        position: Position::Absolute,
-        inset: Insets { left: Dim::Px(at.x), top: Dim::Px(at.y), ..Insets::default() },
-        w: Dim::Px(MARK_W),
-        h: Dim::Px(look.line),
-        ..Style::default()
-    };
-    ui.canvas("help", style, |ui, r| {
-        let lit = r.hovered || r.held;
-        if lit {
-            ui.want_cursor(Cursor::Hand);
-        }
-        if !(row || lit || open) {
-            return Vec::new();
-        }
-        let color = if lit || open { t.text } else { t.muted };
-        vec![Cmd::Text { at: Vec2::new(MARK_IN, glyph_top(look)), text: text::HELP_MARK.to_string(), size: look.size, color, weight: look.weight }]
-    })
-}
-
-/// The close cross: an X of 8 pixels in a 12 pixel square, one pixel per unit, so that it stays sharp.
-const CROSS: &str = "M2 2h1v1h-1zM9 2h1v1h-1zM3 3h1v1h-1zM8 3h1v1h-1zM4 4h1v1h-1zM7 4h1v1h-1zM5 5h1v1h-1zM6 5h1v1h-1z\
-M6 6h1v1h-1zM5 6h1v1h-1zM7 7h1v1h-1zM4 7h1v1h-1zM8 8h1v1h-1zM3 8h1v1h-1zM9 9h1v1h-1zM2 9h1v1h-1z";
-const CROSS_SIZE: f32 = 12.0;
-
-/// The arrow that puts a group back: a stroke that comes round and points left, in the same 12 pixel square.
+/// The arrow that puts a group back: a stroke that comes round and points left, in the kit's small icon square.
 const BACK: &str = "M4 2h1v1h-1zM3 3h1v1h-1zM2 4h7v1h-7zM3 5h1v1h-1zM4 6h1v1h-1zM9 5h1v3h-1zM4 8h5v1h-5z";
 
 fn back_icon() -> &'static Icon {
     static ICON: std::sync::OnceLock<Icon> = std::sync::OnceLock::new();
     ICON.get_or_init(|| {
-        Icon::parse(BACK, CROSS_SIZE).unwrap_or_else(|e| {
+        Icon::parse(BACK, mere_ui::SMALL_ICON).unwrap_or_else(|e| {
             mere_base::observe!(Error, "the group's arrow: {e}");
-            Icon { grid: CROSS_SIZE, figures: Vec::new() }
+            Icon { grid: mere_ui::SMALL_ICON, figures: Vec::new() }
         })
     })
 }
 
-fn cross_icon() -> &'static Icon {
-    static ICON: std::sync::OnceLock<Icon> = std::sync::OnceLock::new();
-    ICON.get_or_init(|| {
-        Icon::parse(CROSS, CROSS_SIZE).unwrap_or_else(|e| {
-            mere_base::observe!(Error, "the help's cross: {e}");
-            Icon { grid: CROSS_SIZE, figures: Vec::new() }
-        })
-    })
-}
-
-/// A small icon to click (the cross that closes the help, the arrow that puts a group back): as wide as the "?" and
-/// `line` tall (the line of the text it sits beside, so that it adds no height), the icon centred, with the mark's
-/// colours.
-fn small_icon(ui: &mut Ui, key: &str, icon: &'static Icon, line: f32, margin: Margin) -> mere_ui::Resp {
-    let t = *ui.theme();
-    let style = Style { w: Dim::Px(MARK_W), h: Dim::Px(line), shrink: 0.0, margin, ..Style::default() };
-    ui.canvas(key, style, |ui, r| {
-        let lit = r.hovered || r.held;
-        if lit {
-            ui.want_cursor(Cursor::Hand);
-        }
-        let at = Rect::new(((MARK_W - CROSS_SIZE) / 2.0).floor(), ((line - CROSS_SIZE) / 2.0).floor(), CROSS_SIZE, CROSS_SIZE);
-        vec![Cmd::Shape { rect: at, grid: icon.grid, figures: icon.figures.clone(), color: if lit { t.text } else { t.muted }, crisp: true }]
-    })
-}
-
-/// A help open over its row until it is closed: a framed box on the ground colour that covers the row and what
-/// follows it without moving anything (`Ui::overlay`), from the row's top down, or from its bottom up for a row in the
-/// lower half of the window, where there is more room above. The title (a setting's label) has the close cross on its
-/// first line at the top right and wraps in the room the cross leaves; the hint and the facts (Tectonic's own value,
-/// the pack's, the range; none for the filter) take the panel's whole width under them. `about` is the key, title,
-/// hint and facts.
+/// Opens the help of a row over it and keeps the ids the tests read; the cross closes it.
 fn help_panel(ui: &mut Ui, ids: &mut ShellIds, row: Id, about: (&str, &str, &str, &str), open: &mut Option<usize>) {
-    use mere_ui::tokens::{FRAME, GAP, INSET};
-    let (key, title_text, hint, facts) = about;
-    let title_look = TextLook { weight: Weight::SemiBold, ..TextLook::body(Tone::Text) };
-    let hint_look = TextLook::body(Tone::Muted);
-    // Judged on where the row stood in the last frame, which is where it was clicked.
-    let low = ui.rect(row).is_some_and(|r| r.y + r.h / 2.0 > ui.size().y / 2.0);
-    let zero = Dim::Px(0.0);
-    let inset = if low { Insets { left: zero, right: zero, bottom: zero, ..Insets::default() } } else { Insets { left: zero, right: zero, top: zero, ..Insets::default() } };
-    let pad = FRAME + INSET;
-    let style = Style { position: Position::Absolute, inset, column: true, pad: Edges::new(pad, pad, pad, pad), gap: Vec2::new(0.0, GAP_TIGHT), ..Style::default() };
-    ids.help_facts = Id::ROOT;
-    ids.help = ui.overlay(&format!("{key}Help"), style, |ui| {
-        ui.node("head", Style { align_items: Align::Start, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
-            let title = Style { column: true, grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
-            ids.help_title = ui.node("title", title, |ui| ui.paragraph(title_text, title_look));
-            let r = small_icon(ui, "close", cross_icon(), TextLook::body(Tone::Text).line, Margin::default());
-            ids.help_close = r.id;
-            if r.clicked {
-                *open = None;
-            }
-        });
-        ids.help_text = ui.node("text", Style { column: true, ..Style::default() }, |ui| ui.paragraph(hint, hint_look));
-        if !facts.is_empty() {
-            ids.help_facts = ui.node("facts", Style { column: true, ..Style::default() }, |ui| ui.paragraph(facts, TextLook::small(Tone::Muted)));
-        }
-    });
+    let (key, title, hint, facts) = about;
+    let r = ui.help_panel(&format!("{key}Help"), row, HelpText { title, hint, facts });
+    ids.help = r.panel;
+    ids.help_title = r.title;
+    ids.help_close = r.close;
+    ids.help_text = r.hint;
+    ids.help_facts = r.facts.unwrap_or(Id::ROOT);
+    if r.closed {
+        *open = None;
+    }
 }
+
 /// Escape closes the open help, after an open menu and a focused field have had theirs (they take it first). True
 /// when it did, and the event goes no further.
 pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool {

@@ -269,8 +269,9 @@ fn h7_a_long_hint_wraps_and_the_cross_keeps_its_line() {
 }
 
 #[test]
-fn h8_a_help_low_in_the_window_opens_upwards_and_the_list_does_not_scroll() {
-    // The list at its end, so that its last row is in sight, low in the window.
+fn h8_the_help_starts_at_its_row_s_top_and_is_raised_only_to_stay_in_the_window() {
+    // The list at its end, so that its last row is in sight, low in the window: a click opens the help on that line,
+    // and the list does not scroll.
     let mut r = Rig::new(Theme::dark(), SIZE, PreviewState { settings_y: 10_000.0, ..PreviewState::default() });
     let i = index("remove_frozen_ocean_ice");
     let y = r.s.settings_y;
@@ -278,11 +279,35 @@ fn h8_a_help_low_in_the_window_opens_upwards_and_the_list_does_not_scroll() {
     r.click_mark("remove_frozen_ocean_ice");
     assert_eq!(r.s.help, Some(i));
     assert_eq!(r.s.settings_y, y, "the list did not scroll");
-    let (row, panel) = (r.rect(r.ids.rows[i]), r.rect(r.ids.help));
-    snapped(panel.y + panel.h, row.y + row.h, "the panel ends at its row's bottom");
-    assert!(panel.y < row.y && panel.y >= 0.0, "and rises from there, inside the window");
-}
+    let (row, panel, cross) = (r.rect(r.ids.rows[i]), r.rect(r.ids.help), r.rect(r.ids.help_close));
+    snapped(panel.y, row.y, "the panel starts at its row's top");
+    assert!(cross.y >= row.y && cross.y + cross.h <= row.y + row.h, "the cross is on the row's line");
 
+    // Every row in sight, wide and stacked, at several places of the list: the top on the row's top, or the bottom on
+    // the window's when the panel would pass it.
+    let mut raised = 0;
+    for size in [SIZE, Vec2::new(preview::MIN_SIZE.0, 800.0)] {
+        for at in [0.0, 150.0, 420.0, 10_000.0] {
+            for i in 0..SETTINGS.len() {
+                let s = PreviewState { help: Some(i), settings_y: at, panel_y: [at, 0.0], ..PreviewState::default() };
+                let r = Rig::new(Theme::dark(), size, s);
+                let (Some(row), Some(panel)) = (r.ui.rect(r.ids.rows[i]), r.ui.rect(r.ids.help)) else { continue };
+                // A row out of the window has no help to place.
+                if panel.h <= 0.0 || row.y < 0.0 || row.y >= size.y {
+                    continue;
+                }
+                let what = format!("{} at {at} in {size:?}", SETTINGS[i].key);
+                if row.y + panel.h <= size.y {
+                    snapped(panel.y, row.y, &format!("{what}: the panel starts at its row's top"));
+                } else {
+                    raised += 1;
+                    assert!(panel.y + panel.h <= size.y && panel.y + panel.h > size.y - 1.5, "{what}: the panel ends at the window's bottom, {panel:?}");
+                }
+            }
+        }
+    }
+    assert!(raised > 0, "some row was low enough to raise its help");
+}
 #[test]
 fn h10_the_help_says_tectonic_s_value_the_pack_s_and_the_range() {
     let i = index("temperature_scale");
