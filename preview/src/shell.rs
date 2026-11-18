@@ -27,7 +27,7 @@ use crate::history::{Entry, PLOT_H, here, trend};
 use crate::map::{Carry, Look, frame_cmds, point_under, structure_near, tick_at};
 use crate::paint::{View, rows};
 use crate::panels::{self, Plan};
-use crate::run::{self, Ask, DETAIL_BLOCKS, Follow, Pace, Steps, duration};
+use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Steps, duration};
 use crate::scene;
 use crate::section::{ORE_COLOURS, ORE_KINDS, Shown};
 use crate::world::World;
@@ -393,6 +393,8 @@ pub struct ShellIds {
     pub probe: Id,
     /// What the probe line says, whole (the line itself is cut with an ellipsis when it does not fit).
     pub probe_text: String,
+    /// What the note over the frame says (empty when there is none).
+    pub note_text: String,
     pub export: Id,
     pub figures_grid: Id,
     /// Every cell's text of the figures grid, in order (the rule's and the blanks' are empty).
@@ -513,6 +515,7 @@ impl Default for ShellIds {
             under: o,
             probe: o,
             probe_text: String::new(),
+            note_text: String::new(),
             export: o,
             figures_grid: o,
             figures_text: Vec::new(),
@@ -599,6 +602,12 @@ fn rgb(c: [u8; 3]) -> Color {
 /// the window's: the map's side is arithmetic from it, because the square needs the column's height before
 /// layout. `world` is the preview on the map, if there is one.
 pub fn build(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&World>, shown: Option<&Shown>, home: Option<&mut dyn Home>) -> ShellIds {
+    build_run(ui, s, size, world, world, shown, home)
+}
+
+/// `build` while a run draws on the stage: `stage` is the run's picture (its sketch, then its map), which the frame
+/// shows, while the bar and the figures stay those of `world`, the map before (lines 2618-2619).
+pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&World>, stage: Option<&World>, shown: Option<&Shown>, home: Option<&mut dyn Home>) -> ShellIds {
     let t = *ui.theme();
     let cols = PAGE;
     let mut ids = ShellIds::default();
@@ -655,13 +664,13 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&World
             // Beside: the settings panel, the stage and the figures panel in a row. A closed panel is not built and
             // takes no room; the stage grows into it. Each open panel has a grip in the gap between it and the stage.
             let page = Style { pad: cols.pad, w: Dim::Pct(100.0), ..fills() };
-            let stage = Style { grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..column() };
+            let stage_style = Style { grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..column() };
             ids.page = ui.node("page", page, |ui| {
                 if open[0] {
                     ids.left = ui.node("left", panel(plan.widths[0]), |ui| left_column(ui, s, &mut ids, &t, false));
                     grip_gap(ui, s, &mut ids, &t, 0);
                 }
-                ids.middle = ui.node("middle", stage, |ui| middle_column(ui, s, &mut ids, &t, frame_size, world, shown));
+                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, stage, shown));
                 if open[1] {
                     grip_gap(ui, s, &mut ids, &t, 1);
                     ids.right = ui.node("right", panel(plan.widths[1]), |ui| right_column(ui, s, &mut ids, &t, &cols, world, shown, false));
@@ -671,9 +680,9 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&World
             // Stacked: the stage on top, the open panels under it in equal columns, no line between any of them.
             let gap = panels::GAP_STACKED;
             let page = Style { column: true, pad: Edges::new(cols.pad.top, gap, cols.pad.bottom, gap), gap: Vec2::new(0.0, gap), w: Dim::Pct(100.0), ..fills() };
-            let stage = Style { h: Dim::Px(column_h), shrink: 0.0, ..column() };
+            let stage_style = Style { h: Dim::Px(column_h), shrink: 0.0, ..column() };
             ids.page = ui.node("page", page, |ui| {
-                ids.middle = ui.node("middle", stage, |ui| middle_column(ui, s, &mut ids, &t, frame_size, world, shown));
+                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, stage, shown));
                 ui.node("panels", Style { gap: Vec2::new(gap, 0.0), ..fills() }, |ui| {
                     if open[0] {
                         ids.left = ui.node("left", panel(plan.widths[0]), |ui| {
@@ -1040,10 +1049,11 @@ pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool 
 fn status_words(s: &PreviewState) -> String {
     if let Some(f) = &s.follow {
         let elapsed = duration(f.seconds);
-        return match f.expected {
+        let clock = match f.expected {
             Some(e) => text::running(&elapsed, &duration(e)),
             None => text::measuring(&elapsed),
         };
+        return if matches!(f.drawn, Drawn::Sketch(_)) { format!("{clock} {}", text::SKETCH_READABLE) } else { clock };
     }
     if !s.trouble.is_empty() {
         return s.trouble.clone();
@@ -1126,8 +1136,12 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
             let view = View::from_index(s.view);
             // The note comes after the veil, which dims the content and not the note (line 238).
             let mut words = None;
+            // The run's own picture is on the stage: what it lacks yet comes at the end of the run.
+            let drawn = s.follow.as_ref().map_or(Drawn::Nothing, |f| f.drawn);
             match (world, view) {
                 (None, _) => words = Some(text::NO_PREVIEW),
+                (Some(w), None) if drawn != Drawn::Nothing && w.section.is_none() => words = Some(text::SECTION_PENDING),
+                (Some(w), Some(View::Structures)) if drawn != Drawn::Nothing && w.structures.is_none() => words = Some(text::STRUCTURES_PENDING),
                 // The section (view 5): a world without one says so; one whose cut is not read yet shows nothing.
                 (Some(w), None) if w.section.is_none() => words = Some(text::NO_SECTION),
                 (Some(w), None) => {
@@ -1141,13 +1155,14 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                 (Some(w), Some(view)) => ids.map = map_canvas(ui, s, t, side, w, view),
             }
             // `#frame.busy` (line 238): while a run is under way the map, the 3D view and the cut are at opacity
-            // 0.3, which over the ground is the ground at 0.7 laid over them.
-            if s.follow.is_some() {
+            // 0.3, which over the ground is the ground at 0.7 laid over them. The run's first sketch lifts it (line 2624).
+            if s.follow.is_some() && drawn == Drawn::Nothing {
                 let inset = Insets { left: Dim::Px(0.0), right: Dim::Px(0.0), top: Dim::Px(0.0), bottom: Dim::Px(0.0) };
                 ui.fill(Style { position: Position::Absolute, inset, ..Style::default() }, t.ground.with_alpha(0.7));
             }
             if let Some(words) = words {
                 note(ui, words);
+                ids.note_text = words.to_string();
             }
             // `#under` (line 260): 10 px below the map, as wide as it.
             let under = Style {
