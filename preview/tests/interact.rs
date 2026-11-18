@@ -242,7 +242,7 @@ fn rig_3d(world: World) -> Rig {
 fn rest(r: &mut Rig) -> mere_base::Vec3 {
     let orbit = r.s.orbit.as_mut().expect("the orbit was made");
     for _ in 0..600 {
-        if !scene::settle(orbit, &r.world, 1.0 / 60.0) {
+        if !scene::settle(orbit, &r.world, scene::Level::default(), 1.0 / 60.0) {
             return orbit.eye();
         }
     }

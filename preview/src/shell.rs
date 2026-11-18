@@ -28,7 +28,7 @@ use crate::map::{Carry, Look, frame_cmds, point_under, structure_near, tick_at};
 use crate::paint::{View, rows};
 use crate::panels::{self, Plan};
 use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Steps, duration};
-use crate::scene;
+use crate::scene::{self, Level};
 use crate::section::{ORE_COLOURS, ORE_KINDS, Shown};
 use crate::world::World;
 use crate::settings::{Kind, SETTINGS, pack_values};
@@ -146,6 +146,8 @@ pub struct PreviewState {
     /// The strip's pressed view: 0 to 4 are `text::VIEWS`, 5 is the section.
     pub view: usize,
     pub in3d: bool,
+    /// How finely the 3D view draws the land.
+    pub level: Level,
     pub seed: String,
     pub world_open: bool,
     pub settings_open: bool,
@@ -255,6 +257,7 @@ impl Default for PreviewState {
             panel_y: [0.0, 0.0],
             view: 2,
             in3d: false,
+            level: Level::default(),
             seed: "94427382".to_string(),
             world_open: true,
             settings_open: true,

@@ -1,7 +1,7 @@
-//! relief_measure --data DIR [--out FILE] [--windowed]
+//! relief_measure --data DIR [--level slopes|blocks|fine] [--out FILE] [--windowed]
 //!
 //! Measures the 3D relief in the real window: opens the preview's own window on the out folder DIR, maximised
-//! unless --windowed, and plays a fixed script while it times every frame. The script: the map in 2D, the switch to
+//! unless --windowed, with the 3D view at --level, and plays a fixed script while it times every frame. The script: the map in 2D, the switch to
 //! 3D, a turn round the land from where the camera starts, one from as close as the wheel goes, one from as far,
 //! then 2D and 3D again. For each part it writes how long a frame took from one to the next, how much of that the
 //! processor spent building and sending the frame, and how long the frame waited to be shown; and for each mesh sent
@@ -237,18 +237,22 @@ impl App for Measure {
     }
 }
 
+fn usage() -> ! {
+    eprintln!("usage: relief_measure --data DIR [--level slopes|blocks|fine] [--out FILE] [--windowed]");
+    std::process::exit(2);
+}
+
 fn main() {
     let (mut data, mut out, mut windowed) = (None::<PathBuf>, None::<PathBuf>, false);
+    let mut level = scene::Level::default();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--data" => data = args.next().map(PathBuf::from),
             "--out" => out = args.next().map(PathBuf::from),
             "--windowed" => windowed = true,
-            _ => {
-                eprintln!("usage: relief_measure --data DIR [--out FILE] [--windowed]");
-                std::process::exit(2);
-            }
+            "--level" => level = args.next().and_then(|k| scene::Level::from_key(&k)).unwrap_or_else(|| usage()),
+            _ => usage(),
         }
     }
     let Some(data) = data else {
@@ -263,7 +267,7 @@ fn main() {
     lines.borrow_mut().push(format!(r#"{{"pid":{},"samples":{},"step":{},"began_ms":{}}}"#, std::process::id(), world.samples, world.step, now_ms()));
     // What building the meshes costs the processor, before any window: each mesh's time, then all of them.
     let began = Instant::now();
-    let built = [("land", scene::land(&world)), ("sides", scene::sides(&world)), ("water", scene::water(&world)), ("underside", scene::underside(&world))];
+    let built = [("land", scene::land(&world, level)), ("sides", scene::sides(&world, level)), ("water", scene::water(&world, level)), ("underside", scene::underside(&world, level))];
     let all = began.elapsed().as_secs_f64() * 1000.0;
     for (name, mesh) in &built {
         lines.borrow_mut().push(format!(r#"{{"built":"{name}","vertices":{},"triangles":{}}}"#, mesh.vertices.len(), mesh.indices.len() / 3));
@@ -271,7 +275,8 @@ fn main() {
     lines.borrow_mut().push(format!(r#"{{"build_ms":{all:.3}}}"#));
     drop(built);
 
-    let state = PreviewState::for_world(Some(&world));
+    let mut state = PreviewState::for_world(Some(&world));
+    state.level = level;
     let app = PreviewApp::new(Theme::dark(), true, Vec2::new(1400.0, 940.0), state, Some(world));
     let mut measure = Measure { app, part: Part::Flat, at: 0, frames: Vec::new(), part_began: now_ms(), last: None, lines: lines.clone(), maximise: !windowed, close: false };
     let frame = mere_win32::Frame { own: true, min: MIN_SIZE, ..Default::default() };

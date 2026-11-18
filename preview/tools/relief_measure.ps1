@@ -2,7 +2,7 @@
 # says of the graphics card for that program: its dedicated memory and how busy its 3D engine is. Prints one row
 # per part of the script and writes the whole as JSON.
 #
-#   .\relief_measure.ps1 -Data <out folder> -Out run\measure\blocks-2048.json [-Exe path] [-Detail blocks]
+#   .\relief_measure.ps1 -Data <out folder> -Out target\tmp\measure\blocks.json [-Level slopes|blocks|fine] [-Exe path]
 #
 # The frame's interval is what the eye gets. The card's share of a frame is its busy time over the part, divided by
 # the frames: the window waits for the screen's refresh, so the interval alone hides a card that is half idle.
@@ -10,13 +10,13 @@ param(
     [Parameter(Mandatory)][string]$Data,
     [Parameter(Mandatory)][string]$Out,
     [string]$Exe = (Join-Path $PSScriptRoot '..\target\release\examples\relief_measure.exe'),
-    [string]$Detail,
+    [string]$Level,
     [switch]$Windowed
 )
 $ErrorActionPreference = 'Stop'
 $lines = [System.IO.Path]::GetTempFileName()
 $arguments = @('--data', $Data, '--out', $lines)
-if ($Detail) { $arguments += @('--detail', $Detail) }
+if ($Level) { $arguments += @('--level', $Level) }
 if ($Windowed) { $arguments += '--windowed' }
 $process = Start-Process -FilePath $Exe -ArgumentList $arguments -PassThru -WindowStyle Normal
 $id = $process.Id
@@ -60,7 +60,7 @@ $parts = foreach ($r in $records | Where-Object part) {
 $meshes = @($records | Where-Object { $null -ne $_.mesh })
 $result = [pscustomobject]@{
     data         = $Data
-    detail       = $Detail
+    level        = $Level
     samples      = ($records | Where-Object pid).samples
     built        = @($records | Where-Object built)
     build_ms     = ($records | Where-Object { $null -ne $_.build_ms }).build_ms

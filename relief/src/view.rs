@@ -4,7 +4,7 @@
 use crate::text;
 use mere_base::{App, Button, Color, DrawList, Event, Gfx, ImageId, Orbit, Rect, Vec2};
 use preview::paint::{View, paint};
-use preview::scene;
+use preview::scene::{self, Level};
 use preview::world::World;
 use std::collections::BTreeSet;
 
@@ -56,8 +56,8 @@ impl App for Relief {
         // The relief tab's picture in the dark theme, with nothing chosen.
         let drape = paint(&self.world, View::Height, true, &BTreeSet::new());
         gfx.upload_image(MAP, n, n, &drape);
-        scene::upload_sides(gfx, &self.world, &drape);
-        scene::upload(gfx, &self.world);
+        scene::upload_sides(gfx, &self.world, Level::default(), &drape);
+        scene::upload(gfx, &self.world, Level::default());
         scene::upload_wall(gfx, GROUND);
     }
 
@@ -96,9 +96,9 @@ impl App for Relief {
         let s = gfx.scale();
         let (w, h) = (wp as f32 / s, hp as f32 / s);
         self.height = h;
-        let moving = scene::settle(&mut self.orbit, &self.world, seconds);
+        let moving = scene::settle(&mut self.orbit, &self.world, Level::default(), seconds);
         gfx.begin(GROUND);
-        scene::draw(gfx, Rect::new(0.0, 0.0, w, h), &self.orbit, MAP, scene::water_alpha(View::Height));
+        scene::draw(gfx, Rect::new(0.0, 0.0, w, h), &self.orbit, Level::default(), MAP, scene::water_alpha(View::Height));
         gfx.draw_list(&self.overlay());
         gfx.end();
         moving
@@ -154,7 +154,7 @@ mod tests {
     fn rest(app: &mut Relief) -> Vec3 {
         let mut frames = 0;
         loop {
-            let moving = scene::settle(&mut app.orbit, &app.world, 1.0 / 60.0);
+            let moving = scene::settle(&mut app.orbit, &app.world, Level::default(), 1.0 / 60.0);
             frames += 1;
             assert!(frames < 600, "never came to rest");
             if !moving {
@@ -162,7 +162,7 @@ mod tests {
             }
         }
         let eye = app.orbit.eye();
-        if let Some(g) = scene::ground_at(&app.world, eye.x, eye.z) {
+        if let Some(g) = scene::ground_at(&app.world, Level::default(), eye.x, eye.z) {
             assert!(eye.y >= g + 24.0 - 0.5, "camera under the ground: {eye:?} over {g}");
         }
         assert!((eye - app.orbit.target).length() <= app.orbit.max_distance * 1.001, "too far");

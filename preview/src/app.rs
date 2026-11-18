@@ -25,7 +25,7 @@ use crate::map::MAP_IMAGE;
 use crate::paint::{View, paint};
 use crate::apply::{self, Fail, Host, Notice, Outcome, SystemHost, Target};
 use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Runs, Steps};
-use crate::scene;
+use crate::scene::{self, Level};
 use crate::section::Shown;
 use crate::shell::{Mode, PreviewState, RunEnd, ShellIds, Want, build_run, raise_to_min};
 use crate::text;
@@ -88,8 +88,14 @@ pub struct PreviewApp {
     clock: Option<f64>,
     /// The engine's end, seen and not yet acted on (`look`): the out folder, or what went wrong.
     ended: Option<Result<PathBuf, String>>,
-    /// A run ended while the window was hidden: its new meshes are uploaded by the next frame.
-    upload_pending: bool,
+    /// The level the device holds the stage's meshes at. None when it holds none of this world's: before the 3D view
+    /// is first shown, after a new world, and after `start`. They are built when the 3D view next shows, so a
+    /// window that stays in 2D builds none.
+    meshed: Option<Level>,
+    /// The level the sides' picture was made at, for the picture last painted; None when that picture changed.
+    sided: Option<Level>,
+    /// The map's picture last painted, which the columns' sides are shaded from when the 3D view shows.
+    drape: Vec<u8>,
     /// The launcher's Home, when the host gave one.
     home: Option<Box<dyn Home>>,
     /// Apply to pack: the machine it asks (given with a pack), and the write under way with the values it writes.
@@ -135,7 +141,9 @@ impl PreviewApp {
             born: Instant::now(),
             clock: None,
             ended: None,
-            upload_pending: false,
+            meshed: None,
+            sided: None,
+            drape: Vec::new(),
             home: None,
             apply_host: None,
             applying: None,
@@ -373,13 +381,13 @@ impl PreviewApp {
         }
     }
 
-    /// The stage's world changed: its pictures are painted again and its meshes uploaded by the next frame.
+    /// The stage's world changed: its pictures are painted again, and its meshes built again when the 3D view shows.
     fn restage(&mut self) {
         self.painted = None;
         self.nav_painted = None;
         self.cut_painted = None;
         self.shown = None;
-        self.upload_pending = true;
+        self.meshed = None;
     }
 }
 
@@ -444,18 +452,11 @@ impl PreviewApp {
 
     /// Looks at the generator: whether it has ended, how old it is, and (once a second) what its progress file says.
     /// Before the frame is built, so the frame shows what was found.
-    fn poll(&mut self, gfx: &mut dyn Gfx) {
+    fn poll(&mut self) {
         self.look();
         self.look_apply();
         if let Some(status) = self.ended.take() {
-            self.finish(status, Some(&mut *gfx));
-        }
-        // A run that ended while hidden left its meshes for the first frame that has the device, and so does a new
-        // picture of the run under way.
-        if std::mem::take(&mut self.upload_pending) {
-            if let Some(world) = self.stage() {
-                scene::upload(gfx, world);
-            }
+            self.finish(status);
         }
     }
 
@@ -499,8 +500,9 @@ impl PreviewApp {
 
     /// The generator ended (`follow`'s end, lines 2664-2696): a stopped run leaves the map it found, a failed one
     /// says so, a finished one is read and shown, and the pace learns from it.
-    /// Without a device (`gfx` is `None`, a hidden window) all the rest is done and the meshes wait in `upload_pending`.
-    fn finish(&mut self, status: Result<PathBuf, String>, gfx: Option<&mut dyn Gfx>) {
+    /// It needs no device, so it also runs while the window is hidden: the new map's meshes are built by the frame
+    /// that next shows the 3D view.
+    fn finish(&mut self, status: Result<PathBuf, String>) {
         let (Some(run), Some(mut follow)) = (self.running.take(), self.state.follow.take()) else { return };
         let Some(runs) = self.runs.as_ref() else { return };
         let (out, pace_file, before_file, log_file) = (runs.out(), runs.pace(), runs.before(), runs.log());
@@ -517,10 +519,7 @@ impl PreviewApp {
                     if self.world.as_ref().map(World::span) != Some(world.span()) {
                         self.state.orbit = None;
                     }
-                    match gfx {
-                        Some(gfx) => scene::upload(gfx, &world),
-                        None => self.upload_pending = true,
-                    }
+                    self.meshed = None;
                     // The figures of the map being replaced are the run before (lines 2656-2658).
                     if let Some(old) = self.world.as_ref().map(|w| w.measured.figures) {
                         self.state.before = Some(old);
@@ -781,10 +780,10 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         // A rebuilt device has lost the cut's pictures as well.
         self.nav_painted = None;
         self.cut_painted = None;
-        // Also after a device rebuild, which has lost the meshes.
-        if let Some(world) = self.stage() {
-            scene::upload(gfx, world);
-        }
+        // Also after a device rebuild, which has lost the meshes: they are built again when the 3D view shows.
+        let _ = gfx;
+        self.meshed = None;
+        self.sided = None;
     }
 
     fn event(&mut self, e: Event) -> bool {
@@ -812,7 +811,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
     }
 
     fn frame(&mut self, gfx: &mut dyn Gfx, seconds: f32) -> bool {
-        self.poll(gfx);
+        self.poll();
         let clock = self.now();
         self.ui.set_clock(clock);
         // What came back since the last frame, before the page is built from it.
@@ -824,7 +823,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         }
         // Before building, so the frame shows the settled pose.
         let moving = match (&mut self.state.orbit, self.drawn.as_ref().or(self.world.as_ref())) {
-            (Some(orbit), Some(world)) => scene::settle(orbit, world, seconds),
+            (Some(orbit), Some(world)) => scene::settle(orbit, world, self.state.level, seconds),
             _ => false,
         };
         gfx.begin(self.theme.ground);
@@ -877,8 +876,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                 let rgba = paint(world, key.0, key.1, &key.2);
                 let n = world.samples as u32;
                 gfx.upload_image(MAP_IMAGE, n, n, &rgba);
-                // The blocks' sides are the map's colours, shaded: they follow the picture.
-                scene::upload_sides(gfx, world, &rgba);
+
                 // The walls' colour follows the theme, as the drape does.
                 scene::upload_wall(gfx, self.theme.ground);
                 observe!(
@@ -890,13 +888,30 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                     started.elapsed().as_millis()
                 );
                 self.painted = Some(key);
+                // The columns' sides are the map's colours, shaded: they follow the picture, once the 3D view shows.
+                self.drape = rgba;
+                self.sided = None;
             }
         }
         self.upload_cut(gfx);
         // The meshes come before the list: the interface is drawn over the scene, and the viewport clips it to the
         // square.
         if let (Some(rect), Some(orbit), Some((view, ..))) = (self.ui.rect(self.ids.relief).filter(|_| self.ids.relief != Id::ROOT), &self.state.orbit, &self.painted) {
-            scene::draw(gfx, rect, orbit, MAP_IMAGE, scene::water_alpha(*view));
+            let level = self.state.level;
+            // The 3D view shows: the device gets the meshes of the level asked for, when it has not got them yet.
+            if let Some(world) = self.drawn.as_ref().or(self.world.as_ref()) {
+                if self.meshed != Some(level) {
+                    let started = Instant::now();
+                    scene::upload(gfx, world, level);
+                    observe!(Info, "3D relief as {}: meshes built and sent in {} ms", level.key(), started.elapsed().as_millis());
+                    self.meshed = Some(level);
+                }
+                if self.sided != Some(level) {
+                    scene::upload_sides(gfx, world, level, &self.drape);
+                    self.sided = Some(level);
+                }
+            }
+            scene::draw(gfx, rect, orbit, level, MAP_IMAGE, scene::water_alpha(*view));
         }
         gfx.draw_list(&list);
         self.last = list;
@@ -920,7 +935,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         // The end is told at once, title included: no frame comes while the window is hidden. Only the meshes wait.
         let ended = match self.ended.take() {
             Some(status) => {
-                self.finish(status, None);
+                self.finish(status);
                 true
             }
             None => false,
