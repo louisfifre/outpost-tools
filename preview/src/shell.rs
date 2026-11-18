@@ -1183,7 +1183,10 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
             // "Another cut" is there in the section view only, when there is a section (line 2527).
             let cuts = if view.is_none() { world.and_then(|w| w.section.as_ref()).map_or(0, |sec| sec.cuts.len()) } else { 0 };
             ids.under = ui.node("under", under, |ui| {
-                ui.node("probeRow", Style { gap: Vec2::new(18.0, 0.0), align_items: Align::Baseline, ..Style::default() }, |ui| {
+                // It wraps: in a narrow view the 3D levels and Export do not fit on one line, and Export goes under them,
+                // at the right where it always is, rather than out of the view.
+                let row = Style { wrap: true, justify: Justify::End, gap: Vec2::new(18.0, 6.0), align_items: Align::Baseline, ..Style::default() };
+                ui.node("probeRow", row, |ui| {
                     let probe = Style { grow: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
                     ids.probe = ui.node("probe", probe, |ui| ui.ellipsis(&probe_text, TextLook::body(Tone::Muted)));
                     if cuts > 0 {
