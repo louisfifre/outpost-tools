@@ -676,7 +676,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
                     ids.left = ui.node("left", panel(plan.widths[0]), |ui| left_column(ui, s, &mut ids, &t, false));
                     grip_gap(ui, s, &mut ids, &t, 0);
                 }
-                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, stage, shown));
+                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, middle_w.max(0.0), stage, shown));
                 if open[1] {
                     grip_gap(ui, s, &mut ids, &t, 1);
                     ids.right = ui.node("right", panel(plan.widths[1]), |ui| right_column(ui, s, &mut ids, &t, &cols, world, shown, false));
@@ -688,7 +688,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
             let page = Style { column: true, pad: Edges::new(cols.pad.top, gap, cols.pad.bottom, gap), gap: Vec2::new(0.0, gap), w: Dim::Pct(100.0), ..fills() };
             let stage_style = Style { h: Dim::Px(column_h), shrink: 0.0, ..column() };
             ids.page = ui.node("page", page, |ui| {
-                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, stage, shown));
+                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, middle_w.max(0.0), stage, shown));
                 ui.node("panels", Style { gap: Vec2::new(gap, 0.0), ..fills() }, |ui| {
                     if open[0] {
                         ids.left = ui.node("left", panel(plan.widths[0]), |ui| {
@@ -1132,7 +1132,7 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme) {
     });
 }
 /// The middle column: the stage holds the map's square and the strip under it (line 226).
-fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, frame_size: (f32, f32), world: Option<&World>, shown: Option<&Shown>) {
+fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, frame_size: (f32, f32), column_w: f32, world: Option<&World>, shown: Option<&Shown>) {
     // The square's side in the 2D and 3D views; the section's frame is the column's width by the height left.
     let (side, frame_h) = frame_size;
     let stage = Style { align_items: Align::Center, ..Style { column: true, ..fills() } };
@@ -1170,10 +1170,13 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                 note(ui, words);
                 ids.note_text = words.to_string();
             }
-            // `#under` (line 260): 10 px below the map, as wide as it.
+            // `#under` (line 260): 10 px below the map, as wide as it. With the panels stacked the square is small and
+            // the column wide: the strip is then as wide as the column, so that its text has room on the one line.
+            let under_w = if ids.plan.stacked { column_w.max(side) } else { side };
+            let out = Dim::Px((side - under_w) / 2.0);
             let under = Style {
                 position: Position::Absolute,
-                inset: Insets { left: Dim::Px(0.0), right: Dim::Px(0.0), top: Dim::Px(frame_h + 10.0), ..Insets::default() },
+                inset: Insets { left: out, right: out, top: Dim::Px(frame_h + 10.0), ..Insets::default() },
                 column: true,
                 gap: Vec2::new(0.0, 6.0),
                 ..Style::default()
@@ -1183,14 +1186,15 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
             // "Another cut" is there in the section view only, when there is a section (line 2527).
             let cuts = if view.is_none() { world.and_then(|w| w.section.as_ref()).map_or(0, |sec| sec.cuts.len()) } else { 0 };
             ids.under = ui.node("under", under, |ui| {
-                // It wraps: in a narrow view the text, the 3D levels and Export do not fit on one line. The text then
-                // keeps the first line and the levels go under it with Export, at the right where Export always is.
-                let row = Style { wrap: true, justify: Justify::End, gap: Vec2::new(18.0, 6.0), align_items: Align::Baseline, ..Style::default() };
+                // The 3D view's levels are in this row, between the text and Export. Where the strip is too narrow for
+                // the three on one line, the text takes the first line whole and the levels go under it at the left,
+                // Export staying at the right.
+                let levels = ids.relief != Id::ROOT;
+                let split = levels && under_w < LEVELS_BESIDE_FROM;
+                let row = Style { wrap: split, gap: Vec2::new(18.0, 6.0), align_items: Align::Baseline, ..Style::default() };
                 ui.node("probeRow", row, |ui| {
-                    // Beside the levels the text asks for some room of its own, so that the row wraps before the text
-                    // is cut down to a letter; without them it takes what Export leaves, as it always did.
-                    let room = if ids.relief != Id::ROOT { PROBE_BESIDE_LEVELS } else { 0.0 };
-                    let probe = Style { grow: 1.0, basis: Dim::Px(room), min_w: Dim::Px(0.0), ..Style::default() };
+                    let basis = if split { Dim::Pct(100.0) } else { Dim::Px(0.0) };
+                    let probe = Style { grow: 1.0, basis, min_w: Dim::Px(0.0), ..Style::default() };
                     ids.probe = ui.node("probe", probe, |ui| ui.ellipsis(&probe_text, TextLook::body(Tone::Muted)));
                     if cuts > 0 {
                         let r = ui.button("nextCut", text::NEXT_CUT, ButtonLook::Link);
@@ -1200,13 +1204,14 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             s.cut_at = (s.cut_at + 1) % cuts;
                         }
                     }
-                    // The 3D view's levels: in this row, which is there in 2D as well, so that showing them moves
-                    // nothing else. They take their room from the probe, which is cut with an ellipsis.
-                    if ids.relief != Id::ROOT {
-                        ui.node("levels", choice_style(), |ui| {
+                    if levels {
+
+                        // Split, they take the line's spare room, which keeps Export at the right.
+                        let style = Style { grow: if split { 1.0 } else { 0.0 }, ..choice_style() };
+                        ui.node("levels", style, |ui| {
                             for level in Level::ALL {
                                 let i = level.index();
-                                let words = if side < LEVELS_LONG_FROM { text::LEVELS_SHORT } else { text::LEVELS };
+                                let words = if under_w < LEVELS_LONG_FROM { text::LEVELS_SHORT } else { text::LEVELS };
                                 let r = ui.tab(&format!("level{i}"), words[i], TabLook::Choice, TabOpts { pressed: s.level == level, disabled: false });
                                 ids.levels[i] = r.id;
                                 ui.title(r.id, text::LEVEL_HINTS[i]);
@@ -1223,15 +1228,16 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                         s.want = Some(Want::Export);
                     }
                 });
-                steps_block(ui, s, ids, t, side);
+                steps_block(ui, s, ids, t, under_w);
             });
         });
     });
 }
 
-/// The least width the text under the view keeps on the line of the 3D levels: under it, the levels go to the next line.
-const PROBE_BESIDE_LEVELS: f32 = 140.0;
-/// The view's width from which the levels are written in full: under it the short words keep them on one line with Export.
+/// The strip's width from which the text, the 3D levels and Export share one line: the levels and Export take 283,
+/// which leaves the text some 140.
+const LEVELS_BESIDE_FROM: f32 = 440.0;
+/// The strip's width from which the levels are written in full: under it the short words keep them on one line with Export.
 const LEVELS_LONG_FROM: f32 = 300.0;
 
 /// `#steps` (lines 263-273, 2563-2581, 2800-2813): a run's steps under a hairline that fills as the wait goes, or the
