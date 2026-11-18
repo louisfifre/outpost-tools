@@ -14,8 +14,8 @@ use std::collections::BTreeSet;
 use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
 use mere_ui::{
-    ButtonLook, ButtonOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabOpts, TextLook, Theme, Tone, Ui,
-    details_style, scroll_style, wrap_lines, HelpText, Icon,
+    ButtonLook, ButtonOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
+    choice_style, details_style, scroll_style, wrap_lines, HelpText, Icon,
 };
 use mere_ui::tokens::GAP_TIGHT;
 
@@ -146,7 +146,7 @@ pub struct PreviewState {
     /// The strip's pressed view: 0 to 4 are `text::VIEWS`, 5 is the section.
     pub view: usize,
     pub in3d: bool,
-    /// How finely the 3D view draws the land.
+    /// How finely the 3D view draws the land: the pressed one of `text::LEVELS`.
     pub level: Level,
     pub seed: String,
     pub world_open: bool,
@@ -392,6 +392,8 @@ pub struct ShellIds {
     pub map: Id,
     /// The 3D view's square (a canvas), when the frame holds one; the app draws the scene into its rect.
     pub relief: Id,
+    /// The 3D view's levels, under it beside Export; `ROOT` outside the 3D view.
+    pub levels: [Id; 3],
     pub under: Id,
     pub probe: Id,
     /// What the probe line says, whole (the line itself is cut with an ellipsis when it does not fit).
@@ -515,6 +517,7 @@ impl Default for ShellIds {
             frame: o,
             map: o,
             relief: o,
+            levels: [o; 3],
             under: o,
             probe: o,
             probe_text: String::new(),
@@ -1190,6 +1193,21 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                         if r.clicked {
                             s.cut_at = (s.cut_at + 1) % cuts;
                         }
+                    }
+                    // The 3D view's levels: in this row, which is there in 2D as well, so that showing them moves
+                    // nothing else. They take their room from the probe, which is cut with an ellipsis.
+                    if ids.relief != Id::ROOT {
+                        ui.node("levels", choice_style(), |ui| {
+                            for level in Level::ALL {
+                                let i = level.index();
+                                let r = ui.tab(&format!("level{i}"), text::LEVELS[i], TabLook::Choice, TabOpts { pressed: s.level == level, disabled: false });
+                                ids.levels[i] = r.id;
+                                ui.title(r.id, text::LEVEL_HINTS[i]);
+                                if r.clicked {
+                                    s.level = level;
+                                }
+                            }
+                        });
                     }
                     let r = ui.button("export", text::EXPORT, ButtonLook::Link);
                     ids.export = r.id;
