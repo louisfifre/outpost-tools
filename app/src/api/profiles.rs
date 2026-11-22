@@ -10,7 +10,7 @@ use std::{
 use serde_json::{Value, json};
 
 use super::key_value::Cfg;
-use super::{Api, Live, Reply, as_int, squeeze};
+use super::{Api, Failure, Live, Reply, as_int, squeeze};
 use crate::system::{self, Proc};
 
 // The last launch asked from the page, and what it was last seen doing.
@@ -22,11 +22,11 @@ pub(super) struct Launch {
 }
 
 impl Api {
-    fn prism(&self) -> Result<&PathBuf, String> {
-        self.config().prism.as_ref().map_err(|why| why.clone())
+    fn prism(&self) -> Result<&PathBuf, Failure> {
+        self.config()?.prism.as_ref().map_err(|why| Failure::Internal(why.clone()))
     }
 
-    fn instances(&self) -> Result<PathBuf, String> {
+    fn instances(&self) -> Result<PathBuf, Failure> {
         Ok(self.prism()?.parent().unwrap().join("instances"))
     }
 
@@ -39,7 +39,7 @@ impl Api {
         cfg.exists().then_some(cfg)
     }
 
-    pub(super) fn profiles(&self) -> Result<Reply, String> {
+    pub(super) fn profiles(&self) -> Result<Reply, Failure> {
         let instances = self.instances()?;
         let state = {
             let mut live = self.live.lock().unwrap();
@@ -99,7 +99,7 @@ impl Api {
         active["profile"]["name"].as_str().map(String::from)
     }
 
-    pub(super) fn launch(&self, id: &str) -> Result<Reply, String> {
+    pub(super) fn launch(&self, id: &str) -> Result<Reply, Failure> {
         let prism = self.prism()?.clone();
         let mut live = self.live.lock().unwrap();
         if prism_state(&system::processes(&mut live.system)).games.iter().any(|(game, _)| game == id) {
@@ -141,7 +141,7 @@ impl Api {
         if elapsed > Duration::from_secs(25) { "waiting" } else { "starting" }
     }
 
-    pub(super) fn profile_settings(&self, cfg_file: &Path, body: &Value) -> Result<Reply, String> {
+    pub(super) fn profile_settings(&self, cfg_file: &Path, body: &Value) -> Result<Reply, Failure> {
         let memory = as_int(&body["memoryMb"]);
         let java_args = squeeze(body["javaArgs"].as_str().unwrap_or_default());
         let kind = body["open"]["kind"].as_str().unwrap_or_default();

@@ -44,7 +44,41 @@ impl Reply {
     }
 }
 
-// The folders the pack's scripts agree on, asked once from scripts/common.ps1 so they are written in one place.
+// Why a request got no answer of its own. Unavailable: the pack's folders are not known (scripts/common.ps1 could not
+// be read), answered 503 and asked again at the next request. Internal: anything else, answered 500.
+enum Failure {
+    Unavailable(String),
+    Internal(String),
+}
+
+impl Failure {
+    fn reply(self) -> Reply {
+        match self {
+            Failure::Unavailable(why) => Reply::error(503, why),
+            Failure::Internal(why) => Reply::error(500, why),
+        }
+    }
+
+    fn why(&self) -> &str {
+        match self {
+            Failure::Unavailable(why) | Failure::Internal(why) => why,
+        }
+    }
+}
+
+impl From<String> for Failure {
+    fn from(why: String) -> Failure {
+        Failure::Internal(why)
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(why: &str) -> Failure {
+        Failure::Internal(why.to_string())
+    }
+}
+
+// The folders the pack's scripts agree on, asked from scripts/common.ps1 so they are written in one place.
 struct Config {
     dev_server: PathBuf,
     preview_dir: PathBuf,
@@ -96,43 +130,46 @@ impl Api {
         }
     }
 
-    fn config(&self) -> &Config {
-        self.config.get_or_init(|| {
-            let common = self.repo.join("scripts").join("common.ps1");
-            let script = format!(
-                ". '{}'; $prism = try {{ Find-Prism }} catch {{ \"!$($_.Exception.Message)\" }}; \
-                 ConvertTo-Json -Compress @{{ devServer = $DevServerDir; previewDir = $PreviewDir; previewExports = $PreviewExports; prism = $prism }}",
-                common.display()
-            );
-            let out = system::hidden("pwsh").args(["-NoProfile", "-Command", &script]).output();
-            let value: Value = out.ok().and_then(|o| serde_json::from_slice(&o.stdout).ok()).unwrap_or(Value::Null);
-            let text = |key: &str| value[key].as_str().unwrap_or_default().to_string();
-            let prism = text("prism");
-            Config {
-                dev_server: PathBuf::from(text("devServer")),
-                preview_dir: PathBuf::from(text("previewDir")),
-                preview_exports: PathBuf::from(text("previewExports")),
-                prism: match prism.strip_prefix('!') {
-                    Some(why) => Err(why.to_string()),
-                    None if prism.is_empty() => Err("scripts/common.ps1 could not be read.".into()),
-                    None => Ok(PathBuf::from(prism)),
-                },
-            }
-        })
+    // Only a success is kept: a failure is asked again at the next request, so a pack fixed while the launcher runs
+    // is seen without a restart, and no request works on empty paths.
+    fn config(&self) -> Result<&Config, Failure> {
+        self.config_from(|| self.read_config())
+    }
+
+    fn config_from(&self, read: impl FnOnce() -> Result<Config, String>) -> Result<&Config, Failure> {
+        if let Some(config) = self.config.get() {
+            return Ok(config);
+        }
+        let config = read().map_err(Failure::Unavailable)?;
+        Ok(self.config.get_or_init(|| config))
+    }
+
+    fn read_config(&self) -> Result<Config, String> {
+        let common = self.repo.join("scripts").join("common.ps1");
+        let script = format!(
+            ". '{}'; $prism = try {{ Find-Prism }} catch {{ \"!$($_.Exception.Message)\" }}; \
+             ConvertTo-Json -Compress @{{ devServer = $DevServerDir; previewDir = $PreviewDir; previewExports = $PreviewExports; prism = $prism }}",
+            common.display()
+        );
+        let out = system::hidden("pwsh")
+            .args(["-NoProfile", "-Command", &script])
+            .output()
+            .map_err(|e| format!("pwsh could not be started: {e}"))?;
+        parse_config(&out.stdout, &out.stderr)
     }
 
     // One request, whatever brought it: the window's own protocol or the local server for captures.
     pub fn handle(&self, method: &str, path: &str, origin: Option<&str>, body: &[u8]) -> Reply {
         match self.route(method, path, origin, body) {
             Ok(reply) => reply,
-            Err(why) => {
-                self.write_log(&format!("{method} {path} failed: {why}"));
-                Reply::error(500, why)
+            Err(failure) => {
+                self.write_log(&format!("{method} {path} failed: {}", failure.why()));
+                failure.reply()
             }
         }
     }
 
-    fn route(&self, method: &str, path: &str, origin: Option<&str>, body: &[u8]) -> Result<Reply, String> {
+    fn route(&self, method: &str, path: &str, origin: Option<&str>, body: &[u8]) -> Result<Reply, Failure> {
         let path = path.split('?').next().unwrap_or(path);
         if method == "GET" {
             return Ok(match path {
@@ -149,7 +186,7 @@ impl Api {
                 }
                 "/api/server" => {
                     let mut live = self.live.lock().unwrap();
-                    Reply::json(200, self.server_info(&mut live))
+                    Reply::json(200, self.server_info(&mut live)?)
                 }
                 "/api/ping" => Reply::empty(200),
                 "/api/preview" => Reply::json(200, json!({ "available": self.preview_serve().exists(), "url": PREVIEW_URL })),
@@ -164,15 +201,16 @@ impl Api {
         match path {
             "/api/preview/open" => Ok(match self.start_preview() {
                 Ok(()) => Reply::json(200, json!({ "url": PREVIEW_URL })),
-                Err(why) => {
+                Err(Failure::Internal(why)) => {
                     self.write_log(&why);
                     Reply::error(404, why)
                 }
+                Err(unavailable) => return Err(unavailable),
             }),
             "/api/server/start" => self.server_start(),
             "/api/server/stop" => self.server_stop(),
             "/api/server/folder" => {
-                let dir = &self.config().dev_server;
+                let dir = &self.config()?.dev_server;
                 fs::create_dir_all(dir).map_err(|e| e.to_string())?;
                 system::start("explorer.exe", &[&dir.to_string_lossy()]).map_err(|e| e.to_string())?;
                 Ok(Reply::empty(200))
@@ -181,6 +219,8 @@ impl Api {
             _ => {
                 let mut parts = path.trim_start_matches("/api/").splitn(2, '/');
                 let (action, id) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+                // Without the pack's folders no instance is found: say why, rather than 404.
+                self.config()?;
                 let Some(cfg) = self.instance_cfg(id) else { return Ok(Reply::empty(404)) };
                 match action {
                     "launch" => self.launch(id),
@@ -198,6 +238,36 @@ impl Api {
 }
 
 // ---------- small helpers the parts share ----------
+
+// What scripts/common.ps1 printed: the folders, and Prism's program or "!" and why it was not found. A folder left
+// empty means the script did not run to its end, and its error says why.
+fn parse_config(stdout: &[u8], stderr: &[u8]) -> Result<Config, String> {
+    let value: Value = serde_json::from_slice(stdout).unwrap_or(Value::Null);
+    let text = |key: &str| value[key].as_str().unwrap_or_default().to_string();
+    let (dev_server, preview_dir, preview_exports) = (text("devServer"), text("previewDir"), text("previewExports"));
+    if dev_server.is_empty() || preview_dir.is_empty() || preview_exports.is_empty() {
+        return Err(match first_line(stderr) {
+            Some(line) => format!("scripts/common.ps1 could not be read: {line}"),
+            None => "scripts/common.ps1 could not be read.".into(),
+        });
+    }
+    let prism = text("prism");
+    Ok(Config {
+        dev_server: PathBuf::from(dev_server),
+        preview_dir: PathBuf::from(preview_dir),
+        preview_exports: PathBuf::from(preview_exports),
+        prism: match prism.strip_prefix('!') {
+            Some(why) => Err(why.to_string()),
+            None if prism.is_empty() => Err("Prism Launcher was not found.".into()),
+            None => Ok(PathBuf::from(prism)),
+        },
+    })
+}
+
+// The first line of a program's output that says something, trimmed.
+fn first_line(output: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(output).lines().map(str::trim).find(|l| !l.is_empty()).map(String::from)
+}
 
 // A number from the page, given as a number or as text.
 fn as_int(value: &Value) -> Option<i64> {
@@ -224,4 +294,51 @@ fn now_text() -> String {
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
     format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}Z", rest / 3600, rest % 3600 / 60, rest % 60)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn common_ps1_that_did_not_run_gives_its_first_error_line() {
+        let why = parse_config(b"{\"devServer\":null,\"previewDir\":null,\"previewExports\":null,\"prism\":\"!x\"}", b"\n  The term 'Find-Prism' is not recognized.\r\nAt line:1\n")
+            .err()
+            .unwrap();
+        assert_eq!(why, "scripts/common.ps1 could not be read: The term 'Find-Prism' is not recognized.");
+        assert_eq!(parse_config(b"", b"").err().unwrap(), "scripts/common.ps1 could not be read.");
+    }
+
+    #[test]
+    fn common_ps1_that_ran_gives_the_folders_and_prism() {
+        let out = br#"{"devServer":"C:\\pack\\run\\server","previewDir":"C:\\pack\\run\\preview","previewExports":"C:\\pack\\run\\exports","prism":"!Prism is not installed."}"#;
+        let config = parse_config(out, b"").ok().unwrap();
+        assert_eq!(config.dev_server, PathBuf::from(r"C:\pack\run\server"));
+        assert_eq!(config.preview_exports, PathBuf::from(r"C:\pack\run\exports"));
+        assert_eq!(config.prism.err().unwrap(), "Prism is not installed.");
+    }
+
+    #[test]
+    fn unknown_folders_answer_503_with_the_reason() {
+        let reply = Failure::Unavailable("scripts/common.ps1 could not be read.".into()).reply();
+        assert_eq!(reply.status, 503);
+        let body: Value = serde_json::from_slice(&reply.body).unwrap();
+        assert_eq!(body["error"], "scripts/common.ps1 could not be read.");
+        assert_eq!(Failure::from("other").reply().status, 500);
+    }
+
+    #[test]
+    fn a_failed_read_is_asked_again_and_a_success_is_kept() {
+        let api = Api::new(PathBuf::from(r"C:\no-such-pack"), "native://test".into());
+        let asked = Cell::new(0);
+        let read = |ok: bool| {
+            asked.set(asked.get() + 1);
+            if ok { parse_config(br#"{"devServer":"a","previewDir":"b","previewExports":"c","prism":"p"}"#, b"") } else { Err("no".into()) }
+        };
+        assert!(api.config_from(|| read(false)).is_err());
+        assert!(api.config_from(|| read(true)).is_ok());
+        assert!(api.config_from(|| read(false)).is_ok());
+        assert_eq!(asked.get(), 2);
+    }
 }

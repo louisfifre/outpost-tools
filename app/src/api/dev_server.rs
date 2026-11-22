@@ -11,7 +11,7 @@ use std::{
 use serde_json::{Value, json};
 
 use super::key_value::{Props, strip_bom};
-use super::{Api, Live, Reply, as_int, squeeze};
+use super::{Api, Failure, Live, Reply, as_int, squeeze};
 use crate::system;
 
 // The last start of the dev server asked from the page: the console it runs in.
@@ -30,13 +30,13 @@ const SERVER_KEYS: [(&str, &str, i64, i64); 4] = [
 ];
 
 impl Api {
-    fn server_props(&self) -> PathBuf {
-        self.config().dev_server.join("server.properties")
+    fn server_props(&self) -> Result<PathBuf, Failure> {
+        Ok(self.config()?.dev_server.join("server.properties"))
     }
 
     // One word for where the server stands, read from the processes and the server's log.
-    fn server_state(&self, live: &mut Live) -> &'static str {
-        let dir = &self.config().dev_server;
+    fn server_state(&self, live: &mut Live) -> Result<&'static str, Failure> {
+        let dir = &self.config()?.dev_server;
         let marker = format!("{}\\fabric-server-", dir.display()).to_lowercase();
         let processes = system::processes(&mut live.system);
         if let Some(java) = processes.iter().find(|p| p.name == "java.exe" && p.cmd.contains(&marker)) {
@@ -49,45 +49,45 @@ impl Api {
                 .and_then(|m| m.modified())
                 .is_ok_and(|t| t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) >= java.started);
             if fresh && fs::read_to_string(&log).is_ok_and(|text| text.contains("Done (")) {
-                return "running";
+                return Ok("running");
             }
-            return "starting";
+            return Ok("starting");
         }
-        let Some(l) = live.server.as_mut() else { return "stopped" };
+        let Some(l) = live.server.as_mut() else { return Ok("stopped") };
         if l.console.try_wait().ok().flatten().is_some() || l.saw_java {
-            return "stopped";
+            return Ok("stopped");
         }
         // The console is still open with no server in it: either a step before the server (the download, the mod
         // sync) is running under it, or the script has ended and the window waits to be read.
         let console = l.console.id();
         if processes.iter().any(|p| p.parent == Some(console)) {
             l.busy = Instant::now();
-            return "preparing";
+            return Ok("preparing");
         }
         // Between two steps there is no child for a moment: only a long quiet means the script has ended.
-        if l.busy.elapsed() < Duration::from_secs(4) { "preparing" } else { "failed" }
+        Ok(if l.busy.elapsed() < Duration::from_secs(4) { "preparing" } else { "failed" })
     }
 
-    fn server_launch_settings(&self) -> (i64, String) {
+    fn server_launch_settings(&self) -> Result<(i64, String), Failure> {
         // How dev-server.ps1 starts Java, saved by the page in launch.json of the server folder.
-        let saved: Value = fs::read(self.config().dev_server.join("launch.json"))
+        let saved: Value = fs::read(self.config()?.dev_server.join("launch.json"))
             .ok()
             .and_then(|b| serde_json::from_slice(strip_bom(&b)).ok())
             .unwrap_or(Value::Null);
         let memory = as_int(&saved["memoryMb"]).unwrap_or(6144);
         let java_args = saved["javaArgs"].as_str().map(String::from).unwrap_or_else(|| "-XX:+UseZGC".into());
-        (memory, java_args)
+        Ok((memory, java_args))
     }
 
-    fn eula(&self) -> bool {
-        fs::read_to_string(self.config().dev_server.join("eula.txt"))
-            .is_ok_and(|text| text.lines().any(|line| line.trim_end() == "eula=true"))
+    fn eula(&self) -> Result<bool, Failure> {
+        Ok(fs::read_to_string(self.config()?.dev_server.join("eula.txt"))
+            .is_ok_and(|text| text.lines().any(|line| line.trim_end() == "eula=true")))
     }
 
-    pub(super) fn server_info(&self, live: &mut Live) -> Value {
-        let (memory, java_args) = self.server_launch_settings();
+    pub(super) fn server_info(&self, live: &mut Live) -> Result<Value, Failure> {
+        let (memory, java_args) = self.server_launch_settings()?;
         // server.properties is written by dev-server.ps1 on its first run (with the RCON password): until then, nothing to show.
-        let props = Props::read(&self.server_props()).map(|props| {
+        let props = Props::read(&self.server_props()?).map(|props| {
             let mut out = json!({
                 "motd": props.get("motd").unwrap_or_default(),
                 "whitelist": props.get("white-list").as_deref() == Some("true"),
@@ -97,23 +97,23 @@ impl Api {
             }
             out
         });
-        json!({
-            "dir": self.config().dev_server.to_string_lossy(),
-            "state": self.server_state(live),
-            "eula": self.eula(),
+        Ok(json!({
+            "dir": self.config()?.dev_server.to_string_lossy(),
+            "state": self.server_state(live)?,
+            "eula": self.eula()?,
             "memoryMb": memory,
             "javaArgs": java_args,
             "props": props,
-        })
+        }))
     }
 
-    pub(super) fn server_start(&self) -> Result<Reply, String> {
+    pub(super) fn server_start(&self) -> Result<Reply, Failure> {
         let mut live = self.live.lock().unwrap();
-        if matches!(self.server_state(&mut live), "preparing" | "starting" | "running") {
+        if matches!(self.server_state(&mut live)?, "preparing" | "starting" | "running") {
             return Ok(Reply::empty(409));
         }
-        let dir = &self.config().dev_server;
-        if !self.eula() {
+        let dir = &self.config()?.dev_server;
+        if !self.eula()? {
             // Accepting the EULA is the owner's decision: the page only says where.
             let file = dir.join("eula.txt");
             return Ok(Reply::error(
@@ -132,15 +132,15 @@ impl Api {
         Ok(Reply::empty(200))
     }
 
-    pub(super) fn server_stop(&self) -> Result<Reply, String> {
+    pub(super) fn server_stop(&self) -> Result<Reply, Failure> {
         {
             let mut live = self.live.lock().unwrap();
-            if self.server_state(&mut live) != "running" {
+            if self.server_state(&mut live)? != "running" {
                 return Ok(Reply::empty(409));
             }
         }
         // The server saves the worlds and ends on its own "stop" command, sent over RCON as scripts/rcon.ps1 does.
-        let port = Props::read(&self.server_props())
+        let port = Props::read(&self.server_props()?)
             .and_then(|p| p.get("rcon.port"))
             .and_then(|v| v.trim().parse::<u16>().ok())
             .unwrap_or(25575);
@@ -149,21 +149,21 @@ impl Api {
             .args(["-NoProfile", "-File"])
             .arg(&rcon)
             .arg("-ServerDir")
-            .arg(&self.config().dev_server)
+            .arg(&self.config()?.dev_server)
             .args(["-Port", &port.to_string(), "stop"])
             .output()
             .map_err(|e| e.to_string())?;
         Ok(Reply::empty(200))
     }
 
-    pub(super) fn server_settings(&self, body: &Value) -> Result<Reply, String> {
+    pub(super) fn server_settings(&self, body: &Value) -> Result<Reply, Failure> {
         let memory = as_int(&body["memoryMb"]);
         let java_args = squeeze(body["javaArgs"].as_str().unwrap_or_default());
         let mut valid = memory.is_some_and(|m| m >= 1024 && m <= self.machine_mb as i64) && java_args.len() <= 2000;
         let props = &body["props"];
         let has_props = !props.is_null();
         if has_props {
-            if !self.server_props().exists() {
+            if !self.server_props()?.exists() {
                 valid = false;
             }
             for (name, _, min, max) in SERVER_KEYS {
@@ -187,16 +187,16 @@ impl Api {
         {
             let mut live = self.live.lock().unwrap();
             // The server reads its settings when it starts: a change now would say something that is not so.
-            if matches!(self.server_state(&mut live), "preparing" | "starting" | "running") {
+            if matches!(self.server_state(&mut live)?, "preparing" | "starting" | "running") {
                 return Ok(Reply::empty(409));
             }
         }
-        let dir = &self.config().dev_server;
+        let dir = &self.config()?.dev_server;
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let launch = json!({ "memoryMb": memory, "javaArgs": java_args });
         fs::write(dir.join("launch.json"), serde_json::to_string_pretty(&launch).unwrap()).map_err(|e| e.to_string())?;
         if has_props {
-            let file = self.server_props();
+            let file = self.server_props()?;
             let mut p = Props::read(&file).unwrap_or_default();
             for (name, key, _, _) in SERVER_KEYS {
                 p.set(key, &as_int(&props[name]).unwrap().to_string());
