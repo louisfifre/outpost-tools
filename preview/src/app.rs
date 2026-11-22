@@ -103,9 +103,12 @@ pub struct PreviewApp {
     applying: Option<(JoinHandle<Outcome>, [f64; 43])>,
     /// The form's values as `draft.json` holds them; None without runs, where nothing is kept.
     draft_saved: Option<[f64; 43]>,
-    /// The run's own picture, which the stage shows over `world` while the run goes on: its last sketch, then its
-    /// map (`follow.drawn` says which). None outside a run and before its first sketch.
+    /// The run's own picture, which the stage shows over `world` while the run goes on: its last sketch, the map's
+    /// points known so far over it, then its map (`follow.drawn` says which). None outside a run and before its
+    /// first sketch.
     drawn: Option<World>,
+    /// The run's last sketch, which fills the points the map's pass has not reached yet (the page's `base`).
+    base: Option<World>,
 }
 
 type CutKey = (usize, usize, usize, usize, usize, bool, BTreeSet<String>, u32);
@@ -149,6 +152,7 @@ impl PreviewApp {
             applying: None,
             draft_saved: None,
             drawn: None,
+            base: None,
         };
         // Line 2815: the map that opens the page is kept like any other (in memory until there are runs).
         app.remember();
@@ -343,28 +347,47 @@ impl PreviewApp {
     }
 
     /// Once a second while a run goes on, as the page's `look` (lines 2629-2648): the map once the run is past it
-    /// (its cuts and structures are still to come), else the last sketch when it is finer than the one shown. The
-    /// app removed both files before the run, so what is found is this run's.
-    fn draw_run(&mut self) {
+    /// (its cuts and structures are still to come), else the last sketch when it is finer than the one under, then,
+    /// during the map's pass, the map's points known so far over that sketch when more tiles are done than drawn
+    /// (lines 2640-2645). The app removed the files before the run, so what is found is this run's.
+    fn draw_run(&mut self, progress: Option<&run::Progress>) {
         let (Some(follow), Some(runs)) = (self.state.follow.as_ref(), self.runs.as_ref()) else { return };
         let out = runs.out();
-        let (next, drawn) = if follow.pass_key.starts_with("extras") {
-            if follow.drawn == Drawn::Map {
-                return;
+        if follow.pass_key.starts_with("extras") {
+            if follow.drawn != Drawn::Map {
+                self.show_run(World::load(&out), Drawn::Map);
             }
-            (World::load(&out), Drawn::Map)
-        } else {
-            let finer = |step: u32| match follow.drawn {
-                Drawn::Nothing => true,
-                Drawn::Sketch(shown) => step < shown,
-                Drawn::Map => false,
-            };
-            let step = std::fs::read_to_string(out.join("coarse.json")).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| j.get("step").and_then(Json::num));
-            match step.map(|s| s as u32).filter(|s| finer(*s)) {
-                Some(step) => (World::load_sketch(&out), Drawn::Sketch(step)),
-                None => return,
+            return;
+        }
+        if follow.drawn == Drawn::Map {
+            return;
+        }
+        let finer = |step: u32| self.base.as_ref().is_none_or(|b| (step as f64) < b.step);
+        let step = std::fs::read_to_string(out.join("coarse.json")).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| j.get("step").and_then(Json::num));
+        if let Some(step) = step.map(|s| s as u32).filter(|s| finer(*s)) {
+            let sketch = World::load_sketch(&out);
+            if let Ok(sketch) = &sketch {
+                self.base = Some(sketch.clone());
             }
+            self.show_run(sketch, Drawn::Sketch(step));
+        }
+        // A partial map needs a sketch under it, to fill the points the map's pass has not reached yet.
+        let drafted = match self.state.follow.as_ref().map(|f| f.drawn) {
+            Some(Drawn::Partial(done)) => done,
+            _ => 0,
         };
+        let (Some(p), Some(base)) = (progress.filter(|p| p.pass == "map" && p.done > drafted), self.base.as_ref()) else { return };
+        match World::load_partial(&out, base) {
+            // The page draws it again even when the file has not moved since (line 2644); drawn once is enough.
+            Ok((world, done)) if done > drafted => self.show_run(Ok(world), Drawn::Partial(done)),
+            Ok(_) => {}
+            // Read again at the next look: the engine writes it once a second at most, and only once a tile is done.
+            Err(e) => observe!(Debug, "the run's partial map at {} of {} tiles is not readable yet: {e}", p.done, p.total),
+        }
+    }
+
+    /// The stage takes the run's picture that was read, or keeps the one it has when it could not be.
+    fn show_run(&mut self, next: Result<World, String>, drawn: Drawn) {
         match next {
             Ok(world) => {
                 // A wider or narrower square puts the camera back, as a new map does (line 1873).
@@ -491,12 +514,13 @@ impl PreviewApp {
         follow.seconds = run.started.elapsed().as_secs();
         if run.looked.elapsed() >= Duration::from_secs(1) {
             let before = follow.pass_key.clone();
-            follow.look(run::read_progress(&runs.out()).as_ref());
+            let progress = run::read_progress(&runs.out());
+            follow.look(progress.as_ref());
             run.looked = Instant::now();
             if follow.pass_key != before {
                 observe!(Debug, "run pass '{}' at {} s", follow.pass_key, follow.seconds);
             }
-            self.draw_run();
+            self.draw_run(progress.as_ref());
         }
     }
 
@@ -571,6 +595,7 @@ impl PreviewApp {
         }
         // The run's picture leaves the stage: a finished run's map took its place above; a stopped or failed one
         // leaves the map it found (line 2670), drawn again.
+        self.base = None;
         if let Some(drawn) = self.drawn.take() {
             if !finished {
                 if self.world.as_ref().map(World::span) != Some(drawn.span()) {

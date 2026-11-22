@@ -160,7 +160,8 @@ fn copy_from(from: &Path, out: &Path, kept: impl Fn(&str) -> bool) -> Result<(),
 
 /// "stages": the run's files land as the real engine writes them, and the run waits at each landing until the test
 /// writes a gate file into the out folder, so that a test sees each stage for as long as it looks. The sketch
-/// (`coarse.json` and the files its step names) during the sketch pass, then `go-map`; the map (`preview.json` and
+/// (`coarse.json` and the files its step names) during the sketch pass, then `go-map`; the map's pass at 4 tiles of
+/// 10 with its points known so far (`partial.json` and its two files), then `go-full`; the map (`preview.json` and
 /// its two files) and the extras pass, then `go-end`; the cuts, the ores and the structures, and the run's end.
 fn stages(
     o: &world_preview::Options,
@@ -187,6 +188,9 @@ fn stages(
     copy_from(from, out, |name| name == "coarse.json")?;
     progress("sketch", 2 * step, 4, 4)?;
     gate("go-map")?;
+    progress("map", step, 4, 10)?;
+    partial(from, out, 4, 10)?;
+    gate("go-full")?;
     progress("map", step, 10, 10)?;
     copy_from(from, out, |name| ["heights.bin", "biomes.bin"].contains(&name))?;
     copy_from(from, out, |name| name == "preview.json")?;
@@ -194,6 +198,27 @@ fn stages(
     gate("go-end")?;
     copy_from(from, out, |name| ["section.json", "ores.json", "structures.json"].contains(&name) || (name.starts_with("section-") && name.ends_with(".bin")))?;
     finish_run(o, out, log)
+}
+
+/// The map's points known so far, as the engine writes them during the map's pass (Progress.java `writePartial`):
+/// the north half of the rows of `from`'s map, the others not sampled yet (biome 0xFFFF, height 0), the two files
+/// each written beside its place and moved there, the description last. Its list is the map's, where the engine's
+/// is every biome the generator can place: the loader takes any list.
+fn partial(from: &Path, out: &Path, done: u32, total: u32) -> Result<(), String> {
+    let text = std::fs::read_to_string(from.join("preview.json")).map_err(|e| e.to_string())?;
+    let samples = preview::json::Json::parse(&text)?.get("samples").and_then(preview::json::Json::num).ok_or("stub: preview.json has no samples")? as usize;
+    let half = samples / 2 * samples;
+    let mut heights = std::fs::read(from.join("heights.bin")).map_err(|e| e.to_string())?;
+    let mut biomes = std::fs::read(from.join("biomes.bin")).map_err(|e| e.to_string())?;
+    heights[half * 2..].fill(0);
+    biomes[half * 2..].fill(0xFF);
+    let json = text.trim_start().replacen('{', &format!(r#"{{"done":{done},"total":{total},"#), 1);
+    for (name, bytes) in [("partial-heights.bin", heights), ("partial-biomes.bin", biomes), ("partial.json", json.into_bytes())] {
+        let part = out.join(format!("{name}.tmp"));
+        std::fs::write(&part, bytes).map_err(|e| e.to_string())?;
+        std::fs::rename(&part, out.join(name)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// What every finished run leaves last: the mod's timing, then the run record the engine writes.

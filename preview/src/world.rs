@@ -93,7 +93,7 @@ impl World {
     pub fn load(dir: &Path) -> Result<World, String> {
         let text = String::from_utf8(std::fs::read(dir.join("preview.json")).map_err(|e| format!("{}: {e}", dir.join("preview.json").display()))?)
             .map_err(|_| "preview.json is not UTF-8".to_string())?;
-        World::load_grid(dir, &text, "", true)
+        World::load_grid(dir, &text, "", true, None)
     }
 
     /// The last sketch a run under way wrote (`loadSketch`, lines 1187-1200): `coarse.json` and the two files its step
@@ -103,12 +103,23 @@ impl World {
         let text = String::from_utf8(std::fs::read(dir.join("coarse.json")).map_err(|e| format!("{}: {e}", dir.join("coarse.json").display()))?)
             .map_err(|_| "coarse.json is not UTF-8".to_string())?;
         let step = Json::parse(&text)?.get("step").and_then(Json::num).ok_or("coarse.json has no step")?;
-        World::load_grid(dir, &text, &format!("coarse-{step}-"), false)
+        World::load_grid(dir, &text, &format!("coarse-{step}-"), false, None)
+    }
+
+    /// The map's own points known so far, over the sketch `base` (`loadDraft`, lines 1202-1231): `partial.json` and
+    /// its two files, which the engine writes during the map's pass. A point the pass has not reached yet (biome
+    /// 0xFFFF) takes the sketch point it falls in. Only drawn, like a sketch. Gives the tiles done with it.
+    pub fn load_partial(dir: &Path, base: &World) -> Result<(World, u32), String> {
+        let text = String::from_utf8(std::fs::read(dir.join("partial.json")).map_err(|e| format!("{}: {e}", dir.join("partial.json").display()))?)
+            .map_err(|_| "partial.json is not UTF-8".to_string())?;
+        let done = Json::parse(&text)?.get("done").and_then(Json::num).ok_or("partial.json has no done")?;
+        Ok((World::load_grid(dir, &text, "partial-", false, Some(base))?, done as u32))
     }
 
     /// A grid's description (`text`) and its two files, `<prefix>heights.bin` and `<prefix>biomes.bin`; with `full`,
-    /// what comes beside a map as well: the structures, the section and the run record.
-    fn load_grid(dir: &Path, text: &str, prefix: &str, full: bool) -> Result<World, String> {
+    /// what comes beside a map as well: the structures, the section and the run record. With `under`, the grid is a
+    /// partial map whose points not sampled yet are taken from that sketch.
+    fn load_grid(dir: &Path, text: &str, prefix: &str, full: bool, under: Option<&World>) -> Result<World, String> {
         let read = |name: &str| std::fs::read(dir.join(name)).map_err(|e| format!("{}: {e}", dir.join(name).display()));
         let json = Json::parse(text)?;
         let number = |key: &str| json.get(key).and_then(Json::num).ok_or_else(|| format!("the grid has no number \"{key}\""));
@@ -143,8 +154,29 @@ impl World {
             })
             .unwrap_or_default();
         let biome_total = possible.map(|_| biomes.len() + absent.len());
-        let heights: Vec<i16> = heights_raw.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
-        let biome_at: Vec<u16> = biomes_raw.chunks_exact(2).map(|b| u16::from_le_bytes([b[0], b[1]])).collect();
+        let mut heights: Vec<i16> = heights_raw.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])).collect();
+        let mut biome_at: Vec<u16> = biomes_raw.chunks_exact(2).map(|b| u16::from_le_bytes([b[0], b[1]])).collect();
+        if let Some(base) = under {
+            // Lines 1212-1226: the sketch must cover the same square, a whole number of the map's points to each of its own.
+            let ratio = base.step / step;
+            if base.samples as f64 * ratio != samples as f64 {
+                return Err(format!("the sketch of {} points every {} blocks does not cover the partial map of {samples} every {step}", base.samples, base.step));
+            }
+            // The sketch's biomes renumbered into the partial map's list (every biome the generator can place).
+            let renumber: Vec<u16> = base.biomes.iter().map(|b| biomes.iter().position(|m| m.id == b.id).unwrap_or(0) as u16).collect();
+            for row in 0..samples {
+                for col in 0..samples {
+                    let i = row * samples + col;
+                    // 0xFFFF: a point not sampled yet.
+                    if biome_at[i] != 0xFFFF {
+                        continue;
+                    }
+                    let j = (row as f64 / ratio).floor() as usize * base.samples + (col as f64 / ratio).floor() as usize;
+                    heights[i] = base.heights[j];
+                    biome_at[i] = renumber[base.biome_at[j] as usize];
+                }
+            }
+        }
         if let Some((i, &b)) = biome_at.iter().enumerate().find(|(_, b)| **b as usize >= biomes.len()) {
             return Err(format!("biomes.bin point {i} names biome {b}, but preview.json lists {}", biomes.len()));
         }
@@ -338,6 +370,43 @@ mod tests {
         assert!(World::load_sketch(&dir).is_err());
         bins("coarse-32-", 4, 75);
         assert_eq!(World::load_sketch(&dir).unwrap().heights[0], 75);
+    }
+
+    #[test]
+    fn a_partial_map_takes_its_unsampled_points_from_the_sketch() {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/target/tmp")).join("world_unit_partial");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let grid = |samples: usize, step: u32, biomes: &str, extra: &str| {
+            format!(r#"{{"seed":"s","samples":{samples},"step":{step},"originX":-64,"originZ":-64,"seaLevel":63,"biomes":[{biomes}]{extra}}}"#)
+        };
+        // The sketch: 2 x 2 every 64 blocks, the plains on its west column and the desert on its east one.
+        std::fs::write(dir.join("coarse.json"), grid(2, 64, r#"{"id":"minecraft:plains"},{"id":"minecraft:desert"}"#, "")).unwrap();
+        std::fs::write(dir.join("coarse-64-heights.bin"), [70i16, 80, 70, 80].iter().flat_map(|h| h.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+        std::fs::write(dir.join("coarse-64-biomes.bin"), [0u16, 1, 0, 1].iter().flat_map(|b| b.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+        let sketch = World::load_sketch(&dir).unwrap();
+        assert!(World::load_partial(&dir, &sketch).is_err(), "no partial map before the map's pass");
+        // The partial map: 8 x 8 every 16 blocks, its list in another order; its first row sampled, the rest not.
+        let list = r#"{"id":"minecraft:desert"},{"id":"minecraft:ocean"},{"id":"minecraft:plains"}"#;
+        std::fs::write(dir.join("partial.json"), grid(8, 16, list, r#","done":1,"total":4"#)).unwrap();
+        let heights: Vec<i16> = (0..64).map(|i| if i < 8 { 100 } else { 0 }).collect();
+        let biomes: Vec<u16> = (0..64).map(|i| if i < 8 { 1 } else { 0xFFFF }).collect();
+        std::fs::write(dir.join("partial-heights.bin"), heights.iter().flat_map(|h| h.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+        std::fs::write(dir.join("partial-biomes.bin"), biomes.iter().flat_map(|b| b.to_le_bytes()).collect::<Vec<u8>>()).unwrap();
+        let (w, done) = World::load_partial(&dir, &sketch).unwrap();
+        assert_eq!((w.samples, w.step, done, w.biomes.len()), (8, 16.0, 1, 3));
+        assert_eq!((w.heights[3], w.biome_at[3]), (100, 1), "a sampled point is the map's own");
+        assert_eq!((w.heights[8], w.biome_at[8], w.heights[15], w.biome_at[15]), (70, 2, 80, 0), "the others are the sketch's, renumbered");
+        assert_eq!((w.heights[63], w.biomes[w.biome_at[63] as usize].id.as_str()), (80, "minecraft:desert"));
+        assert!(w.made.is_none() && w.structures.is_none() && w.section.is_none());
+        // A sketch of another square does not fill it.
+        let other = World { samples: 3, ..sketch.clone() };
+        assert!(World::load_partial(&dir, &other).is_err());
+        // Without a sketch under it, 0xFFFF names no biome: the map's own loader still refuses it.
+        std::fs::copy(dir.join("partial.json"), dir.join("preview.json")).unwrap();
+        std::fs::copy(dir.join("partial-heights.bin"), dir.join("heights.bin")).unwrap();
+        std::fs::copy(dir.join("partial-biomes.bin"), dir.join("biomes.bin")).unwrap();
+        assert!(World::load(&dir).is_err());
     }
 
     #[test]

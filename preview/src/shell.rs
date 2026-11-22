@@ -1063,7 +1063,8 @@ fn status_words(s: &PreviewState) -> String {
             Some(e) => text::running(&elapsed, &duration(e)),
             None => text::measuring(&elapsed),
         };
-        return if matches!(f.drawn, Drawn::Sketch(_)) { format!("{clock} {}", text::SKETCH_READABLE) } else { clock };
+        // A partial map is drawn like a sketch (line 1230): its points not reached yet are the sketch's.
+        return if matches!(f.drawn, Drawn::Sketch(_) | Drawn::Partial(_)) { format!("{clock} {}", text::SKETCH_READABLE) } else { clock };
     }
     if !s.trouble.is_empty() {
         return s.trouble.clone();
