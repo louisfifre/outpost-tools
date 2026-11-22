@@ -32,7 +32,7 @@ use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Steps, duration}
 use crate::scene::{self, Level};
 use crate::section::{ORE_COLOURS, ORE_KINDS, Shown};
 use crate::world::World;
-use crate::settings::{Kind, SETTINGS, pack_values};
+use crate::settings::{Kind, SETTINGS, pack_values, same_value};
 use crate::text;
 use crate::view_filter;
 
@@ -880,11 +880,6 @@ fn value_words(kind: Kind, v: f64) -> String {
         Kind::Number(_) => crate::settings::shown(v),
         Kind::Switch => if v != 0.0 { text::ON } else { text::OFF }.to_string(),
     }
-}
-
-/// Two values of a setting are the same one (the float noise of a field's arithmetic apart).
-fn same_value(a: f64, b: f64) -> bool {
-    (a - b).abs() < 1e-9
 }
 
 /// The last line of a setting's help: Tectonic's own value, the pack's, and the range of a number.

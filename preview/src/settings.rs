@@ -105,6 +105,19 @@ pub fn original_values() -> [f64; 43] {
     v
 }
 
+/// Whether two values of a setting are one, everywhere the preview asks (a field that differs from the pack, Apply,
+/// the run that made the map, the history's changes): the pack's file holds a value to the millionth, Apply writes it
+/// so, so two values that round to one millionth are one. Two missing values (NaN, a null kept in a file) are one too.
+pub fn same_value(a: f64, b: f64) -> bool {
+    let millionth = |v: f64| (v * 1e6).round() / 1e6;
+    (millionth(a) - millionth(b)).abs() <= 1e-9 || (a.is_nan() && b.is_nan())
+}
+
+/// `same_value` for every setting.
+pub fn same_values(a: &[f64; 43], b: &[f64; 43]) -> bool {
+    a.iter().zip(b).all(|(x, y)| same_value(*x, *y))
+}
+
 /// A value as a number field writes it (`mere-ui`'s `js_number`: Rust's shortest round trip, -0 as "0").
 pub fn shown(v: f64) -> String {
     format!("{}", if v == 0.0 { 0.0 } else { v })
@@ -135,4 +148,24 @@ pub fn widest_number_text() -> String {
         }
     }
     widest
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn values_a_millionth_apart_or_closer_round_to_one() {
+        assert!(same_value(0.1, 0.1 + 1e-12), "float noise is no change");
+        assert!(same_value(-0.075, -0.075 - 1e-12));
+        assert!(!same_value(0.1, 0.1 + 1e-6), "a millionth is a change: the file holds it");
+        assert!(same_value(f64::NAN, f64::NAN), "two missing values are one");
+        assert!(!same_value(f64::NAN, 0.0));
+        let pack = pack_values();
+        let mut noisy = pack;
+        noisy[6] += 1e-12;
+        assert!(same_values(&pack, &noisy));
+        noisy[6] += 0.025;
+        assert!(!same_values(&pack, &noisy));
+    }
 }

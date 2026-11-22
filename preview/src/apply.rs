@@ -190,8 +190,8 @@ pub fn rewrite(config: &str, values: &[f64; 43]) -> Result<(String, usize), Fail
         })?;
         let old = number_of(&found.token).ok_or(Fail::Key)?;
         let switch = matches!(set.kind, crate::settings::Kind::Switch);
-        let new = if switch { f64::from(values[i] != 0.0) } else { (values[i] * 1e6).round() / 1e6 };
-        if (old - new).abs() > 1e-9 {
+        let new = if switch { f64::from(values[i] != 0.0) } else { values[i] };
+        if !crate::settings::same_value(old, new) {
             edits.push((found.line, found.from, found.to, spell(&found.token, switch, values[i])));
         }
     }

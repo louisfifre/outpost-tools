@@ -10,7 +10,7 @@ use mere_base::observe;
 use crate::figures::{Figures, KEYS, blocks, json_number, percent, to_fixed1};
 use crate::json::Json;
 use crate::run::Ask;
-use crate::settings::SETTINGS;
+use crate::settings::{SETTINGS, same_value};
 use crate::text;
 
 /// The figures followed run after run (line 494): those of the goal, then the two that pay for them.
@@ -147,11 +147,6 @@ pub fn load(path: &Path) -> Vec<Entry> {
 
 pub fn save(path: &Path, history: &[Entry]) -> io::Result<()> {
     std::fs::write(path, to_json(history))
-}
-
-/// Two settings values are the same when equal, or when neither is a number (a null kept in the file).
-fn same_value(a: f64, b: f64) -> bool {
-    a == b || (a.is_nan() && b.is_nan())
 }
 
 /// What a run changed from the one before it (`changes`, 1617-1624): the settings by their names.
