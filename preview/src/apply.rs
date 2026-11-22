@@ -51,14 +51,28 @@ pub enum Notice {
     None,
     Working,
     /// Written; what was running then, which reads the file at its next start.
-    Done { running: Vec<Running> },
+    Done { running: Vec<Running>, snapshot: Snapshot },
     Failed(Fail),
+}
+
+/// What became of the second file, the snapshot a prod copy of the launcher runs from (the game's sync reads it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Snapshot {
+    /// There is none: the program runs from a checkout, one file is the whole of the write.
+    #[default]
+    Absent,
+    /// Written too: the game takes the values at its next start, until a deploy replaces the snapshot.
+    Written,
+    /// Not written (the detail goes to the log): the game keeps the old values.
+    Failed,
 }
 
 /// Where the pack is, and the server the preview itself runs (not the dev server: it reads its own copy).
 #[derive(Clone, Debug)]
 pub struct Target {
     pub pack: PathBuf,
+    /// A prod copy's own pack, which its game sync serves: written after `pack` (the source, which a deploy keeps).
+    pub snapshot: Option<PathBuf>,
     pub own_server: Option<PathBuf>,
 }
 
@@ -66,11 +80,15 @@ impl Target {
     pub fn config(&self) -> PathBuf {
         self.pack.join("config").join("tectonic.json")
     }
+
+    fn snapshot_config(&self) -> Option<PathBuf> {
+        self.snapshot.as_ref().map(|p| p.join("config").join("tectonic.json"))
+    }
 }
 
 pub enum Outcome {
     /// Written (how many values changed), and what was running.
-    Applied(usize, Vec<Running>),
+    Applied(usize, Vec<Running>, Snapshot),
     Failed(Fail),
 }
 fn lower(p: &Path) -> String {
@@ -207,6 +225,21 @@ pub fn read_values(config: &str) -> Option<[f64; 43]> {
     Some(out)
 }
 
+/// The same values into the snapshot's file, by the same path. A file that already holds them is left alone.
+fn write_snapshot(file: &Path, values: &[f64; 43]) -> Snapshot {
+    let result = std::fs::read_to_string(file).map_err(|e| e.to_string()).and_then(|text| {
+        let (text, count) = rewrite(&text, values).map_err(|f| format!("{f:?}"))?;
+        if count > 0 { write_atomic(file, &text).map_err(|e| e.to_string()) } else { Ok(()) }
+    });
+    match result {
+        Ok(()) => Snapshot::Written,
+        Err(e) => {
+            mere_base::observe!(Warn, "apply: the snapshot {} was not written: {e}", file.display());
+            Snapshot::Failed
+        }
+    }
+}
+
 /// The whole of an apply: the file is written whatever runs, then the machine is looked at to say what will only
 /// see the values at its next start. A machine that cannot be looked at is no reason to refuse.
 pub fn apply(host: &dyn Host, target: &Target, values: &[f64; 43]) -> Outcome {
@@ -229,6 +262,7 @@ pub fn apply(host: &dyn Host, target: &Target, values: &[f64; 43]) -> Outcome {
         }
     }
     mere_base::observe!(Info, "apply: {count} values written to {}", file.display());
+    let snapshot = target.snapshot_config().map_or(Snapshot::Absent, |f| write_snapshot(&f, values));
     let running = match host.processes() {
         Ok(p) => running(&p, target.own_server.as_deref()),
         Err(e) => {
@@ -236,7 +270,7 @@ pub fn apply(host: &dyn Host, target: &Target, values: &[f64; 43]) -> Outcome {
             Vec::new()
         }
     };
-    Outcome::Applied(count, running)
+    Outcome::Applied(count, running, snapshot)
 }
 
 /// The real machine.
@@ -371,24 +405,24 @@ mod tests {
     fn java(cmd: &str) -> Proc {
         Proc { name: "java.exe".into(), cmd: cmd.into() }
     }
-    const SERVER: &str = r#"D:\bin\java.exe -Xmx6144M -XX:+UseZGC -jar M:\server\fabric-server-26.3-0.19.2.jar nogui"#;
+    const SERVER: &str = r#"C:\bin\java.exe -Xmx6144M -XX:+UseZGC -jar C:\server\fabric-server-26.3-0.19.2.jar nogui"#;
     const CLIENT: &str = r#"C:\prism\java\bin\javaw.exe -Xmx4G -cp lib.jar org.prismlauncher.EntryPoint"#;
-    const GRADLE: &str = r#"D:\bin\java.exe --add-opens=java.base/java.lang=ALL-UNNAMED -cp gradle-launcher.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10"#;
+    const GRADLE: &str = r#"C:\bin\java.exe --add-opens=java.base/java.lang=ALL-UNNAMED -cp gradle-launcher.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10"#;
 
     /// A pack folder of its own under the system's temp folder, with the file in it.
     fn pack(name: &str) -> Target {
         let dir = std::env::temp_dir().join(format!("mere-apply-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("pack").join("config")).unwrap();
-        let t = Target { pack: dir.join("pack"), own_server: Some(PathBuf::from(r"M:\preview\server")) };
+        let t = Target { pack: dir.join("pack"), snapshot: None, own_server: Some(PathBuf::from(r"C:\preview\server")) };
         std::fs::write(t.config(), config()).unwrap();
         t
     }
 
     #[test]
     fn the_servers_folder_is_read_from_its_command_line() {
-        assert_eq!(server_dir_of(SERVER), Some(PathBuf::from(r"M:\server")));
-        assert_eq!(server_dir_of(r#"java -jar "M:\my server\Fabric-Server-26.3.jar" nogui"#), Some(PathBuf::from(r"M:\my server")));
+        assert_eq!(server_dir_of(SERVER), Some(PathBuf::from(r"C:\server")));
+        assert_eq!(server_dir_of(r#"java -jar "C:\my server\Fabric-Server-26.3.jar" nogui"#), Some(PathBuf::from(r"C:\my server")));
         assert_eq!(server_dir_of(GRADLE), None);
     }
 
@@ -396,19 +430,19 @@ mod tests {
     fn a_game_a_server_and_neither_are_told_apart() {
         assert_eq!(running(&[java(GRADLE)], None), vec![]);
         assert_eq!(running(&[java(GRADLE), java(CLIENT)], None), vec![Running::Game]);
-        assert_eq!(running(&[java(SERVER)], None), vec![Running::Server(PathBuf::from(r"M:\server"))]);
-        assert_eq!(running(&[java(SERVER), java(CLIENT)], None), vec![Running::Game, Running::Server(PathBuf::from(r"M:\server"))]);
+        assert_eq!(running(&[java(SERVER)], None), vec![Running::Server(PathBuf::from(r"C:\server"))]);
+        assert_eq!(running(&[java(SERVER), java(CLIENT)], None), vec![Running::Game, Running::Server(PathBuf::from(r"C:\server"))]);
         // The preview's own throwaway server is not the dev server.
-        let own = r#"java -jar M:\preview\server\fabric-server-26.3-0.19.2.jar nogui"#;
-        assert_eq!(running(&[java(own)], Some(Path::new(r"m:\preview\server"))), vec![]);
+        let own = r#"java -jar C:\preview\server\fabric-server-26.3-0.19.2.jar nogui"#;
+        assert_eq!(running(&[java(own)], Some(Path::new(r"c:\preview\server"))), vec![]);
     }
 
     #[test]
     fn a_running_game_or_server_does_not_stop_the_write_and_is_named_after_it() {
         let t = pack("busy");
         let host = Fake::new(vec![java(CLIENT), java(SERVER)]);
-        let Outcome::Applied(1, running) = apply(&host, &t, &with("vertical_scale", 2.0)) else { panic!("written") };
-        assert_eq!(running, vec![Running::Game, Running::Server(PathBuf::from(r"M:\server"))]);
+        let Outcome::Applied(1, running, _) = apply(&host, &t, &with("vertical_scale", 2.0)) else { panic!("written") };
+        assert_eq!(running, vec![Running::Game, Running::Server(PathBuf::from(r"C:\server"))]);
         let written = std::fs::read_to_string(t.config()).unwrap();
         assert!(written.contains("\"vertical_scale\": 2.0,"));
         assert!(!t.config().with_extension("json.tmp").exists(), "no part file is left");
@@ -420,7 +454,7 @@ mod tests {
         let t = pack("blind");
         let mut host = Fake::new(vec![]);
         host.fail_listing = true;
-        assert!(matches!(apply(&host, &t, &with("ocean_offset", -0.5)), Outcome::Applied(1, r) if r.is_empty()));
+        assert!(matches!(apply(&host, &t, &with("ocean_offset", -0.5)), Outcome::Applied(1, r, _) if r.is_empty()));
         assert!(std::fs::read_to_string(t.config()).unwrap().contains("\"ocean_offset\": -0.5,"));
         let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
     }
@@ -429,7 +463,7 @@ mod tests {
     fn nothing_to_change_writes_nothing() {
         let t = pack("same");
         let before = std::fs::metadata(t.config()).unwrap().modified().unwrap();
-        assert!(matches!(apply(&Fake::new(vec![]), &t, &pack_values()), Outcome::Applied(0, _)));
+        assert!(matches!(apply(&Fake::new(vec![]), &t, &pack_values()), Outcome::Applied(0, ..)));
         assert_eq!(std::fs::metadata(t.config()).unwrap().modified().unwrap(), before);
         let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
     }

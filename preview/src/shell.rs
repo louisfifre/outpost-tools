@@ -158,6 +158,9 @@ pub struct PreviewState {
     /// What the pack's config holds: the values `pack` puts back, and what Apply is compared to. The pack's own,
     /// copied from `settings`, until an Apply writes the panel's.
     pub baseline: [f64; 43],
+    /// From a prod copy: what the snapshot's config holds, which the game's sync serves. Apply is also lit when it is
+    /// behind the form. None from a checkout, or when the file cannot be read.
+    pub snapshot: Option<[f64; 43]>,
     /// A pack is known (`--pack`), so Apply can write.
     pub pack_known: bool,
     /// What the last Apply said.
@@ -265,6 +268,7 @@ impl Default for PreviewState {
             history_open: false,
             values: pack_values(),
             baseline: pack_values(),
+            snapshot: None,
             pack_known: false,
             apply: Default::default(),
             detail: 2,
@@ -808,7 +812,7 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
         s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, t, stacked);
-        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, pack_known: s.pack_known, notice: &s.apply, want: &mut s.want }, ids);
+        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, snapshot: s.snapshot, pack_known: s.pack_known, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 

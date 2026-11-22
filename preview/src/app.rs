@@ -173,6 +173,8 @@ impl PreviewApp {
             }
             self.state.baseline = held;
         }
+        // From a prod copy, what the snapshot's file holds too: Apply is lit while it is behind the form.
+        self.state.snapshot = snapshot_pack(&runs).and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
         // What was typed last, generated or not, comes back over the last run's values.
         if let Some(typed) = crate::draft::load(&runs.draft(), &self.state.values) {
             self.state.values = typed;
@@ -690,7 +692,9 @@ impl PreviewApp {
     fn apply(&mut self) {
         let (Some(runs), Some(host)) = (self.runs.as_ref(), self.apply_host.clone()) else { return };
         let (Some(pack), None) = (runs.config_pack(), self.applying.as_ref()) else { return };
-        let target = Target { pack, own_server: Some(runs.server()) };
+        // From a prod copy the game's sync serves the snapshot (`runs.pack`), so it is written as well as the source.
+        let snapshot = snapshot_pack(runs);
+        let target = Target { pack, snapshot, own_server: Some(runs.server()) };
         let values = self.state.values;
         self.state.apply = Notice::Working;
         self.applying = Some((std::thread::spawn(move || apply::apply(&*host, &target, &values)), values));
@@ -703,9 +707,12 @@ impl PreviewApp {
         }
         let Some((thread, values)) = self.applying.take() else { return false };
         match thread.join() {
-            Ok(Outcome::Applied(_, running)) => {
+            Ok(Outcome::Applied(_, running, snapshot)) => {
                 self.state.baseline = values;
-                self.state.apply = Notice::Done { running };
+                if snapshot == apply::Snapshot::Written {
+                    self.state.snapshot = Some(values);
+                }
+                self.state.apply = Notice::Done { running, snapshot };
             }
             Ok(Outcome::Failed(f)) => self.state.apply = Notice::Failed(f),
             Err(_) => self.state.apply = Notice::Failed(Fail::Write),
@@ -982,4 +989,10 @@ impl Drop for PreviewApp {
             }
         }
     }
+}
+
+/// From a prod copy, the snapshot's pack: the one runs use and the game's sync serves, when it is not the pack Apply
+/// writes as the source. None from a checkout.
+fn snapshot_pack(runs: &Runs) -> Option<PathBuf> {
+    runs.apply_pack.as_ref().and_then(|_| runs.pack.clone()).filter(|s| Some(s) != runs.config_pack().as_ref())
 }
