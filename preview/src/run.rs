@@ -167,8 +167,8 @@ pub struct Follow {
     /// The engine's last line (a build, a download, the pack's sync): shown beside the first step, the long one
     /// whose progress the mod cannot count yet.
     pub said: String,
-    /// What of this run the stage shows: nothing yet (the map before, veiled), its last sketch, or its map while
-    /// the cuts and the structures are still being made.
+    /// What of this run the stage shows: nothing yet (the map before, veiled), its last sketch, the map's points
+    /// known so far over that sketch, or its map while the cuts and the structures are still being made.
     pub drawn: Drawn,
 }
 
@@ -179,6 +179,9 @@ pub enum Drawn {
     Nothing,
     /// A sketch, every so many blocks.
     Sketch(u32),
+    /// The map's pass under way (`loadDraft`, lines 1202-1231): its points sampled so far over the last sketch, with
+    /// the tiles done when they were written (the page's `drafted`).
+    Partial(u32),
     Map,
 }
 
