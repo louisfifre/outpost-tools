@@ -4,14 +4,14 @@
 use std::{
     fs,
     path::PathBuf,
-    process::Child,
+    process::{Child, Output},
     time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
 
 use super::key_value::{Props, strip_bom};
-use super::{Api, Failure, Live, Reply, as_int, squeeze};
+use super::{Api, Failure, Live, Reply, as_int, first_line, squeeze};
 use crate::system;
 
 // The last start of the dev server asked from the page: the console it runs in.
@@ -145,7 +145,7 @@ impl Api {
             .and_then(|v| v.trim().parse::<u16>().ok())
             .unwrap_or(25575);
         let rcon = self.repo.join("scripts").join("rcon.ps1");
-        system::hidden("pwsh")
+        let out = system::hidden("pwsh")
             .args(["-NoProfile", "-File"])
             .arg(&rcon)
             .arg("-ServerDir")
@@ -153,6 +153,10 @@ impl Api {
             .args(["-Port", &port.to_string(), "stop"])
             .output()
             .map_err(|e| e.to_string())?;
+        if let Some(why) = stop_refused(&out) {
+            self.write_log(&format!("The server's stop failed: {why}"));
+            return Ok(Reply::error(502, why));
+        }
         Ok(Reply::empty(200))
     }
 
@@ -206,5 +210,37 @@ impl Api {
             p.write(&file).map_err(|e| e.to_string())?;
         }
         Ok(Reply::empty(200))
+    }
+}
+
+// Why rcon.ps1 did not deliver "stop" (the server refused the password, or was not listening): the first line of its
+// error. None when it did.
+fn stop_refused(out: &Output) -> Option<String> {
+    if out.status.success() {
+        return None;
+    }
+    Some(first_line(&out.stderr).or_else(|| first_line(&out.stdout)).unwrap_or_else(|| "The server did not take the stop command.".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::windows::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
+    fn output(code: u32, stdout: &str, stderr: &str) -> Output {
+        Output { status: ExitStatus::from_raw(code), stdout: stdout.into(), stderr: stderr.into() }
+    }
+
+    #[test]
+    fn a_stop_that_failed_says_the_first_line_of_its_error() {
+        let out = output(1, "", "\r\nException: RCON login refused\r\nLine |\r\n");
+        assert_eq!(stop_refused(&out).as_deref(), Some("Exception: RCON login refused"));
+        assert_eq!(stop_refused(&output(1, "", "")).as_deref(), Some("The server did not take the stop command."));
+    }
+
+    #[test]
+    fn a_stop_that_was_delivered_is_no_failure() {
+        assert_eq!(stop_refused(&output(0, "> stop\r\nStopping the server\r\n", "")), None);
     }
 }
