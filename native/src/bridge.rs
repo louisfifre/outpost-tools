@@ -4,6 +4,7 @@
 //! (reading the processes takes a moment) by asking on a thread, as the wry launcher does for each request.
 
 use std::collections::VecDeque;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
@@ -79,7 +80,12 @@ impl Bridge {
                 let (backend, tx) = (backend.clone(), tx.clone());
                 let (method, path) = (method.to_string(), path.to_string());
                 std::thread::spawn(move || {
-                    let _ = tx.send(run(&*backend, tag, &method, &path, body));
+                    // A request that panics still answers, as a 500: `pending` then comes back down, and Home does
+                    // not stay busy for ever nor wait on an answer that will never come.
+                    let asked = tag.clone();
+                    let done = std::panic::catch_unwind(AssertUnwindSafe(|| run(&*backend, asked, &method, &path, body)))
+                        .unwrap_or_else(|_| Done { tag, status: 500, body: Value::Null });
+                    let _ = tx.send(done);
                 });
             }
             Bridge::Inline { backend, done } => done.push_back(run(&**backend, tag, method, path, body)),

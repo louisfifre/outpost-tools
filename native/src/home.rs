@@ -238,6 +238,8 @@ pub struct LauncherHome {
     next_server: f64,
     next_profiles: f64,
     next_launch: f64,
+    /// The polls asked and not answered yet: the timer does not ask again over a slow answer.
+    in_flight: Vec<Tag>,
 }
 
 impl LauncherHome {
@@ -271,6 +273,7 @@ impl LauncherHome {
             next_server: 0.0,
             next_profiles: 0.0,
             next_launch: 0.0,
+            in_flight: Vec::new(),
         }
     }
 
@@ -305,7 +308,15 @@ impl LauncherHome {
     // ---------- what the api said ----------
 
     fn send(&mut self, tag: Tag, method: &str, path: &str, body: Option<Value>) {
+        if matches!(tag, Tag::Profiles | Tag::Server | Tag::Launch) {
+            self.in_flight.push(tag.clone());
+        }
         self.bridge.send(tag, method, path, body);
+    }
+
+    /// True while a poll of this kind is asked and not answered: the timer waits for it rather than asking again.
+    fn asking(&self, tag: &Tag) -> bool {
+        self.in_flight.contains(tag)
     }
 
     fn load_profiles(&mut self) {
@@ -327,6 +338,9 @@ impl LauncherHome {
     }
 
     fn done(&mut self, d: Done) {
+        if let Some(at) = self.in_flight.iter().position(|t| *t == d.tag) {
+            self.in_flight.remove(at);
+        }
         let ok = d.status == 200;
         match d.tag {
             // `load` (519-528).
@@ -991,18 +1005,18 @@ impl Home for LauncherHome {
             wanted = true;
         }
         if on_screen {
-            if now >= self.next_server {
+            if now >= self.next_server && !self.asking(&Tag::Server) {
                 self.load_server();
                 wanted = true;
             }
             // A stand-in for the page's reload on window focus (line 894): mere_base has no such event.
-            if now >= self.next_profiles {
+            if now >= self.next_profiles && !self.asking(&Tag::Profiles) {
                 self.load_profiles();
                 wanted = true;
             }
         }
         // The launch is followed whatever the tool (lines 537-544).
-        if self.launching.as_ref().is_some_and(|l| !l.over) && now >= self.next_launch {
+        if self.launching.as_ref().is_some_and(|l| !l.over) && now >= self.next_launch && !self.asking(&Tag::Launch) {
             self.next_launch = now + 1.0;
             self.send(Tag::Launch, "GET", "/api/launch", None);
             wanted = true;
