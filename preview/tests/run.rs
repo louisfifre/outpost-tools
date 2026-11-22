@@ -2,7 +2,7 @@
 //! button's running look, the progress read once a second, the stop that ends the server, the finished run's world,
 //! a failed or refused run, a run asked for while another is under way, and quitting. The real engine is never run
 //! here (it downloads, needs a pack, the EULA and Java). Everything is written under target\tmp.
-//! A test says "skipped" without the out folder PREVIEW_DATA_DIR names.
+//! A test says "skipped" without the out folder PREVIEW_DATA_DIR names, but r10, which makes a small one of its own.
 
 mod common;
 
@@ -311,8 +311,10 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert_eq!(click_view(&mut rig, 7), 5, "Structures is greyed while the run has none");
     assert_eq!(click_view(&mut rig, 8), 5, "Section is greyed while the run has none");
 
-    // The map is there while the cuts, the ores and the structures are still being made.
+    // The map is there while the cuts, the ores and the structures are still being made (its partial map, between,
+    // is r10's).
     std::fs::write(out.join("go-map"), "").unwrap();
+    std::fs::write(out.join("go-full"), "").unwrap();
     rig.until(30, "the run's map on the stage", |r| drawn(r) == Some(Drawn::Map));
     let map = World::load(&out).unwrap();
     rig.park();
@@ -365,6 +367,86 @@ fn r9_a_stopped_run_gives_the_stage_back_to_the_map_before() {
     let rgba = rig.shot("run_stopped.png");
     assert!(shows(&rig, &rgba, &paint(&world, View::Height, true, &BTreeSet::new()), world.samples), "the stage shows the map before again");
     assert_eq!(rig.app.ids().status_text, text::STOPPED);
+}
+
+/// A small finished out folder of its own, so that r10 needs no PREVIEW_DATA_DIR: a map of 16 x 16 points every 16
+/// blocks, all desert at 100 (its list holds the plains too), and the sketch of 8 x 8 every 32 before it, all
+/// plains at 70.
+fn small_out(dir: &Path) {
+    let grid = |samples: usize, step: u32, biomes: &str| {
+        format!(r#"{{"seed":"r10-seed","samples":{samples},"step":{step},"originX":-128,"originZ":-128,"seaLevel":63,"biomes":[{biomes}]}}"#)
+    };
+    let bins = |prefix: &str, samples: usize, height: i16, biome: u16| {
+        std::fs::write(dir.join(format!("{prefix}heights.bin")), height.to_le_bytes().repeat(samples * samples)).unwrap();
+        std::fs::write(dir.join(format!("{prefix}biomes.bin")), biome.to_le_bytes().repeat(samples * samples)).unwrap();
+    };
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("preview.json"), grid(16, 16, r#"{"id":"minecraft:desert","temperature":2.0},{"id":"minecraft:plains","temperature":0.8}"#)).unwrap();
+    bins("", 16, 100, 0);
+    std::fs::write(dir.join("coarse.json"), grid(8, 32, r#"{"id":"minecraft:plains","temperature":0.8}"#)).unwrap();
+    bins("coarse-32-", 8, 70, 0);
+}
+
+/// Whether the map's pixel at `fx`, `fy` of its square is a texel of `img` (a world of `n` points a side) at full
+/// opacity, as `shows` checks a tenth of the way in.
+fn shows_at(rig: &Rig, rgba: &[u8], img: &[u8], n: usize, fx: f32, fy: f32) -> bool {
+    let map = rig.rect(rig.app.ids().map);
+    let n = n as i32;
+    let (rx, ry) = ((fx * map.w) as i32, (fy * map.h) as i32);
+    let got = rig.px(rgba, map.x + rx as f32, map.y + ry as f32);
+    let (u, v) = (((rx as f32 + 0.5) / map.w * n as f32) as i32, ((ry as f32 + 0.5) / map.h * n as f32) as i32);
+    (-1..=1).flat_map(|dv| (-1..=1).map(move |du| (du, dv))).filter(|(du, dv)| (0..n).contains(&(u + du)) && (0..n).contains(&(v + dv))).any(|(du, dv)| {
+        let i = (((v + dv) * n + u + du) as usize) * 4;
+        near(got, [img[i], img[i + 1], img[i + 2]], 2)
+    })
+}
+
+#[test]
+fn r10_the_map_fills_in_over_the_sketch_during_its_pass() {
+    let root = root("runs-r10");
+    let from = root.join("data");
+    small_out(&from);
+    let world = World::load(&from).unwrap();
+    let out = root.join("out");
+    let mut state = PreviewState::for_world(Some(&world));
+    state.seed = "r10-seed-2".to_string();
+    state.view = 0;
+    let mut rig = Rig::new(&world, state, Some(runs(&root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))])));
+    rig.park();
+    let g = rig.app.ids().generate;
+    rig.click_on(g);
+    assert!(rig.app.running());
+    let drawn = |r: &Rig| r.app.state().follow.as_ref().map(|f| f.drawn);
+    rig.until(30, "the run's sketch on the stage", |r| matches!(drawn(r), Some(Drawn::Sketch(32))));
+
+    // The map's pass at 4 tiles of 10: its north half is sampled, its south half not yet.
+    std::fs::write(out.join("go-map"), "").unwrap();
+    rig.until(30, "the run's partial map on the stage", |r| drawn(r) == Some(Drawn::Partial(4)));
+    let sketch = World::load_sketch(&out).unwrap();
+    let (partial, done) = World::load_partial(&out, &sketch).unwrap();
+    assert_eq!(done, 4);
+    let id = |w: &World, i: usize| w.biomes[w.biome_at[i] as usize].id.clone();
+    assert_eq!((partial.heights[0], id(&partial, 0).as_str()), (100, "minecraft:desert"), "a sampled point is the map's");
+    assert_eq!((partial.heights[255], id(&partial, 255).as_str()), (70, "minecraft:plains"), "a point not sampled yet is the sketch's");
+    rig.park();
+    let rgba = rig.shot("run_partial.png");
+    let img = paint(&partial, View::Biomes, true, &BTreeSet::new());
+    let (desert, plains) = (&img[..4], &img[255 * 4..256 * 4]);
+    assert_ne!(desert, plains, "the two halves are told apart in the biomes' view");
+    assert!(shows_at(&rig, &rgba, &img, 16, 0.1, 0.1), "the north of the stage shows the map's own points, not veiled");
+    assert!(shows_at(&rig, &rgba, &img, 16, 0.1, 0.9), "the south of the stage shows the sketch under them");
+    assert!(rig.app.ids().status_text.ends_with(text::SKETCH_READABLE), "{}", rig.app.ids().status_text);
+    assert!(rig.app.running(), "the run goes on");
+
+    // The whole map replaces it, then the run ends.
+    std::fs::write(out.join("go-full"), "").unwrap();
+    rig.until(30, "the run's map on the stage", |r| drawn(r) == Some(Drawn::Map));
+    std::fs::write(out.join("go-end"), "").unwrap();
+    rig.until(30, "the run to end", |r| !r.app.running());
+    rig.park();
+    let rgba = rig.shot("run_partial_finished.png");
+    let map = World::load(&out).unwrap();
+    assert!(shows_at(&rig, &rgba, &paint(&map, View::Biomes, true, &BTreeSet::new()), 16, 0.1, 0.9), "the south is the map's own at the end");
 }
 
 #[test]
