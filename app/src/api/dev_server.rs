@@ -163,29 +163,10 @@ impl Api {
     pub(super) fn server_settings(&self, body: &Value) -> Result<Reply, Failure> {
         let memory = as_int(&body["memoryMb"]);
         let java_args = squeeze(body["javaArgs"].as_str().unwrap_or_default());
-        let mut valid = memory.is_some_and(|m| m >= 1024 && m <= self.machine_mb as i64) && java_args.len() <= 2000;
         let props = &body["props"];
         let has_props = !props.is_null();
-        if has_props {
-            if !self.server_props()?.exists() {
-                valid = false;
-            }
-            for (name, _, min, max) in SERVER_KEYS {
-                if !as_int(&props[name]).is_some_and(|n| n >= min && n <= max) {
-                    valid = false;
-                }
-            }
-            // The line under the server's name in the game's list. server.properties escapes anything beyond plain
-            // text, so plain text only.
-            let motd = props["motd"].as_str().unwrap_or("\\");
-            if motd.chars().count() > 59 || !motd.chars().all(|c| (' '..='~').contains(&c) && c != '\\') {
-                valid = false;
-            }
-            if !props["whitelist"].is_boolean() {
-                valid = false;
-            }
-        }
-        if !valid {
+        let props_exist = has_props && self.server_props()?.exists();
+        if !settings_valid(body, self.machine_mb, props_exist) {
             return Ok(Reply::empty(400));
         }
         {
@@ -211,6 +192,33 @@ impl Api {
         }
         Ok(Reply::empty(200))
     }
+}
+
+// The server's settings the page sent are ones the server can take. Its properties are checked only when sent, and
+// then server.properties must exist (`props_exist`): dev-server.ps1 writes it on the first start.
+fn settings_valid(body: &Value, machine_mb: u64, props_exist: bool) -> bool {
+    let memory = as_int(&body["memoryMb"]);
+    let java_args = squeeze(body["javaArgs"].as_str().unwrap_or_default());
+    if !memory.is_some_and(|m| m >= 1024 && m <= machine_mb as i64) || java_args.len() > 2000 {
+        return false;
+    }
+    let props = &body["props"];
+    if props.is_null() {
+        return true;
+    }
+    if !props_exist {
+        return false;
+    }
+    if !SERVER_KEYS.iter().all(|(name, _, min, max)| as_int(&props[*name]).is_some_and(|n| n >= *min && n <= *max)) {
+        return false;
+    }
+    // The line under the server's name in the game's list. server.properties escapes anything beyond plain text, so
+    // plain text only.
+    let motd = props["motd"].as_str().unwrap_or("\\");
+    if motd.chars().count() > 59 || !motd.chars().all(|c| (' '..='~').contains(&c) && c != '\\') {
+        return false;
+    }
+    props["whitelist"].is_boolean()
 }
 
 // Why rcon.ps1 did not deliver "stop" (the server refused the password, or was not listening): the first line of its
@@ -242,5 +250,50 @@ mod tests {
     #[test]
     fn a_stop_that_was_delivered_is_no_failure() {
         assert_eq!(stop_refused(&output(0, "> stop\r\nStopping the server\r\n", "")), None);
+    }
+
+    fn settings() -> Value {
+        json!({
+            "memoryMb": 4096,
+            "javaArgs": "-XX:+UseZGC",
+            "props": { "viewDistance": 12, "simulationDistance": 8, "maxPlayers": 10, "port": 25565, "motd": "A test server", "whitelist": true },
+        })
+    }
+
+    #[test]
+    fn settings_within_their_bounds_are_taken() {
+        assert!(settings_valid(&settings(), 8192, true));
+        // Numbers may come as text, and the properties may be left out before the first start.
+        assert!(settings_valid(&json!({ "memoryMb": "2048", "javaArgs": "" }), 8192, false));
+        let mut edge = settings();
+        edge["props"]["viewDistance"] = json!(32);
+        edge["props"]["port"] = json!(1024);
+        edge["memoryMb"] = json!(8192);
+        assert!(settings_valid(&edge, 8192, true));
+    }
+
+    #[test]
+    fn settings_out_of_bounds_are_refused() {
+        let refused = |change: &dyn Fn(&mut Value)| {
+            let mut body = settings();
+            change(&mut body);
+            !settings_valid(&body, 8192, true)
+        };
+        assert!(refused(&|b| b["memoryMb"] = json!(1000)));
+        assert!(refused(&|b| b["memoryMb"] = json!(9000)));
+        assert!(refused(&|b| b["memoryMb"] = json!(4096.5)));
+        assert!(refused(&|b| b["javaArgs"] = json!("x".repeat(2001))));
+        assert!(refused(&|b| b["props"]["viewDistance"] = json!(2)));
+        assert!(refused(&|b| b["props"]["simulationDistance"] = json!(33)));
+        assert!(refused(&|b| b["props"]["maxPlayers"] = json!(0)));
+        assert!(refused(&|b| b["props"]["port"] = json!(65536)));
+        assert!(refused(&|b| b["props"]["port"] = json!(null)));
+        assert!(refused(&|b| b["props"]["motd"] = json!("x".repeat(60))));
+        assert!(refused(&|b| b["props"]["motd"] = json!("back\\slash")));
+        assert!(refused(&|b| b["props"]["motd"] = json!("caf\u{e9}")));
+        assert!(refused(&|b| b["props"]["motd"] = json!(null)));
+        assert!(refused(&|b| b["props"]["whitelist"] = json!("true")));
+        // Properties sent before server.properties exists.
+        assert!(!settings_valid(&settings(), 8192, false));
     }
 }

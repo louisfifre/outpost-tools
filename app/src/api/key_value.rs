@@ -92,3 +92,60 @@ fn write_lines(file: &Path, lines: &[String]) -> std::io::Result<()> {
 pub(super) fn strip_bom(bytes: &[u8]) -> &[u8] {
     bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn file(name: &str, bytes: &[u8]) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("key_value_{name}_{}", std::process::id()));
+        fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn cfg_reads_plain_and_quoted_values() {
+        let path = file("read", b"\xEF\xBB\xBF[General]\r\nname=My pack\r\nJvmArgs=\"-Da=\\\"b c\\\" -Dd=e\\\\f\"\r\nMaxMemAlloc=4096\r\nempty=\r\n");
+        let cfg = Cfg::read(&path);
+        assert_eq!(cfg.get("name").as_deref(), Some("My pack"));
+        assert_eq!(cfg.get("JvmArgs").as_deref(), Some(r#"-Da="b c" -Dd=e\f"#));
+        assert_eq!(cfg.number("MaxMemAlloc"), 4096);
+        assert_eq!(cfg.number("name"), 0);
+        assert_eq!(cfg.get("empty").as_deref(), Some(""));
+        assert_eq!(cfg.get("missing"), None);
+        // A key is a whole key, not the start of a longer one.
+        assert_eq!(cfg.get("Max"), None);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn cfg_quotes_what_prism_would_read_wrong_and_reads_it_back() {
+        let path = file("write", b"InstanceType=OneSix\r\n[General]\r\nname=Pack\r\n");
+        let mut cfg = Cfg::read(&path);
+        cfg.set("name", "Other");
+        cfg.set("JvmArgs", r#"-Da="b,c" -Dd=e\f"#);
+        cfg.set("Padded", " x ");
+        cfg.write(&path).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        // A new key goes right under [General], where Prism keeps its settings.
+        assert_eq!(text, "InstanceType=OneSix\r\n[General]\r\nPadded=\" x \"\r\nJvmArgs=\"-Da=\\\"b,c\\\" -Dd=e\\\\f\"\r\nname=Other\r\n");
+        let again = Cfg::read(&path);
+        assert_eq!(again.get("JvmArgs").as_deref(), Some(r#"-Da="b,c" -Dd=e\f"#));
+        assert_eq!(again.get("Padded").as_deref(), Some(" x "));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn props_are_plain_and_a_new_key_goes_last() {
+        let path = file("props", b"#Minecraft server properties\nmotd=A \"quoted\" line\nserver-port=25565\n");
+        let mut props = Props::read(&path).unwrap();
+        assert_eq!(props.get("motd").as_deref(), Some("A \"quoted\" line"));
+        props.set("server-port", "25566");
+        props.set("white-list", "true");
+        props.write(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "#Minecraft server properties\r\nmotd=A \"quoted\" line\r\nserver-port=25566\r\nwhite-list=true\r\n");
+        let _ = fs::remove_file(&path);
+        assert!(Props::read(&path).is_none());
+    }
+}

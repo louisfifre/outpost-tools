@@ -117,28 +117,7 @@ impl Api {
             return "none";
         }
         let state = prism_state(&system::processes(&mut live.system));
-        let launch = live.launch.as_mut().unwrap();
-        if let Some((_, pid)) = state.games.iter().find(|(game, _)| *game == launch.id) {
-            launch.saw_game = true;
-            return if system::has_window(*pid) { "running" } else { "loading" };
-        }
-        if launch.saw_game {
-            return "stopped";
-        }
-        if state.preparing {
-            launch.prepared = Some(Instant::now());
-            return "preparing";
-        }
-        let elapsed = launch.at.elapsed();
-        if !state.running {
-            return if elapsed < Duration::from_secs(5) { "starting" } else { "failed" };
-        }
-        // Prism is still there with nothing running under it: it is showing a window of its own. After the step
-        // before the game, that window is the error of that step; the game follows within a second otherwise.
-        if launch.prepared.is_some_and(|at| at.elapsed() > Duration::from_secs(8)) {
-            return "prepareFailed";
-        }
-        if elapsed > Duration::from_secs(25) { "waiting" } else { "starting" }
+        launch_word(live.launch.as_mut().unwrap(), &state, Instant::now(), system::has_window)
     }
 
     pub(super) fn profile_settings(&self, cfg_file: &Path, body: &Value) -> Result<Reply, Failure> {
@@ -185,6 +164,32 @@ impl Api {
         cfg.write(cfg_file).map_err(|e| e.to_string())?;
         Ok(Reply::empty(200))
     }
+}
+
+// Where a launch stands at `now`, from Prism's processes; `has_window` tells whether the game's process shows its
+// window yet.
+fn launch_word(launch: &mut Launch, state: &PrismState, now: Instant, has_window: impl Fn(u32) -> bool) -> &'static str {
+    if let Some((_, pid)) = state.games.iter().find(|(game, _)| *game == launch.id) {
+        launch.saw_game = true;
+        return if has_window(*pid) { "running" } else { "loading" };
+    }
+    if launch.saw_game {
+        return "stopped";
+    }
+    if state.preparing {
+        launch.prepared = Some(now);
+        return "preparing";
+    }
+    let elapsed = now.duration_since(launch.at);
+    if !state.running {
+        return if elapsed < Duration::from_secs(5) { "starting" } else { "failed" };
+    }
+    // Prism is still there with nothing running under it: it is showing a window of its own. After the step
+    // before the game, that window is the error of that step; the game follows within a second otherwise.
+    if launch.prepared.is_some_and(|at| now.duration_since(at) > Duration::from_secs(8)) {
+        return "prepareFailed";
+    }
+    if elapsed > Duration::from_secs(25) { "waiting" } else { "starting" }
 }
 
 // ---------- Prism's processes ----------
@@ -250,5 +255,73 @@ fn plain_path(path: PathBuf) -> PathBuf {
     match text.strip_prefix(r"\\?\") {
         Some(rest) => PathBuf::from(rest),
         None => path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_instance_id_is_the_folder_after_instances() {
+        let cmd = r#""C:\Java\bin\javaw.exe" -Djava.library.path=C:\Prism\instances\Pack-1_a\natives -cp C:\Prism\libraries\a.jar"#;
+        assert_eq!(instance_in(cmd).as_deref(), Some("Pack-1_a"));
+        assert_eq!(instance_in("java -Dx=C:/Prism/instances/other/minecraft").as_deref(), Some("other"));
+        // A word "instances" that is no folder of them, then the real one.
+        assert_eq!(instance_in(r"java --instances C:\Prism\instances\real\natives").as_deref(), Some("real"));
+    }
+
+    #[test]
+    fn a_command_line_without_an_instance_folder_has_no_id() {
+        assert_eq!(instance_in(r"java -jar C:\server\fabric-server-launch.jar"), None);
+        // The id must be a whole folder name, not the end of the line nor one with other characters.
+        assert_eq!(instance_in(r"java C:\Prism\instances\last"), None);
+        assert_eq!(instance_in(r"java C:\Prism\instances\with space\natives"), None);
+        assert_eq!(instance_in(r"java C:\Prism\instances\\natives"), None);
+    }
+
+    fn launch(at: Instant) -> Launch {
+        Launch { id: "pack".into(), at, saw_game: false, prepared: None }
+    }
+
+    fn prism(running: bool, preparing: bool, game: Option<u32>) -> PrismState {
+        PrismState { running, preparing, games: game.map(|pid| ("pack".to_string(), pid)).into_iter().collect() }
+    }
+
+    const NO_WINDOW: fn(u32) -> bool = |_| false;
+
+    #[test]
+    fn a_launch_follows_prism_through_the_pack_sync_to_the_game_window() {
+        let t0 = Instant::now();
+        let s = |secs: u64| t0 + Duration::from_secs(secs);
+        let mut l = launch(t0);
+        assert_eq!(launch_word(&mut l, &prism(false, false, None), s(1), NO_WINDOW), "starting");
+        assert_eq!(launch_word(&mut l, &prism(true, true, None), s(2), NO_WINDOW), "preparing");
+        assert_eq!(launch_word(&mut l, &prism(true, false, None), s(3), NO_WINDOW), "starting");
+        assert_eq!(launch_word(&mut l, &prism(true, false, Some(7)), s(4), NO_WINDOW), "loading");
+        assert_eq!(launch_word(&mut l, &prism(true, false, Some(7)), s(30), |pid| pid == 7), "running");
+        // Once the game was seen, its end is a stop, whatever Prism does.
+        assert_eq!(launch_word(&mut l, &prism(true, false, None), s(31), NO_WINDOW), "stopped");
+    }
+
+    #[test]
+    fn prism_gone_is_a_start_for_5_s_then_a_failure() {
+        let t0 = Instant::now();
+        let mut l = launch(t0);
+        assert_eq!(launch_word(&mut l, &prism(false, false, None), t0 + Duration::from_secs(4), NO_WINDOW), "starting");
+        assert_eq!(launch_word(&mut l, &prism(false, false, None), t0 + Duration::from_secs(6), NO_WINDOW), "failed");
+    }
+
+    #[test]
+    fn prism_alone_after_the_sync_is_its_error_and_alone_long_is_a_wait() {
+        let t0 = Instant::now();
+        let s = |secs: u64| t0 + Duration::from_secs(secs);
+        let mut synced = launch(t0);
+        assert_eq!(launch_word(&mut synced, &prism(true, true, None), s(2), NO_WINDOW), "preparing");
+        assert_eq!(launch_word(&mut synced, &prism(true, false, None), s(10), NO_WINDOW), "starting");
+        assert_eq!(launch_word(&mut synced, &prism(true, false, None), s(11), NO_WINDOW), "prepareFailed");
+        let mut asked = launch(t0);
+        assert_eq!(launch_word(&mut asked, &prism(true, false, None), s(25), NO_WINDOW), "starting");
+        assert_eq!(launch_word(&mut asked, &prism(true, false, None), s(26), NO_WINDOW), "waiting");
     }
 }
