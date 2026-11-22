@@ -1,6 +1,7 @@
 //! The map's colours: the page's `paint()` (preview.html lines 1379-1449) for the five 2D views, point for
 //! point, and the structures' marks (`drawMarks`, 1459-1482) as screen-space commands.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use mere_base::{Cmd, Color, Vec2};
@@ -157,25 +158,72 @@ fn ids(n: usize) -> Vec<String> {
 /// The map as `samples` x `samples` RGBA bytes. `chosen` holds the ids chosen in this view: when it holds one
 /// of the rows' ids, what is not chosen steps back towards the ground. `dark` picks the theme's step-back greys.
 pub fn paint(world: &World, view: View, dark: bool, chosen: &BTreeSet<String>) -> Vec<u8> {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(8);
+    paint_in(world, view, dark, chosen, threads)
+}
+
+/// `paint` on `threads` threads, each painting a band of whole rows. Each point is painted from the world alone, by
+/// the same code whatever its band, so the picture is the same bytes on any number of threads.
+fn paint_in(world: &World, view: View, dark: bool, chosen: &BTreeSet<String>, threads: usize) -> Vec<u8> {
     let n = world.samples;
     let total = n * n;
-    let h = &world.heights;
-    let sea = world.sea_level;
-    let at = &world.biome_at;
     let marks = view == View::Structures;
-    // What is not a chosen biome steps back towards the ground: water, then land.
-    let step_back: [f64; 2] = if dark { [16.0, 40.0] } else { [200.0, 226.0] };
-    // The line between two zones that stepped back: a little towards the text's side of the ground.
-    let faded_line = if dark { 1.3 } else { 0.92 };
-    // The choice of this view only. A chosen row this world does not have dims nothing.
-    let list = if marks { None } else { rows(world, view) };
+    // The choice of this view only. A chosen row this world does not have dims nothing. The biomes' rows are the
+    // world's own list, read where it is.
+    let list: Option<(Cow<[u16]>, Vec<String>)> = match view {
+        View::Structures => None,
+        View::Biomes => row_ids(world, view).map(|ids| (Cow::Borrowed(world.biome_at.as_slice()), ids)),
+        _ => rows(world, view).map(|(at, ids)| (Cow::Owned(at), ids)),
+    };
     let lit: Vec<bool> = list.as_ref().map_or(Vec::new(), |(_, ids)| ids.iter().map(|id| chosen.contains(id)).collect());
-    let choosing = lit.contains(&true);
-    let row_at = list.as_ref().map(|(at, _)| at);
+    let row_at = list.as_ref().map(|(at, _)| at.as_ref());
     let ground_colours = ground::colours(view);
+    let point = Point { world, view, dark, marks, choosing: lit.contains(&true), lit: &lit, row_at, ground_colours: &ground_colours };
 
     let mut px = vec![0u8; total * 4];
-    for i in 0..total {
+    if n == 0 {
+        return px;
+    }
+    let band_rows = n.div_ceil(threads.max(1));
+    std::thread::scope(|scope| {
+        for (b, band) in px.chunks_mut(band_rows * n * 4).enumerate() {
+            let point = &point;
+            scope.spawn(move || {
+                let first = b * band_rows * n;
+                for (k, out) in band.chunks_exact_mut(4).enumerate() {
+                    out.copy_from_slice(&point.paint(first + k));
+                }
+            });
+        }
+    });
+    px
+}
+
+/// What every point of one picture is painted from.
+struct Point<'a> {
+    world: &'a World,
+    view: View,
+    dark: bool,
+    marks: bool,
+    choosing: bool,
+    lit: &'a [bool],
+    row_at: Option<&'a [u16]>,
+    ground_colours: &'a [[u8; 3]],
+}
+
+impl Point<'_> {
+    /// The RGBA of point `i`.
+    fn paint(&self, i: usize) -> [u8; 4] {
+        let Point { world, view, dark, marks, choosing, lit, row_at, ground_colours } = *self;
+        let n = world.samples;
+        let total = n * n;
+        let h = &world.heights;
+        let sea = world.sea_level;
+        let at = &world.biome_at;
+        // What is not a chosen biome steps back towards the ground: water, then land.
+        let step_back: [f64; 2] = if dark { [16.0, 40.0] } else { [200.0, 226.0] };
+        // The line between two zones that stepped back: a little towards the text's side of the ground.
+        let faded_line = if dark { 1.3 } else { 0.92 };
         let biome = at[i] as usize;
         let y = h[i] as f64;
         let x = i % n;
@@ -240,13 +288,10 @@ pub fn paint(world: &World, view: View, dark: bool, chosen: &BTreeSet<String>) -
                 shade *= if c[0] + c[1] + c[2] > 420.0 { 0.75 } else { 0.5 };
             }
         }
-        for k in 0..3 {
-            // A canvas pixel array (Uint8ClampedArray) clamps, then rounds half to even.
-            px[i * 4 + k] = (c[k] * shade).round_ties_even().clamp(0.0, 255.0) as u8;
-        }
-        px[i * 4 + 3] = 255;
+        // A canvas pixel array (Uint8ClampedArray) clamps, then rounds half to even.
+        let byte = |k: usize| (c[k] * shade).round_ties_even().clamp(0.0, 255.0) as u8;
+        [byte(0), byte(1), byte(2), 255]
     }
-    px
 }
 
 fn as_f64(c: [u8; 3]) -> [f64; 3] {
@@ -290,6 +335,25 @@ pub(crate) mod tests {
             absent: Vec::new(),
             measured: Default::default(),
             made: None,
+        }
+    }
+
+    #[test]
+    fn the_picture_is_the_same_bytes_on_any_number_of_threads() {
+        // 37 a side: no band count divides it, so the bands' edges fall anywhere.
+        let w = world(37);
+        let none = BTreeSet::new();
+        for view in View::ALL {
+            let some: BTreeSet<String> = rows(&w, view).map_or(BTreeSet::new(), |(at, ids)| [ids[at[0] as usize].clone()].into());
+            for dark in [false, true] {
+                for chosen in [&none, &some] {
+                    let one = paint_in(&w, view, dark, chosen, 1);
+                    assert_eq!(one.len(), 37 * 37 * 4);
+                    for threads in [2, 3, 4, 8, 64] {
+                        assert!(paint_in(&w, view, dark, chosen, threads) == one, "{view:?} dark {dark} chosen {chosen:?} on {threads} threads");
+                    }
+                }
+            }
         }
     }
 
