@@ -690,7 +690,9 @@ impl PreviewApp {
     fn apply(&mut self) {
         let (Some(runs), Some(host)) = (self.runs.as_ref(), self.apply_host.clone()) else { return };
         let (Some(pack), None) = (runs.config_pack(), self.applying.as_ref()) else { return };
-        let target = Target { pack, own_server: Some(runs.server()) };
+        // From a prod copy the game's sync serves the snapshot (`runs.pack`), so it is written as well as the source.
+        let snapshot = runs.apply_pack.as_ref().and_then(|_| runs.pack.clone()).filter(|s| *s != pack);
+        let target = Target { pack, snapshot, own_server: Some(runs.server()) };
         let values = self.state.values;
         self.state.apply = Notice::Working;
         self.applying = Some((std::thread::spawn(move || apply::apply(&*host, &target, &values)), values));
@@ -703,9 +705,9 @@ impl PreviewApp {
         }
         let Some((thread, values)) = self.applying.take() else { return false };
         match thread.join() {
-            Ok(Outcome::Applied(_, running)) => {
+            Ok(Outcome::Applied(_, running, snapshot)) => {
                 self.state.baseline = values;
-                self.state.apply = Notice::Done { running };
+                self.state.apply = Notice::Done { running, snapshot };
             }
             Ok(Outcome::Failed(f)) => self.state.apply = Notice::Failed(f),
             Err(_) => self.state.apply = Notice::Failed(Fail::Write),

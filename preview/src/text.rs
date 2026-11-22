@@ -602,6 +602,9 @@ pub const APPLIED: &str = "Applied to the pack.";
 pub const APPLY_GAME: &str = "The game is running: it takes them at its next start.";
 pub const APPLY_SERVER: &str = "The dev server is running: it takes them at its next start.";
 pub const APPLY_BOTH: &str = "The game and the dev server are running: they take them at their next start.";
+/// From a prod copy of the launcher: the one limit left, said after the sentence above it.
+pub const APPLY_PROD_LIMIT: &str = "They hold in the game until the next deploy, unless they are committed to the pack repository.";
+pub const APPLY_FAIL_SNAPSHOT: &str = "Written to the pack, but not to the launcher\u{2019}s copy of it: the game keeps the old values.";
 pub const APPLY_FAIL_READ: &str = "The pack\u{2019}s config could not be read.";
 pub const APPLY_FAIL_WRITE: &str = "The pack\u{2019}s config could not be written.";
 pub const APPLY_FAIL_KEY: &str = "The pack\u{2019}s config does not look as expected. Nothing was written.";

@@ -5,17 +5,18 @@
 use mere_layout::{Align, Edges, Margin, Side, Style};
 use mere_ui::{ButtonLook, ButtonOpts, TabLook, TabOpts, TextLook, Tone, Ui, choice_style};
 
-use crate::apply::{Fail, Notice, Running};
+use crate::apply::{Fail, Notice, Running, Snapshot};
 use crate::settings::original_values;
 use crate::shell::{ShellIds, Want};
 use crate::text;
 
 /// What a finished apply says: that it was written, and which running program only reads it at its next start.
-pub fn notice_words(n: &Notice) -> &'static str {
-    match n {
+pub fn notice_words(n: &Notice) -> String {
+    let said = match n {
         Notice::None => "",
         Notice::Working => text::APPLY_WORKING,
-        Notice::Done { running } => match (running.contains(&Running::Game), running.iter().any(|r| matches!(r, Running::Server(_)))) {
+        Notice::Done { snapshot: Snapshot::Failed, .. } => text::APPLY_FAIL_SNAPSHOT,
+        Notice::Done { running, .. } => match (running.contains(&Running::Game), running.iter().any(|r| matches!(r, Running::Server(_)))) {
             (true, true) => text::APPLY_BOTH,
             (true, false) => text::APPLY_GAME,
             (false, true) => text::APPLY_SERVER,
@@ -24,7 +25,9 @@ pub fn notice_words(n: &Notice) -> &'static str {
         Notice::Failed(Fail::Read) => text::APPLY_FAIL_READ,
         Notice::Failed(Fail::Write) => text::APPLY_FAIL_WRITE,
         Notice::Failed(Fail::Key) => text::APPLY_FAIL_KEY,
-    }
+    };
+    // Only a prod copy has a snapshot, and only there do the values outlast a deploy by being committed.
+    if matches!(n, Notice::Done { snapshot: Snapshot::Written, .. }) { format!("{said} {}", text::APPLY_PROD_LIMIT) } else { said.to_string() }
 }
 
 /// The fields of the state it reads and writes, one by one: it is built inside the settings fold, which holds another
@@ -75,11 +78,11 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
             });
         });
         // A "done" that the values have since moved away from is not about what is shown any more.
-        let words = if matches!(*s.notice, Notice::Done { .. }) && differs { "" } else { notice_words(s.notice) };
+        let words = if matches!(*s.notice, Notice::Done { .. }) && differs { String::new() } else { notice_words(s.notice) };
         if !words.is_empty() {
-            let tone = if matches!(*s.notice, Notice::Failed(_)) { Tone::Warn } else { Tone::Muted };
-            ids.apply_text = words.to_string();
-            ids.apply_note = ui.node("applyNote", Style::default(), |ui| ui.paragraph(words, TextLook::small(tone)));
+            let tone = if matches!(*s.notice, Notice::Failed(_) | Notice::Done { snapshot: Snapshot::Failed, .. }) { Tone::Warn } else { Tone::Muted };
+            ids.apply_text = words.clone();
+            ids.apply_note = ui.node("applyNote", Style::default(), |ui| ui.paragraph(&words, TextLook::small(tone)));
         }
         // Said once, here, whatever happens: the seams are a fact of the world already generated.
         if s.pack_known {

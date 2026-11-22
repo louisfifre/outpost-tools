@@ -9,7 +9,7 @@ use std::sync::Arc;
 use mere_base::{App, Event, Vec2};
 use mere_ui::Theme;
 use mere_win32::Renderer;
-use preview::apply::{Host, Notice, Proc, Running};
+use preview::apply::{Host, Notice, Proc, Running, Snapshot};
 use preview::settings::{Kind, SETTINGS, pack_values};
 use preview::{PreviewApp, PreviewState, text};
 
@@ -23,7 +23,7 @@ impl Host for Machine {
     }
 }
 
-const SERVER: &str = r#"D:\bin\java.exe -Xmx6144M -jar M:\server\fabric-server-26.3-0.19.2.jar nogui"#;
+const SERVER: &str = r#"C:\bin\java.exe -Xmx6144M -jar C:\server\fabric-server-26.3-0.19.2.jar nogui"#;
 
 /// A pack folder whose config holds every key of the panel, with a comment above each.
 fn pack(name: &str) -> PathBuf {
@@ -95,7 +95,7 @@ fn a2_a_click_writes_the_value_keeps_the_comments_and_moves_the_baseline() {
     assert_eq!(after.replace("\"vertical_scale\": 2.0,", "\"vertical_scale\": 1.5,"), before, "only that value changed");
     assert_eq!(rig.app.state().baseline[index("vertical_scale")], 2.0);
     assert_eq!(rig.app.state().baseline, rig.app.state().values);
-    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![Running::Server(PathBuf::from(r"M:\server"))] });
+    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![Running::Server(PathBuf::from(r"C:\server"))], snapshot: Snapshot::Absent });
     assert_eq!(rig.app.ids().apply_text, text::APPLY_SERVER, "the panel says when the running server takes it");
     // The "pack" tab now puts back what was applied.
     assert_ne!(pack_values(), rig.app.state().baseline);
@@ -142,17 +142,12 @@ fn a5_a_value_typed_and_not_generated_is_there_at_the_next_start() {
     assert_ne!(second.app.ids().pack_marks[i], mere_ui::Id::ROOT, "the field says it differs from the pack");
 }
 
-/// A prod copy runs on a snapshot of the pack that each deploy replaces: Apply writes the source pack (`apply_pack`)
-/// and leaves the snapshot, which runs keep using, as it is.
-#[test]
-fn a7_the_source_pack_is_written_not_the_snapshot_the_runs_use() {
-    let source = pack("apply_a7_source");
-    let snapshot = pack("apply_a7_snapshot");
-    let (source_file, snapshot_file) = (source.join("pack/config/tectonic.json"), snapshot.join("pack/config/tectonic.json"));
-    let snapshot_before = std::fs::read_to_string(&snapshot_file).unwrap();
+/// A prod copy: the source pack (`apply_pack`, the checkout's, which a deploy keeps) and the snapshot the runs and the
+/// game's sync use (`pack`). Applies max_y = 448 and returns the rig.
+fn prod_copy(name: &str, snapshot: &PathBuf, source: &PathBuf) -> Rig {
     let theme = Theme::dark();
     let mut r = Renderer::offscreen(W, H, 1.0).expect("offscreen renderer");
-    let mut runs = common::runs(&snapshot, &[]);
+    let mut runs = common::runs(snapshot, &[]);
     runs.pack = Some(snapshot.join("pack"));
     runs.apply_pack = Some(source.join("pack"));
     let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState::default(), None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
@@ -165,7 +160,47 @@ fn a7_the_source_pack_is_written_not_the_snapshot_the_runs_use() {
     rig.frame();
     let id = rig.app.ids().apply;
     rig.click_on(id);
-    rig.until(20, "the write to end", |r| !r.app.applying());
+    rig.until(20, &format!("the write of {name} to end"), |r| !r.app.applying());
+    rig.frame();
+    rig
+}
+
+/// A prod copy runs on a snapshot of the pack that each deploy replaces, and the game's sync serves it: Apply writes
+/// the source pack (which survives a deploy once committed) and the snapshot (which the game reads at its next start).
+#[test]
+fn a7_from_a_prod_copy_both_the_source_and_the_snapshot_are_written() {
+    let source = pack("apply_a7_source");
+    let snapshot = pack("apply_a7_snapshot");
+    let (source_file, snapshot_file) = (source.join("pack/config/tectonic.json"), snapshot.join("pack/config/tectonic.json"));
+    let rig = prod_copy("a7", &snapshot, &source);
     assert!(std::fs::read_to_string(&source_file).unwrap().contains("\"max_y\": 448"), "the source pack holds the value");
-    assert_eq!(std::fs::read_to_string(&snapshot_file).unwrap(), snapshot_before, "the snapshot is untouched");
+    assert!(std::fs::read_to_string(&snapshot_file).unwrap().contains("\"max_y\": 448"), "the snapshot, which the game's sync serves, holds it too");
+    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![], snapshot: Snapshot::Written });
+    assert!(rig.app.ids().apply_text.ends_with(text::APPLY_PROD_LIMIT), "the one limit left is said");
+}
+
+#[test]
+fn a8_a_snapshot_that_cannot_be_written_is_said_and_the_source_is_still_written() {
+    let source = pack("apply_a8_source");
+    let snapshot = pack("apply_a8_snapshot");
+    std::fs::remove_file(snapshot.join("pack/config/tectonic.json")).unwrap();
+    let rig = prod_copy("a8", &snapshot, &source);
+    assert!(std::fs::read_to_string(source.join("pack/config/tectonic.json")).unwrap().contains("\"max_y\": 448"));
+    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![], snapshot: Snapshot::Failed });
+    assert_eq!(rig.app.ids().apply_text, text::APPLY_FAIL_SNAPSHOT, "the notice says which file was not written");
+}
+
+/// From a checkout there is no snapshot: one file, and no word about a deploy.
+#[test]
+fn a9_from_a_checkout_one_file_is_written_and_no_limit_is_said() {
+    let root = pack("apply_a9");
+    let mut rig = rig(&root, true, vec![]);
+    rig.app.state_mut().values[index("max_y")] = 448.0;
+    rig.frame();
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    rig.until(20, "the write to end", |r| !r.app.applying());
+    rig.frame();
+    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![], snapshot: Snapshot::Absent });
+    assert_eq!(rig.app.ids().apply_text, text::APPLIED);
 }
