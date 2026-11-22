@@ -1,5 +1,5 @@
-//! The back arrow of `.icon.back` (index.html line 258): Pixelarticons' arrow-left, drawn in two paths. The play,
-//! stop and settings icons are the preview's bar's own (`preview::bar::icons`), the same paths of lines 418-420.
+//! The back arrow of `.icon.back` (index.html's `#back`): Pixelarticons' arrow-left, drawn in two paths. The play,
+//! stop and settings icons are the preview's bar's own (`preview::bar::icons`), the same paths as the page's `icons`.
 
 use std::sync::OnceLock;
 

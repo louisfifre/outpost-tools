@@ -134,7 +134,7 @@ impl Server {
             props,
         }
     }
-    /// `serverBusy` (line 609).
+    /// `serverBusy`.
     pub fn busy(&self) -> bool {
         matches!(self.state.as_str(), "preparing" | "starting" | "running")
     }
@@ -162,7 +162,7 @@ fn to_fixed_plus(v: f64, digits: u32) -> String {
     format!("{back}")
 }
 
-/// "yesterday · 1.7 h played · opens New World" (lines 477-489). `days` is the local calendar day of the last play
+/// "yesterday · 1.7 h played · opens New World" (`about`). `days` is the local calendar day of the last play
 /// less today's.
 pub fn about(p: &Profile, days: i64) -> String {
     if p.last_played == 0 {
@@ -192,13 +192,13 @@ pub fn ordered(profiles: &[Profile]) -> Vec<Profile> {
     v
 }
 
-/// Leave the system a quarter of the machine's memory (line 525), in whole gigabytes. At least the field's own
+/// Leave the system a quarter of the machine's memory (`load`), in whole gigabytes. At least the field's own
 /// minimum, so that a machine that reports nothing leaves a range.
 pub fn memory_max(machine_mb: i64) -> f64 {
     ((machine_mb as f64 / 1024.0 * 0.75).floor()).max(2.0)
 }
 
-/// The page's `change` handler for a number field (lines 704-709): rounded to a whole number, then held within
+/// The page's `change` handler for a number field (the one on `document`): rounded to a whole number, then held within
 /// its range.
 pub fn round_clamp(v: f64, min: f64, max: f64) -> f64 {
     if !v.is_finite() {

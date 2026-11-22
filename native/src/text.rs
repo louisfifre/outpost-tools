@@ -1,21 +1,21 @@
-//! Every sentence Home shows, as the page's `text` object says it (index.html lines 336-415), with the
-//! line it comes from. The page's sentences are the source of truth: change them there first.
+//! Every sentence Home shows, as the page's `text` object says it (index.html's `const text`), with the
+//! key it comes from. The page's sentences are the source of truth: change them there first.
 
-/// Line 338.
+/// `noAccount`.
 pub const NO_ACCOUNT: &str = "No account: sign in once in Prism";
-/// Line 348.
+/// `profilesGroup`.
 pub const PROFILES_GROUP: &str = "Profiles";
-/// Line 349.
+/// `play`.
 pub fn play(name: &str) -> String {
     format!("Play {name}")
 }
-/// Line 350.
+/// `settings`.
 pub fn settings(name: &str) -> String {
     format!("Settings of {name}")
 }
-/// Line 351.
+/// `back`.
 pub const BACK: &str = "Back";
-/// Line 369.
+/// `openOn`, and the keys after it in their order.
 pub const OPEN_ON: &str = "Opens on";
 pub const ON_MENU: &str = "the game menu";
 pub fn on_world(name: &str) -> String {
@@ -33,7 +33,7 @@ pub const SAVED: &str = "Saved.";
 pub const REFUSED: &str = "Setting refused, nothing changed.";
 pub const LOCKED: &str = "Minecraft is running: settings can change once it is closed.";
 pub const FAILED: &str = "The request failed.";
-/// Lines 359-368: what a launch is doing, by the word the server answers. `seconds` is counted by the caller.
+/// `launch`: what a launch is doing, by the word the server answers. `seconds` is counted by the caller.
 pub fn launch(state: &str, seconds: i64) -> Option<String> {
     Some(match state {
         "starting" => "Starting\u{2026}".into(),
@@ -47,12 +47,12 @@ pub fn launch(state: &str, seconds: i64) -> Option<String> {
         _ => return None,
     })
 }
-/// Line 357 and 356 and 354-355 and 353 are in model.rs (`about`).
+/// `joinsServer`, `opensWorld`, `playedHours`, `playedMinutes` and `neverPlayed` are in model.rs (`about`).
 pub const SERVER_GROUP: &str = "Server";
 pub const SERVER_NAME: &str = "Dev server";
 pub const START_SERVER: &str = "Start the server";
 pub const STOP_SERVER: &str = "Stop the server";
-/// Lines 390-397, by state; None for a word the page has no sentence for.
+/// `server`, by state; None for a word the page has no sentence for.
 pub fn server(state: &str, port: i64) -> Option<String> {
     Some(match state {
         "stopped" => format!("stopped \u{b7} joins at localhost:{port}"),
