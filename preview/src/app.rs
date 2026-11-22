@@ -163,10 +163,10 @@ impl PreviewApp {
         self.state.history = history::load(&runs.history());
         self.state.before = std::fs::read_to_string(runs.before()).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| Figures::from_json(&j));
         // A pack is a place Apply can write to; the real machine is asked about what runs on it.
-        self.state.pack_known = runs.pack.is_some();
+        self.state.pack_known = runs.config_pack().is_some();
         // The pack's values are the ones its file holds now: an apply, or an edit by hand, moved them since the
         // copy in `settings.rs` was made. A form still on that copy follows.
-        let held = runs.pack.as_ref().and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
+        let held = runs.config_pack().as_ref().and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
         if let Some(held) = held {
             if self.state.made.is_none() && self.state.values == self.state.baseline {
                 self.state.values = held;
@@ -689,7 +689,7 @@ impl PreviewApp {
     /// are kept with it, for they become the pack's if it works.
     fn apply(&mut self) {
         let (Some(runs), Some(host)) = (self.runs.as_ref(), self.apply_host.clone()) else { return };
-        let (Some(pack), None) = (runs.pack.clone(), self.applying.as_ref()) else { return };
+        let (Some(pack), None) = (runs.config_pack(), self.applying.as_ref()) else { return };
         let target = Target { pack, own_server: Some(runs.server()) };
         let values = self.state.values;
         self.state.apply = Notice::Working;

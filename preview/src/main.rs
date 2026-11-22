@@ -276,7 +276,7 @@ fn main() {
     let theme = if dark { Theme::dark() } else { Theme::light() };
     // The window holds its minimum itself; a picture is raised to it too, so that it shows the layout the app has.
     let (w, h) = preview::min_size_px(size);
-    let runs = Runs { engine_dir, engine: preview::run::engine(), pack, root: runs_root(runs), mods: Vec::new(), launcher: Box::new(mere_win32::SystemLauncher), server_dir: None, out_dir: None, exports_dir: None };
+    let runs = Runs { engine_dir, engine: preview::run::engine(), pack, apply_pack: None, root: runs_root(runs), mods: Vec::new(), launcher: Box::new(mere_win32::SystemLauncher), server_dir: None, out_dir: None, exports_dir: None };
     let mut state = state;
     state.reduce_motion = mere_win32::reduced_motion();
     let mut app = PreviewApp::new(theme, dark, Vec2::new(w as f32, h as f32), state, world).follow_scheme(follows).with_runs(runs);

@@ -13,9 +13,76 @@ pub struct PreviewPaths {
     /// The world-preview repository, whose mod the engine builds and gives the server.
     pub engine: PathBuf,
     pub pack: PathBuf,
+    /// In a prod copy, the checkout it was staged from: Apply writes its pack, not the snapshot's (see source_pack_of).
+    pub source_pack: Option<PathBuf>,
     pub dir: PathBuf,
     pub out: PathBuf,
     pub exports: PathBuf,
+}
+
+/// A prod copy (<checkout>\prod\current, staged by the pack repository's launcher\deploy-prod.ps1) holds a snapshot of
+/// the pack that each deploy replaces: values applied to it would vanish at the next one. When `repo` is such a copy
+/// and the checkout it sits in holds a pack, that pack is where the maintainer's values belong. None otherwise, or
+/// when the copy was moved out of its checkout.
+pub fn source_pack_of(repo: &std::path::Path) -> Option<PathBuf> {
+    if !repo.join(".prod-commit").is_file() {
+        return None;
+    }
+    let prod = repo.parent()?;
+    if repo.file_name()? != "current" || prod.file_name()? != "prod" {
+        return None;
+    }
+    let checkout = prod.parent()?;
+    let pack = checkout.join("pack");
+    (checkout.join(".git").exists() && pack.join("config").join("tectonic.json").is_file()).then_some(pack)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_pack_of;
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// <root>\checkout with a pack and a .git, and <root>\checkout\prod\current staged (or not) with a snapshot.
+    fn layout(name: &str, staged: bool) -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!("source_pack_{name}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let checkout = root.join("checkout");
+        fs::create_dir_all(checkout.join(".git")).unwrap();
+        fs::create_dir_all(checkout.join("pack").join("config")).unwrap();
+        fs::write(checkout.join("pack").join("config").join("tectonic.json"), "{}").unwrap();
+        let current = checkout.join("prod").join("current");
+        fs::create_dir_all(current.join("pack").join("config")).unwrap();
+        fs::write(current.join("pack").join("config").join("tectonic.json"), "{}").unwrap();
+        if staged {
+            fs::write(current.join(".prod-commit"), "abc 1.0").unwrap();
+        }
+        (root, current)
+    }
+
+    #[test]
+    fn a_prod_copy_applies_to_the_checkout_it_was_staged_from() {
+        let (root, current) = layout("prod", true);
+        assert_eq!(source_pack_of(&current), Some(root.join("checkout").join("pack")));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_checkout_applies_to_its_own_pack() {
+        // The main checkout has no .prod-commit: the caller keeps repo\pack.
+        let (root, current) = layout("plain", false);
+        assert_eq!(source_pack_of(&current), None);
+        assert_eq!(source_pack_of(&root.join("checkout")), None);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_prod_copy_without_its_checkout_keeps_its_own_pack() {
+        let (root, current) = layout("moved", true);
+        fs::remove_dir_all(root.join("checkout").join(".git")).unwrap();
+        assert_eq!(source_pack_of(&current), None);
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 impl Api {
@@ -70,6 +137,7 @@ impl Api {
         PreviewPaths {
             engine: self.preview_serve().parent().unwrap().parent().unwrap().to_path_buf(),
             pack: self.repo.join("pack"),
+            source_pack: source_pack_of(&self.repo),
             dir: config.preview_dir.clone(),
             out: config.preview_dir.join("out"),
             exports: config.preview_exports.clone(),

@@ -36,6 +36,7 @@ pub fn runs(api: &launcher::api::Api, repo: &std::path::Path) -> Runs {
         engine_dir: paths.engine.join("mod").join("build.gradle").exists().then_some(paths.engine.clone()),
         engine: preview::run::engine(),
         pack: Some(paths.pack.clone()),
+        apply_pack: paths.source_pack.clone(),
         root,
         mods,
         launcher: Box::new(mere_win32::SystemLauncher),
