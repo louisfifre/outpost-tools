@@ -396,7 +396,7 @@ impl PreviewApp {
     /// and when another cut is asked for, dropped outside the section view. A cut that is not the one last looked
     /// at starts with a fresh look; coming back to the same one keeps it.
     fn sync_cut(&mut self) {
-        let Some(section) = self.drawn.as_ref().or(self.world.as_ref()).filter(|w| self.state.view == 5 && !w.coarse()).and_then(|w| w.section.as_ref()) else {
+        let Some(section) = self.drawn.as_ref().or(self.world.as_ref()).filter(|w| self.state.view == crate::paint::SECTION && !w.coarse()).and_then(|w| w.section.as_ref()) else {
             self.shown = None;
             return;
         };
@@ -737,8 +737,11 @@ impl PreviewApp {
         self.state.said.clear();
         let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let folder = runs.exports().join(run::folder_name(self.state.made.as_ref().map(|m| m.seed.as_str()), secs));
-        // A preview stopped at a coarser detail has no flat land to give; structures need the marks' rasteriser.
-        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Height, View::Temperature].into_iter().filter(|k| !(*k == View::Flat && world.coarse())).collect();
+        // A preview stopped at a coarser detail has no level land to give; structures need the marks' rasteriser.
+        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature]
+            .into_iter()
+            .filter(|k| !(k.needs_full() && world.coarse()))
+            .collect();
         let n = world.samples as u32;
         let mut steps = Vec::new();
         let result = (|| -> std::io::Result<()> {

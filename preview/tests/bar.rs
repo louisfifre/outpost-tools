@@ -138,13 +138,13 @@ fn b1_the_bar_keeps_its_form_at_every_width() {
     let (_, ui14, ids14) = picture(Theme::dark(), Vec2::new(1400.0, 940.0));
     let reference = sizes(&ids14, &ui14);
     let tab_reference = tab_sizes(&ids14, &ui14);
-    assert_eq!(ids14.tabs.len(), 8, "six views, 2D and 3D, always as words");
+    assert_eq!(ids14.tabs.len(), 11, "nine views, 2D and 3D, always as words");
     near(rect_of(&ui14, ids14.bar).h, 40.0, "bar height");
     let mut w = preview::MIN_SIZE.0;
     while w <= 1920.0 {
         let (_, ui, ids) = picture(Theme::dark(), Vec2::new(w, 940.0));
         assert_eq!(sizes(&ids, &ui), reference, "the parts' sizes at {w}");
-        let kept: Vec<(f32, f32)> = (0..8).filter(|i| !ids.form.more.contains(i) && !(*i >= 6 && ids.form.shapes_in_more)).map(|i| tab_reference[i]).collect();
+        let kept: Vec<(f32, f32)> = (0..11).filter(|i| !ids.form.more.contains(i) && !(*i >= 9 && ids.form.shapes_in_more)).map(|i| tab_reference[i]).collect();
         assert_eq!(tab_sizes(&ids, &ui), kept, "the tabs' sizes at {w}");
         let (lead, strip, trail) = (rect_of(&ui, ids.toggles[0]), rect_of(&ui, ids.strip), rect_of(&ui, ids.toggles[1]));
         if ids.form.centred {
@@ -291,8 +291,8 @@ fn b5_the_tool_switch_keeps_the_previews_state() {
     let mut rig = Rig::standard(&world);
     // Something to keep: another view, a closer look, the 3D camera.
     let tabs = rig.app.ids().tabs.clone();
-    rig.click_on(tabs[3]);
-    rig.click_on(tabs[7]);
+    rig.click_on(tabs[6]);
+    rig.click_on(tabs[10]);
     {
         let s = rig.app.state_mut();
         s.look.k = 4.0;
@@ -300,7 +300,7 @@ fn b5_the_tool_switch_keeps_the_previews_state() {
     }
     rig.frame();
     let before = rig.app.state().clone();
-    assert!(before.orbit.is_some() && before.in3d && before.view == 3);
+    assert!(before.orbit.is_some() && before.in3d && before.view == 6);
     let (home, preview) = (rig.app.ids().tools[0], rig.app.ids().tools[1]);
     rig.click_on(home);
     assert_eq!(rig.app.state().mode, Mode::Home);
@@ -481,7 +481,7 @@ fn t1_a_tooltip_comes_after_its_delay_and_goes_with_the_pointer() {
 
     // A view tab carries its label as its title: the picture kept in docs/shots.
     rig.app.set_clock(Some(20.0));
-    let tab = centre(rig.rect(rig.app.ids().tabs[2]));
+    let tab = centre(rig.rect(rig.app.ids().tabs[5]));
     rig.hover(tab);
     rig.app.set_clock(Some(20.6));
     rig.frame();

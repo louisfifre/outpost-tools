@@ -395,7 +395,7 @@ fn the_bars_buttons_toggle_their_own_panel() {
 #[test]
 fn stacked_panels_scroll_as_one_whole_with_no_nested_scroll() {
     let world = world();
-    let state = PreviewState { view: 2, ..PreviewState::for_world(world.as_ref()) };
+    let state = PreviewState { view: preview::paint::View::Height.index(), ..PreviewState::for_world(world.as_ref()) };
     let mut rig = Rig::new(700, 700, state, world.as_ref());
     let ids = rig.ids();
     assert!(ids.plan.stacked);

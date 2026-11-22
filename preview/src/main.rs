@@ -76,7 +76,7 @@ fn parse_camera(s: &str) -> Option<Vec3> {
 fn apply_view(state: &mut PreviewState, key: &str) {
     match key {
         "" => {}
-        "section" => state.view = 5,
+        "section" => state.view = preview::paint::SECTION,
         "flat2d" => state.in3d = false,
         "relief3d" => state.in3d = true,
         _ => match View::from_key(key) {
@@ -225,12 +225,12 @@ fn main() {
         };
         match (part, world.as_ref().and_then(|w| w.structures.as_ref())) {
             (None, _) => {
-                state.chosen[4].insert(id.to_string());
+                state.chosen[View::Structures.index()].insert(id.to_string());
             }
             (Some(under), Some(s)) => {
                 for (i, kind) in s.ids.iter().enumerate() {
                     if s.under[i] == under && s.count[i] > 0 {
-                        state.chosen[4].insert(kind.clone());
+                        state.chosen[View::Structures.index()].insert(kind.clone());
                     }
                 }
             }

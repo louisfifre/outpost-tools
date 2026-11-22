@@ -133,7 +133,7 @@ pub fn window_title(s: &PreviewState) -> String {
 fn greyed(s: &PreviewState, world: Option<&World>) -> [bool; VIEW_COUNT] {
     let coarse = world.is_some_and(World::coarse);
     let pending = pending(s);
-    std::array::from_fn(|i| (coarse && matches!(i, 1 | 4 | 5)) || (pending && matches!(i, 4 | 5)))
+    std::array::from_fn(|i| (coarse && crate::paint::needs_full(i)) || (pending && crate::paint::comes_at_the_end(i)))
 }
 
 /// The stage shows the run's sketch or map, which have no structures and no cuts yet.
@@ -145,7 +145,7 @@ fn pending(s: &PreviewState) -> bool {
 /// tool open, whatever tool is on, so the views do not shuffle while they slide; the brand's parts follow the
 /// tool on show, so Home, which has the room, keeps the account and the word.
 pub fn form_for(s: &PreviewState, world: Option<&World>, width: f32) -> (Form, Form) {
-    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != 5 };
+    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != crate::paint::SECTION };
     let open = overflow::plan(&inputs(true));
     let on_show = if s.mode == Mode::Preview { open.clone() } else { overflow::plan(&inputs(false)) };
     (open, on_show)
@@ -323,7 +323,9 @@ fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&Wo
         let r = ui.tab(&format!("view{i}"), word, TabLook::Strip, TabOpts { pressed: i == s.view, disabled });
         ids.tabs.push(r.id);
         ids.bar_buttons.push(r.id);
-        ui.title(r.id, if disabled { why } else { word });
+        // A view with something to explain says it on hover, in the page's words.
+        let hint = text::VIEW_HINTS.get(i).copied().filter(|h| !h.is_empty());
+        ui.title(r.id, if disabled { why } else { hint.unwrap_or(word) });
         // `inert` while the tool is not the one on screen (the page's closing slide).
         if r.clicked && s.mode == Mode::Preview {
             s.view = i;
@@ -347,7 +349,7 @@ fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&Wo
         }
     }
     // The section has no 2D or 3D (line 2540): the tabs and the gap before them are not built.
-    if s.view != 5 && !form.shapes_in_more {
+    if s.view != crate::paint::SECTION && !form.shapes_in_more {
         ui.strip_gap();
         for (i, word) in text::SHAPES.iter().enumerate() {
             let r = ui.tab(&format!("shape{i}"), word, TabLook::Strip, TabOpts { pressed: (i == 1) == s.in3d, disabled: false });

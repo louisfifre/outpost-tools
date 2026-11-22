@@ -95,11 +95,11 @@ fn right_parts(ids: &ShellIds) -> Vec<(String, Id)> {
 fn r1_the_panels_keep_their_width_and_the_square_follows_one_rule() {
     let Some(world) = load() else { return };
     let [lw, rw] = natural();
-    let (ui14, ids14) = laid_out(&world, 2, 1400.0, H);
+    let (ui14, ids14) = laid_out(&world, 5, 1400.0, H);
     let (l14, r14) = (rect(&ui14, ids14.left), rect(&ui14, ids14.right));
     for w in SWEEP {
         assert!(w >= 4.0 * GAP + lw + rw + MAP_MIN, "{w} holds the panels at their natural width");
-        let (ui, ids) = laid_out(&world, 2, w, H);
+        let (ui, ids) = laid_out(&world, 5, w, H);
         let middle = middle_at(w);
         same(rect(&ui, ids.left), Rect::new(GAP, TOP, lw, COL_H), &format!("left at {w}"));
         same(rect(&ui, ids.right), Rect::new(w - GAP - rw, TOP, rw, COL_H), &format!("right at {w}"));
@@ -165,7 +165,7 @@ fn r3_short_windows_keep_the_panels_and_fit() {
     let Some(world) = load() else { return };
     let [lw, rw] = natural();
     for h in [600.0, 700.0, 940.0] {
-        let (ui, ids) = laid_out(&world, 2, 1400.0, h);
+        let (ui, ids) = laid_out(&world, 5, 1400.0, h);
         let colh = h - BAR_H - CONTENT_TOP - 22.0;
         same(rect(&ui, ids.left), Rect::new(GAP, TOP, lw, colh), &format!("left at {h}"));
         same(rect(&ui, ids.right), Rect::new(1400.0 - GAP - rw, TOP, rw, colh), &format!("right at {h}"));
@@ -220,8 +220,8 @@ fn r5_the_section_takes_the_middle_column_and_leaves_the_panels_alone() {
     let Some(world) = load() else { return };
     let [lw, _] = natural();
     for w in [1000.0, 1920.0] {
-        let (ui, ids) = laid_out(&world, 5, w, H);
-        let (relief, rids) = laid_out(&world, 2, w, H);
+        let (ui, ids) = laid_out(&world, 8, w, H);
+        let (relief, rids) = laid_out(&world, 5, w, H);
         let f = rect(&ui, ids.frame);
         same(f, Rect::new(2.0 * GAP + lw, TOP, middle_at(w), COL_H - 64.0), &format!("section frame at {w}"));
         for (name, a, b) in [("left", ids.left, rids.left), ("middle", ids.middle, rids.middle), ("right", ids.right, rids.right)] {
@@ -257,11 +257,11 @@ fn pictures_over_the_sweep() {
     let at = STACK_AT as u32;
     let least = MIN_SIZE.0 as u32;
     for (w, h) in [(1920, 1040), (1280, 880), (1000, 700), (at, 700), (at - 10, 700), (700, 700), (least, 600)] {
-        picture(&world, state(2), w, h, &format!("fluid_{w}x{h}.png"));
+        picture(&world, state(5), w, h, &format!("fluid_{w}x{h}.png"));
     }
-    picture(&world, PreviewState { panel_w: [Some(420.0), None], ..state(2) }, 1400, 800, "fluid_settings_dragged.png");
-    picture(&world, PreviewState { panel_open: [true, false], ..state(2) }, 1280, 880, "fluid_figures_closed.png");
-    picture(&world, PreviewState { panel_open: [false, true], ..state(2) }, 1280, 880, "fluid_settings_closed.png");
+    picture(&world, PreviewState { panel_w: [Some(420.0), None], ..state(5) }, 1400, 800, "fluid_settings_dragged.png");
+    picture(&world, PreviewState { panel_open: [true, false], ..state(5) }, 1280, 880, "fluid_figures_closed.png");
+    picture(&world, PreviewState { panel_open: [false, true], ..state(5) }, 1280, 880, "fluid_settings_closed.png");
 }
 
 #[test]

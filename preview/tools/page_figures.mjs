@@ -44,7 +44,7 @@ for (const name of ['num', 'percent', 'blocks', 'heightSteps', 'seaDepths', 'cla
 
 // (4) the functions, each up to the first later line that is exactly two spaces and a brace.
 const functions = [];
-for (const name of ['zones', 'measure', 'listOf', 'structureList', 'bands', 'loadStructures', 'showFigures', 'remember', 'showHistory', 'changes']) {
+for (const name of ['zones', 'steepness', 'measure', 'listOf', 'structureList', 'bands', 'loadStructures', 'showFigures', 'remember', 'showHistory', 'changes']) {
   const start = need(lines.findIndex(l => new RegExp(`^  (async )?function ${name}\\(`).test(l)), `function ${name}`);
   const end = need(lines.findIndex((l, i) => i > start && l === '  }'), `the end of function ${name}`);
   functions.push(...lines.slice(start, end + 1));
@@ -84,8 +84,8 @@ shown = { seed: String(run.seed), values: run.tectonic };
 
 const out = { figures: world.figures, absent: world.absent, lists: {}, showFigures: [], history: {}, runValues: run.tectonic };
 
-// The five lists the column holds.
-for (const kind of ['biomes', 'flat', 'height', 'temperature', 'structures']) {
+// The lists the column holds, in the order of the native views.
+for (const kind of ['biomes', 'flat', 'slope', 'cliffs', 'vegetation', 'height', 'temperature', 'structures']) {
   const L = listOf(kind);
   if (!L) { out.lists[kind] = null; continue; }
   const cells = Array.from(L.cells), widths = Array.from(L.widths);

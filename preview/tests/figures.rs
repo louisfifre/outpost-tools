@@ -100,7 +100,7 @@ fn shown_ids(world: &World, view: View) -> Vec<String> {
 #[test]
 fn g1_the_relief_column_has_the_real_figures_and_bands() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 2), None);
+    let mut rig = Rig::new(&world, state_for(&world, 5), None);
     rig.park();
     let rgba = rig.shot("figures_1400.png");
     let ids = rig.app.ids().clone();
@@ -238,7 +238,7 @@ fn g4_the_filter_keeps_what_matches_and_what_is_chosen() {
 #[test]
 fn g5_structures_come_in_two_parts_with_round_marks() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 4), None);
+    let mut rig = Rig::new(&world, state_for(&world, 7), None);
     rig.park();
     let ids = rig.app.ids().clone();
     let s = world.structures.as_ref().expect("structures");
@@ -256,25 +256,25 @@ fn g5_structures_come_in_two_parts_with_round_marks() {
     let surface: BTreeSet<String> = (0..s.ids.len()).filter(|&i| !s.under[i] && s.count[i] > 0).map(|i| s.ids[i].clone()).collect();
     rig.click_on(ids.list_parts[0]);
     rig.park();
-    assert_eq!(rig.app.state().chosen[4], surface, "the surface head chooses exactly the surface ids");
+    assert_eq!(rig.app.state().chosen[View::Structures.index()], surface, "the surface head chooses exactly the surface ids");
     rig.shot("structures_list.png");
     assert!(rig.app.ids().pick_text.ends_with(text::PICK_NONE_MARKS), "{}", rig.app.ids().pick_text);
     let again = rig.app.ids().list_parts[0];
     rig.click_on(again);
     rig.park();
-    assert!(rig.app.state().chosen[4].is_empty(), "again clears");
+    assert!(rig.app.state().chosen[View::Structures.index()].is_empty(), "again clears");
     // Chosen once more for the picture.
     let again = rig.app.ids().list_parts[0];
     rig.click_on(again);
     rig.park();
     rig.shot("structures_list.png");
-    assert_eq!(rig.app.state().chosen[4], surface);
+    assert_eq!(rig.app.state().chosen[View::Structures.index()], surface);
 }
 
 #[test]
 fn g6_a_narrower_window_does_not_shrink_the_goal_figures() {
     let Some(world) = world() else { return };
-    let mut m = Mini::new(Theme::dark(), true, (1000, 940), &world, state_for(&world, 3), false);
+    let mut m = Mini::new(Theme::dark(), true, (1000, 940), &world, state_for(&world, 6), false);
     m.shot("figures_1000.png");
     // No breakpoint since step 19: the page's wide numbers hold at 1000 px too.
     let cols = preview::PAGE;
@@ -292,7 +292,7 @@ fn g7_the_run_before_gives_the_change_column() {
     let f = world.measured.figures;
     let b1 = before_of(&f);
     std::fs::write(root.join("before.json"), b1.to_json()).unwrap();
-    let mut rig = Rig::new(&world, state_for(&world, 2), Some(runs(&root, &[])));
+    let mut rig = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
     rig.park();
     rig.shot("figures_change.png");
     let ids = rig.app.ids().clone();
@@ -329,7 +329,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
     let on_disk = fixtures(&world);
     let file = runs(&root, &[]).history();
     history::save(&file, &on_disk).unwrap();
-    let mut rig = Rig::new(&world, state_for(&world, 2), Some(runs(&root, &[])));
+    let mut rig = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
     rig.park();
     let kept = history::load(&file);
     assert_eq!(kept.len(), 4, "the real map is added to the three fixtures");
@@ -364,7 +364,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
     assert_eq!(rig.app.ids().history_probe, text::history_hint(4));
 
     // H3: a second app on the same folder finds the real map last and adds nothing.
-    let second = Rig::new(&world, state_for(&world, 2), Some(runs(&root, &[])));
+    let second = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
     assert_eq!(second.app.state().history.len(), 4);
     assert_eq!(history::load(&file).len(), 4, "the file is unchanged");
 }
@@ -373,7 +373,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
 fn h4_a_finished_run_keeps_the_run_before_and_the_new_map() {
     let Some(world) = world() else { return };
     let root = root("history_h4");
-    let mut state = state_for(&world, 2);
+    let mut state = state_for(&world, 5);
     state.seed = "h4-seed".to_string();
     // One setting moved before Generate, as a person would.
     state.values[0] += 0.01;
@@ -410,7 +410,7 @@ fn light_pictures_equal(a: &[u8], b: &[u8], what: &str) {
 #[test]
 fn t1_the_theme_follows_the_system_live() {
     let Some(world) = world() else { return };
-    let state = PreviewState { view: 2, ..PreviewState::for_world(Some(&world)) };
+    let state = PreviewState { view: View::Height.index(), ..PreviewState::for_world(Some(&world)) };
     let mut a = Mini::new(Theme::dark(), true, (1400, 940), &world, state.clone(), true);
     let dark = a.rgba();
     assert!(a.app.event(Event::Scheme { dark: false }), "a followed change asks for a frame");

@@ -187,7 +187,7 @@ fn i5_the_tab_changes_the_colouring_through_the_whole_application() {
         r.read_rgba().unwrap()
     };
     let first = picture(&mut app, &mut r);
-    assert_eq!(app.state().view, 2, "the page opens on the relief");
+    assert_eq!(app.state().view, View::Height.index(), "the page opens on the relief");
 
     // A pixel well inside a texel where the two colourings differ.
     let frame = app.ui().rect(app.ids().frame).unwrap();
@@ -235,7 +235,7 @@ fn i5_the_tab_changes_the_colouring_through_the_whole_application() {
 // The 3D view's orbit.
 
 fn rig_3d(world: World) -> Rig {
-    Rig::new(world, PreviewState { view: 2, in3d: true, ..PreviewState::default() })
+    Rig::new(world, PreviewState { view: View::Height.index(), in3d: true, ..PreviewState::default() })
 }
 
 /// Lets the camera glide to rest, as the frames of the window do.

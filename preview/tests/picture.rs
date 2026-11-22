@@ -46,7 +46,7 @@ fn check(theme: Theme, w: u32, name: &str) {
     same(at(f.x + 5.0, f.y + 5.0), theme.ground, "empty frame");
 
     // P3: the pressed Relief tab is filled with --fill (inside its 1 px frame).
-    let relief = rect(ids.tabs[2]);
+    let relief = rect(ids.tabs[5]);
     same(at(relief.x + 3.0, relief.y + 3.0), theme.fill, "pressed tab");
 
     // P5: with no map the page decides Generate (nothing shows these settings): it is enabled, filled with --text
@@ -88,7 +88,7 @@ fn p4_the_first_row_swatch_is_its_bands_colour() {
     r.draw_list(&list);
     r.end();
     let rgba = r.read_rgba().unwrap();
-    let bands = world.measured.lists[2].as_ref().expect("the height list");
+    let bands = world.measured.lists[5].as_ref().expect("the height list");
     let first = (0..bands.cells.len()).find(|&i| bands.cells[i] > 0.0).unwrap();
     let c = bands.colours[first];
     let row = ui.rect(ids.list_rows[0]).expect("built");

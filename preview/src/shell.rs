@@ -143,7 +143,7 @@ pub struct PreviewState {
     pub grip: Option<Grip>,
     /// The scroll of each panel as one whole, when the panels are stacked.
     pub panel_y: [f32; 2],
-    /// The strip's pressed view: 0 to 4 are `text::VIEWS`, 5 is the section.
+    /// The strip's pressed view: 0 to 7 are `text::VIEWS`, 8 (`paint::SECTION`) is the section.
     pub view: usize,
     pub in3d: bool,
     /// How finely the 3D view draws the land: the pressed one of `text::LEVELS`.
@@ -175,7 +175,7 @@ pub struct PreviewState {
     pub look: Look,
     pub carry: Option<Carry>,
     /// What is chosen in each of the five views (by id): what the map shows alone.
-    pub chosen: [BTreeSet<String>; 5],
+    pub chosen: [BTreeSet<String>; crate::paint::MAP_VIEWS],
     /// The 3D camera: made when the 3D view is first built, and kept across view and shape switches (the page
     /// resets it only when the area's width changes, line 1873).
     pub orbit: Option<Orbit>,
@@ -255,7 +255,7 @@ impl Default for PreviewState {
             panel_w: [None, None],
             grip: None,
             panel_y: [0.0, 0.0],
-            view: 2,
+            view: View::Height.index(),
             in3d: false,
             level: Level::default(),
             seed: "94427382".to_string(),
@@ -618,7 +618,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
     let cols = PAGE;
     let mut ids = ShellIds::default();
     // A map stopped at a coarser detail cannot give these views (line 2509): the page goes back to the biomes.
-    if world.is_some_and(World::coarse) && matches!(s.view, 1 | 4 | 5) {
+    if world.is_some_and(World::coarse) && crate::paint::needs_full(s.view) {
         s.view = 0;
     }
 
@@ -644,7 +644,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
     // Line 227: `side = min(the column's width, its height - --under)`.
     let side = middle_w.min(column_h - UNDER).max(0.0);
     // The section takes the square's place (line 283): the column's whole width, and its height less `--under`.
-    let frame_size = if s.view == 5 { (middle_w.max(0.0), (column_h - UNDER).max(0.0)) } else { (side, side) };
+    let frame_size = if s.view == crate::paint::SECTION { (middle_w.max(0.0), (column_h - UNDER).max(0.0)) } else { (side, side) };
 
     // body (lines 63-72): a column filling the window.
     ui.node("body", Style { column: true, ..fills() }, |ui| {
@@ -1457,7 +1457,7 @@ fn probe_text(ui: &Ui, s: &PreviewState, ids: &ShellIds, side: f32, world: Optio
     }
     let local = Vec2::new(p.x - rect.x, p.y - rect.y);
     if view == View::Structures {
-        if let Some((kind, x, z)) = structure_near(w, &s.chosen[4], s.look, side, local) {
+        if let Some((kind, x, z)) = structure_near(w, &s.chosen[View::Structures.index()], s.look, side, local) {
             let name = text::pretty(&w.structures.as_ref().expect("a near structure needs structures").ids[kind]);
             return text::structure_probe(&text::num(x), &text::num(z), &name);
         }
@@ -1569,7 +1569,7 @@ enum Pick {
 /// The right column (lines 429-449): the figures and the history, then the list of what the view shows. In the
 /// section the figures are not built (line 2533: they would describe the map) and the list is the ores of the cut.
 fn right_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, cols: &Columns, world: Option<&World>, shown: Option<&Shown>, stacked: bool) {
-    let cut = s.view == 5;
+    let cut = s.view == crate::paint::SECTION;
     // The history's plots are as wide as the panel; stacked, the panel's scrollbar keeps its gutter.
     let plot_w = ids.plan.widths[1] - if stacked { mere_ui::GUTTER } else { 0.0 };
     if !cut {

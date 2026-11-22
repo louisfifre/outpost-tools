@@ -6,7 +6,8 @@
 use crate::bands::{HEIGHT_STEPS, SEA_DEPTHS, band_colours, band_names};
 use crate::colour::{self, flat_colour, flat_sea_colour, steep_colour, temperature_colour};
 use crate::json::Json;
-use crate::paint::{View, rows};
+use crate::ground;
+use crate::paint::{MAP_VIEWS, View, rows};
 use crate::text;
 use crate::world::World;
 
@@ -155,7 +156,7 @@ pub struct Measured {
     pub widths: Vec<f64>,
     pub absent: Vec<String>,
     pub figures: Figures,
-    pub lists: [Option<List>; 5],
+    pub lists: [Option<List>; MAP_VIEWS],
 }
 
 /// `measure` (1255-1322). `listed` says `preview.json` has `possible`: only then is there a total of biomes.
@@ -234,7 +235,7 @@ pub fn measure(world: &World, absent: Vec<String>, listed: bool) -> Measured {
         step,
     };
 
-    let mut lists: [Option<List>; 5] = Default::default();
+    let mut lists: [Option<List>; MAP_VIEWS] = Default::default();
     lists[View::Biomes.index()] = Some(List {
         ids: world.biomes.iter().map(|b| b.id.clone()).collect(),
         names: world.biomes.iter().map(|b| text::pretty(&b.id)).collect(),
@@ -244,7 +245,7 @@ pub fn measure(world: &World, absent: Vec<String>, listed: bool) -> Measured {
         counted: false,
         total: total_f,
     });
-    for view in [View::Flat, View::Height, View::Temperature] {
+    for view in [View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature] {
         let Some((at, ids)) = rows(world, view) else { continue };
         let (names, colours): (Vec<String>, Vec<[u8; 3]>) = match view {
             View::Height => (band_names(sea, &HEIGHT_STEPS, &SEA_DEPTHS), band_colours(sea, &HEIGHT_STEPS, &SEA_DEPTHS)),
@@ -252,6 +253,9 @@ pub fn measure(world: &World, absent: Vec<String>, listed: bool) -> Measured {
                 text::LEGEND_TEMPERATURE.iter().map(|s| s.to_string()).collect(),
                 (0..5).map(|i| temperature_colour(-0.7 + i as f64 * 2.7 / 4.0)).collect(),
             ),
+            View::Slope | View::Cliffs | View::Vegetation => {
+                (text::legend(view.index()).iter().map(|s| s.to_string()).collect(), ground::colours(view))
+            }
             _ => (text::LEGEND_FLAT.iter().map(|s| s.to_string()).collect(), vec![flat_colour(), steep_colour(), flat_sea_colour()]),
         };
         let mut band_cells = vec![0.0f64; names.len()];

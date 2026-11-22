@@ -112,7 +112,7 @@ fn e2_a_chosen_biome_does_not_change_the_export() {
 fn e3_the_section_is_exported_as_last_looked_at() {
     let Some(world) = world() else { return };
     let root = root("export-e3");
-    let state = PreviewState { view: 5, ..PreviewState::for_world(Some(&world)) };
+    let state = PreviewState { view: preview::paint::SECTION, ..PreviewState::for_world(Some(&world)) };
     let mut rig = Rig::new(&world, state, Some(export_runs(&root)));
     rig.until(20, "the cut's sheet to be uploaded", |r| r.app.last_sheet().is_some());
     rig.park();
