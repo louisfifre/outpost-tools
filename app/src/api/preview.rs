@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use super::Api;
+use super::{Api, Failure};
 use crate::system;
 
 pub const PREVIEW_URL: &str = "http://localhost:25590/";
@@ -98,19 +98,19 @@ impl Api {
     // this process and stops with it. The glue mod is not in the pack: the preview's server takes its jar on top,
     // so the section shows the pack's own ores. A preview from before -Exports keeps its exports in <Dir>\exports;
     // one from before -ParentPid stops once its pings stop instead.
-    pub(super) fn start_preview(&self) -> Result<(), String> {
-        let mut live = self.live.lock().unwrap();
+    pub(super) fn start_preview(&self) -> Result<(), Failure> {
+        let mut live = self.live();
         if live.preview.as_mut().is_some_and(|p| p.try_wait().ok().flatten().is_none()) {
             return Ok(());
         }
         let serve = self.preview_serve();
         if !serve.exists() {
-            return Err(format!(
+            return Err(Failure::Internal(format!(
                 "The world preview was not found: no scripts\\serve.ps1 in {}. Put the world-preview repository there, or set WORLD_PREVIEW_DIR to its folder.",
                 serve.parent().unwrap().parent().unwrap().display()
-            ));
+            )));
         }
-        let config = self.config();
+        let config = self.config()?;
         let script = format!(
             ". '{common}'; $env:WORLD_PREVIEW_MODS = Build-GlueMod; \
              $serve = '{serve}'; $known = (Get-Command $serve).Parameters; \
@@ -131,17 +131,17 @@ impl Api {
     }
 
     // Where the preview's parts are on this pack, as start_preview gives them to serve.ps1 (its own Out default is
-    // <Dir>\out). The engine is the repository serve.ps1 sits in.
-    pub fn preview_paths(&self) -> PreviewPaths {
-        let config = self.config();
-        PreviewPaths {
+    // <Dir>\out). The engine is the repository serve.ps1 sits in. Err says why the pack's folders are not known.
+    pub fn preview_paths(&self) -> Result<PreviewPaths, String> {
+        let config = self.config().map_err(|failure| failure.why().to_string())?;
+        Ok(PreviewPaths {
             engine: self.preview_serve().parent().unwrap().parent().unwrap().to_path_buf(),
             pack: self.repo.join("pack"),
             source_pack: source_pack_of(&self.repo),
             dir: config.preview_dir.clone(),
             out: config.preview_dir.join("out"),
             exports: config.preview_exports.clone(),
-        }
+        })
     }
 
     // The glue mod's jar, built as start_preview builds it (`$env:WORLD_PREVIEW_MODS = Build-GlueMod`): the path

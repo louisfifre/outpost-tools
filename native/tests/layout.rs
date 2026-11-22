@@ -1,4 +1,4 @@
-//! The layout of Home against the page's numbers (every one cites its index.html line): the two parts fill the
+//! The layout of Home against the page's numbers (every one names its index.html rule): the two parts fill the
 //! window continuously, with no switch, and nothing is cut or overlaps.
 
 mod common;
@@ -19,8 +19,8 @@ fn home_at(w: f32, h: f32) -> (mere_ui::Ui, launcher_native::HomeIds, mere_base:
     (ui, home.ids().clone(), list)
 }
 
-/// L1: side by side, every width from 1000 (the window's least) to 2560, one rule and no switch: line 148 (two minmax(0, 1fr) and a gap of 48), the page's
-/// padding of 28 (line 145, side), the top of the preview's page (10) under the bar (40), and the page's cap of 1120
+/// L1: side by side, every width from 1000 (the window's least) to 2560, one rule and no switch: `.columns` (two minmax(0, 1fr) and a gap of 48), the page's
+/// padding of 28 (`.page`, side), the top of the preview's page (10) under the bar (40), and the page's cap of 1120
 /// for the two together, centred beyond it.
 #[test]
 fn l1_side_by_side_up_to_the_cap() {

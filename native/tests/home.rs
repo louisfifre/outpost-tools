@@ -181,6 +181,61 @@ fn h9_start_and_stop() {
     assert_eq!(rig.api.count("POST", "/api/server/stop"), 1);
 }
 
+/// A running server, its stop button found.
+fn running_server(rig: &mut Rig) -> mere_ui::Id {
+    let mut v = api_get(&rig.api, "/api/server");
+    v["state"] = json!("running");
+    rig.api.set_get("/api/server", v);
+    rig.wait(3.0);
+    rig.home().ids().server_play
+}
+
+/// H9b: a stop the server did not take says the server's reason and gives the button back.
+#[test]
+fn h9b_a_refused_stop_says_why_and_releases_the_button() {
+    let mut rig = Rig::new(1400, 940, true);
+    let stop = running_server(&mut rig);
+    rig.api.set_post("/api/server/stop", 502, json!({"error": "Exception: RCON login refused"}));
+    rig.click(stop);
+    assert_eq!(rig.home().notes().1, "Exception: RCON login refused");
+    rig.wait(3.0);
+    assert_eq!(rig.home().notes().1, "Exception: RCON login refused", "the next poll keeps the reason");
+    assert!(rig.says("Running \u{b7} localhost:25565"));
+    rig.click(stop);
+    assert_eq!(rig.api.count("POST", "/api/server/stop"), 2, "the button is free again");
+}
+
+/// H9c: a stop taken by a server that is still running 30 s later gives the button back.
+#[test]
+fn h9c_a_stop_that_does_not_end_the_server_releases_the_button_after_30_s() {
+    let mut rig = Rig::new(1400, 940, true);
+    let stop = running_server(&mut rig);
+    rig.click(stop);
+    rig.wait(27.0);
+    assert!(rig.says("Saving and stopping\u{2026}"));
+    rig.wait(4.0);
+    assert!(rig.says("Running \u{b7} localhost:25565"));
+    rig.click(stop);
+    assert_eq!(rig.api.count("POST", "/api/server/stop"), 2);
+}
+
+/// H9d: an api that cannot read the pack (503) says why under both parts, and the reason goes once it answers.
+#[test]
+fn h9d_an_unreadable_pack_says_why_until_it_is_read() {
+    const WHY: &str = "scripts/common.ps1 could not be read: The term 'Find-Prism' is not recognized.";
+    let api = std::sync::Arc::new(launcher_native::fake::fixture());
+    let (profiles, server) = (api_get(&api, "/api/profiles"), api_get(&api, "/api/server"));
+    api.set_get_status("/api/profiles", 503, json!({"error": WHY}));
+    api.set_get_status("/api/server", 503, json!({"error": WHY}));
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    assert_eq!(rig.home().notes(), (WHY, WHY));
+    assert!(rig.says(WHY));
+    rig.api.set_get("/api/profiles", profiles);
+    rig.api.set_get("/api/server", server);
+    rig.wait(10.0);
+    assert_eq!(rig.home().notes(), ("", ""));
+}
+
 /// H10: the server's fields: the icon opens them reversed; without props, or while it runs, they are locked.
 #[test]
 fn h10_server_fields_and_locks() {

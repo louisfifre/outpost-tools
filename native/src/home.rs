@@ -1,4 +1,4 @@
-//! The launcher's Home (index.html lines 247-327 and the script 447-713): the profiles and the dev server, in two
+//! The launcher's Home (index.html's `#launcher` and its script, `load` to `saveServer`): the profiles and the dev server, in two
 //! parts that fill the window, drawn with mere-ui and answered by the api through a `Bridge`.
 //!
 //! Layout is the page's without its breakpoints: two columns that widen continuously, with no switch, up to the
@@ -15,7 +15,7 @@ use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Tra
 use mere_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
 use mere_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
 
-/// The widest the two columns grow together, the page's cap (index.html line 145).
+/// The widest the two columns grow together, the page's cap (index.html's `.page`).
 pub const COLUMNS_MAX: f32 = 1120.0;
 /// The gap between the two columns.
 pub const COLUMNS_GAP: f32 = REGION;
@@ -27,6 +27,8 @@ pub const JAVA_H: f32 = 52.0;
 /// frame, around the 18 px line (`FRAME + INSET_TIGHT` above and below makes `CONTROL`).
 const PAD_V: f32 = FRAME + INSET_TIGHT;
 const _: () = assert!(18.0 + 2.0 * PAD_V == CONTROL);
+/// How long a server still running after its stop was taken holds the stop button, in seconds.
+const STOP_WAIT: f64 = 30.0;
 use preview::Home;
 use preview::PAGE;
 use preview::bar::icons;
@@ -195,6 +197,11 @@ fn left<T: PartialEq + Clone>(slot: &mut Option<T>, before: &T, now: &T, resp: &
     false
 }
 
+/// What a failed answer says: the api's own sentence, or that the request failed.
+fn said(d: &Done) -> String {
+    d.body["error"].as_str().map(String::from).unwrap_or_else(|| text::FAILED.to_string())
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Want {
     Play(String),
@@ -224,6 +231,12 @@ pub struct LauncherHome {
     sform: ServerForm,
     server_open: bool,
     stopping: bool,
+    /// When the last stop was asked, on the poll's clock.
+    stop_asked: f64,
+    /// Why the last stop failed, while the server still runs.
+    stop_refused: Option<String>,
+    /// The api's reason for its last 503, while it may still be shown.
+    unavailable: Option<String>,
     filled_for: Option<String>,
     status: String,
     server_note: String,
@@ -238,6 +251,8 @@ pub struct LauncherHome {
     next_server: f64,
     next_profiles: f64,
     next_launch: f64,
+    /// The polls asked and not answered yet: the timer does not ask again over a slow answer.
+    in_flight: Vec<Tag>,
 }
 
 impl LauncherHome {
@@ -257,6 +272,9 @@ impl LauncherHome {
             sform: ServerForm::default(),
             server_open: false,
             stopping: false,
+            stop_asked: 0.0,
+            stop_refused: None,
+            unavailable: None,
             filled_for: None,
             status: String::new(),
             server_note: String::new(),
@@ -271,6 +289,7 @@ impl LauncherHome {
             next_server: 0.0,
             next_profiles: 0.0,
             next_launch: 0.0,
+            in_flight: Vec::new(),
         }
     }
 
@@ -305,7 +324,15 @@ impl LauncherHome {
     // ---------- what the api said ----------
 
     fn send(&mut self, tag: Tag, method: &str, path: &str, body: Option<Value>) {
+        if matches!(tag, Tag::Profiles | Tag::Server | Tag::Launch) {
+            self.in_flight.push(tag.clone());
+        }
         self.bridge.send(tag, method, path, body);
+    }
+
+    /// True while a poll of this kind is asked and not answered: the timer waits for it rather than asking again.
+    fn asking(&self, tag: &Tag) -> bool {
+        self.in_flight.contains(tag)
     }
 
     fn load_profiles(&mut self) {
@@ -327,15 +354,20 @@ impl LauncherHome {
     }
 
     fn done(&mut self, d: Done) {
+        if let Some(at) = self.in_flight.iter().position(|t| *t == d.tag) {
+            self.in_flight.remove(at);
+        }
         let ok = d.status == 200;
         match d.tag {
-            // `load` (519-528).
+            // `load`.
             Tag::Profiles => {
                 if !ok {
                     // A departure: the page's first load says nothing.
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                     return;
                 }
+                self.available();
                 let p = Profiles::parse(&d.body);
                 self.profiles = p.profiles;
                 self.locked = p.locked;
@@ -345,13 +377,24 @@ impl LauncherHome {
                     self.lock();
                 }
             }
-            // `loadServer` (630-638).
+            // `loadServer`.
             Tag::Server => {
                 if !ok {
+                    // The page says nothing; the api's reason when it could not read the pack.
+                    if d.status == 503 {
+                        let why = self.failure(&d);
+                        self.say_server(&why);
+                    }
                     return;
                 }
+                self.available();
                 let server = Server::parse(&d.body);
                 if matches!(server.state.as_str(), "stopped" | "failed") {
+                    self.stopping = false;
+                    self.stop_refused = None;
+                }
+                // A stop that was taken but left the server running does not hold the button for ever.
+                if self.stopping && server.state == "running" && self.now - self.stop_asked >= STOP_WAIT {
                     self.stopping = false;
                 }
                 let key = format!("{} {}", server.state, server.props.is_some());
@@ -362,7 +405,7 @@ impl LauncherHome {
                 }
                 self.lock_server();
             }
-            // 537-544.
+            // play's follow.
             Tag::Launch => {
                 if !ok {
                     return;
@@ -372,33 +415,35 @@ impl LauncherHome {
                     l.over = matches!(l.state.as_str(), "running" | "prepareFailed" | "stopped" | "failed");
                 }
             }
-            // 532-545.
+            // play.
             Tag::Play(_) => {
                 if ok {
                     self.next_launch = self.now + 1.0;
                 } else {
                     self.launching = None;
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                     self.load_profiles();
                 }
             }
-            // 640-646.
+            // `startServer`.
             Tag::ServerStart => {
                 if !ok {
-                    let why = d.body["error"].as_str().map(String::from).unwrap_or_else(|| text::FAILED.to_string());
-                    self.say_server(&why);
+                    self.say_server(&said(&d));
                 }
                 self.load_server();
             }
-            // 648-653.
+            // `stopServer`, with the server's own reason (the page says only that it failed).
             Tag::ServerStop => {
                 if !ok {
                     self.stopping = false;
-                    self.say_server(text::FAILED);
+                    let why = said(&d);
+                    self.say_server(&why);
+                    self.stop_refused = Some(why);
                 }
                 self.load_server();
             }
-            // 572-583.
+            // save.
             Tag::SaveProfile => match d.status {
                 200 => {
                     if let Some(p) = self.profiles.iter_mut().find(|p| Some(&p.id) == self.current.as_ref()) {
@@ -415,31 +460,61 @@ impl LauncherHome {
                 }
                 400 => self.say(text::REFUSED),
                 409 => self.say(text::LOCKED),
-                _ => self.say(text::FAILED),
+                _ => {
+                    let why = self.failure(&d);
+                    self.say(&why);
+                }
             },
-            // 677-688.
+            // saveServer.
             Tag::SaveServer => match d.status {
                 200 => {
                     self.say_server(text::SAVED);
                 }
                 400 => self.say_server(text::REFUSED),
                 409 => self.say_server(text::SERVER_LOCKED),
-                _ => self.say_server(text::FAILED),
+                _ => {
+                    let why = self.failure(&d);
+                    self.say_server(&why);
+                }
             },
             Tag::Folder => {
                 if !ok {
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                 }
             }
             Tag::ServerFolder => {
                 if !ok {
-                    self.say_server(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say_server(&why);
                 }
             }
         }
     }
 
-    /// `lock` (547-551).
+    /// What a failed request says: the api's reason when it answered 503 (the pack's scripts/common.ps1 could not
+    /// be read), which is kept to be taken back once the api answers again; that it failed otherwise.
+    fn failure(&mut self, d: &Done) -> String {
+        if d.status != 503 {
+            return text::FAILED.to_string();
+        }
+        let why = said(d);
+        self.unavailable = Some(why.clone());
+        why
+    }
+
+    /// The api answers again: a 503 reason still shown is no longer so.
+    fn available(&mut self) {
+        let Some(why) = self.unavailable.take() else { return };
+        if self.status == why {
+            self.say("");
+        }
+        if self.server_note == why {
+            self.say_server("");
+        }
+    }
+
+    /// `lock`.
     fn lock(&mut self) {
         if self.locked {
             self.say(text::LOCKED);
@@ -448,11 +523,14 @@ impl LauncherHome {
         }
     }
 
-    /// `lockServer` (657-664).
+    /// `lockServer`.
     fn lock_server(&mut self) {
         let Some(server) = &self.server else { return };
         if server.busy() {
-            self.say_server(text::SERVER_LOCKED);
+            // Why the last stop failed stays in place of the lock's sentence: it is what the user needs then.
+            if self.stop_refused.as_deref() != Some(self.server_note.as_str()) {
+                self.say_server(text::SERVER_LOCKED);
+            }
         } else if server.props.is_none() {
             self.say_server(text::FIRST_START);
         } else if self.server_note == text::SERVER_LOCKED || self.server_note == text::FIRST_START {
@@ -460,7 +538,7 @@ impl LauncherHome {
         }
     }
 
-    /// `fillServer` (666-674).
+    /// `fillServer`.
     fn fill_server(&mut self) {
         let Some(s) = &self.server else { return };
         let p = s.props.clone();
@@ -476,7 +554,7 @@ impl LauncherHome {
         };
     }
 
-    /// `openSettings` (553-569).
+    /// `openSettings`.
     fn open_settings(&mut self, id: &str) {
         let Some(p) = self.profiles.iter().find(|p| p.id == id).cloned() else { return };
         let mut options = vec![(Open::Menu, text::ON_MENU.to_string())];
@@ -499,7 +577,7 @@ impl LauncherHome {
         self.lock();
     }
 
-    /// `save` (572-583): a server without its address is not a choice yet, so nothing is sent.
+    /// `save`: a server without its address is not a choice yet, so nothing is sent.
     fn save_profile(&mut self) {
         let Some(id) = self.current.clone() else { return };
         let Some((open, _)) = self.form.options.get(self.form.open_on).cloned() else { return };
@@ -521,7 +599,7 @@ impl LauncherHome {
         self.send(Tag::SaveProfile, "POST", &format!("/api/settings/{id}"), Some(body));
     }
 
-    /// `saveServer` (677-688).
+    /// `saveServer`.
     fn save_server(&mut self) {
         let f = self.sform.clone();
         let mut body = json!({ "memoryMb": (f.memory * 1024.0).round() as i64, "javaArgs": f.java.trim() });
@@ -571,7 +649,7 @@ impl LauncherHome {
         Style { column: true, min_w: Dim::Px(0.0), ..Style::default() }
     }
 
-    /// `.col header` (line 154): a row as tall as the back button's square, so that the header keeps its height
+    /// `.col header`: a row as tall as the back button's square, so that the header keeps its height
     /// with or without it, and a hairline.
     fn header(&mut self, ui: &mut Ui, key: &str, back: bool, title: &str) -> Id {
         let t = *ui.theme();
@@ -591,7 +669,7 @@ impl LauncherHome {
         })
     }
 
-    /// A `.profile` row's look (lines 172-176): `inset` all round, pulled out by as much on each side so that its
+    /// A `.profile` row's look: `inset` all round, pulled out by as much on each side so that its
     /// words line up with the column while its lit box overhangs it.
     fn row_style() -> Style {
         Style {
@@ -615,7 +693,7 @@ impl LauncherHome {
         });
     }
 
-    /// A label above its field (line 184): muted, `gap-tight` over it.
+    /// A label above its field (`label, .label`): muted, `gap-tight` over it.
     fn label(ui: &mut Ui, words: &str) {
         ui.node("label", Style { margin: Margin { bottom: Side::Px(GAP_TIGHT), ..Margin::default() }, ..Style::default() }, |ui| ui.text(words, TextLook::body(Tone::Muted)));
     }
@@ -667,7 +745,7 @@ impl LauncherHome {
         }
     }
 
-    /// `#settings-view` (lines 256-281).
+    /// `#settings-view`.
     fn settings_view(&mut self, ui: &mut Ui) {
         let locked = self.locked;
         let max = self.mem_max();
@@ -681,7 +759,7 @@ impl LauncherHome {
                 self.form.open_on = at;
                 let is_server = matches!(self.form.options.get(at), Some((Open::Server(_), _)));
                 if r.changed {
-                    // Choosing a server without an address puts the keyboard in its field (line 589).
+                    // Choosing a server without an address puts the keyboard in its field (`open-on`'s change listener).
                     if is_server && self.form.address.trim().is_empty() {
                         self.focus_address = true;
                     }
@@ -743,7 +821,7 @@ impl LauncherHome {
         resp.expect("the row was built")
     }
 
-    /// The server's part (lines 285-324).
+    /// The server's part (the second `section.col`).
     fn server_part(&mut self, ui: &mut Ui) {
         let lit = Self::row_lit(ui);
         self.ids.server_header = self.header(ui, "header", false, text::SERVER_GROUP);
@@ -755,7 +833,7 @@ impl LauncherHome {
             let (words, now) = line.clone().unwrap_or_default();
             Self::who(ui, text::SERVER_NAME, &words, now);
             if self.server.is_some() {
-                // Start once at a time; stop only a server that is ready to hear it (line 626).
+                // Start once at a time; stop only a server that is ready to hear it (`renderServer`).
                 let off = stopping || (!running && busy);
                 let r = if running {
                     let r = ui.icon_button("stop", &icons().stop, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
@@ -790,7 +868,7 @@ impl LauncherHome {
         }
     }
 
-    /// `#server-fields` (lines 290-322).
+    /// `#server-fields`.
     fn server_fields(&mut self, ui: &mut Ui) {
         let max = self.mem_max();
         let (busy, props) = self.server.as_ref().map_or((false, false), |s| (s.busy(), s.props.is_some()));
@@ -851,7 +929,7 @@ impl LauncherHome {
                 number!(ui, "players", text::MAX_PLAYERS, 1.0, 100.0, players, s_players, s_players);
                 number!(ui, "port", text::PORT, 1024.0, 65535.0, port, s_port, s_port);
             });
-            // `.toggle` (lines 202-205).
+            // `.toggle`.
             ui.node("toggle", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                 ui.node("label", Style { grow: 1.0, ..Style::default() }, |ui| ui.text(text::WHITELIST, TextLook::body(Tone::Muted)));
                 let opts = ToggleOpts { min_w: Dim::Px(SHORT_W), pad: Edges::vh(PAD_V, FRAME + INSET), disabled: off };
@@ -884,7 +962,7 @@ impl LauncherHome {
 impl Home for LauncherHome {
     fn build(&mut self, ui: &mut Ui, _size: Vec2) {
         self.ids = HomeIds::default();
-        // The page's `#launcher` (line 139): a column that scrolls when it is taller than the window.
+        // The page's `#launcher`: a column that scrolls when it is taller than the window.
         let scroll = Style {
             column: true,
             grow: 1.0,
@@ -896,7 +974,7 @@ impl Home for LauncherHome {
         };
         let mut y = self.scroll_y;
         let r = ui.scroll("home", &mut y, scroll, mere_ui::ScrollOpts { fade: 0.0 }, |ui| {
-            // `.page` (line 145) without its cap and its 860 padding change; the top is the preview's.
+            // `.page` without its cap and its 860 padding change; the top is the preview's.
             let page = Style { column: true, pad: PAGE.pad, ..Style::default() };
             self.ids.page = ui.node("homePage", page, |ui| {
                 // Capped at the page's 1120 and centred: a row of a list read across a whole wide screen loses the
@@ -937,15 +1015,15 @@ impl Home for LauncherHome {
         wants.sort_by_key(|w| !matches!(w, Want::SaveProfile | Want::ServerSave));
         for want in wants {
             match want {
-                // 532-545.
+                // play.
                 Want::Play(id) => {
                     self.launching = Some(Launching { id: id.clone(), state: "starting".into(), since: self.now, over: false });
-                    // The page awaits the POST before it starts its 1 s follow (531-543): a GET sent now would race it and could read the previous launch.
+                    // The page awaits the POST before it starts its 1 s follow (`play`): a GET sent now would race it and could read the previous launch.
                     self.next_launch = f64::INFINITY;
                     self.send(Tag::Play(id.clone()), "POST", &format!("/api/launch/{id}"), None);
                 }
                 Want::Settings(id) => self.open_settings(&id),
-                // 585.
+                // ack's click listener.
                 Want::Back => {
                     self.current = None;
                     self.say("");
@@ -958,9 +1036,11 @@ impl Home for LauncherHome {
                     }
                 }
                 Want::ServerStart => self.send(Tag::ServerStart, "POST", "/api/server/start", None),
-                // 648-653.
+                // stopServer.
                 Want::ServerStop => {
                     self.stopping = true;
+                    self.stop_asked = self.now;
+                    self.stop_refused = None;
                     self.send(Tag::ServerStop, "POST", "/api/server/stop", None);
                 }
                 Want::ServerSave => self.save_server(),
@@ -974,7 +1054,7 @@ impl Home for LauncherHome {
         self.now = now;
         self.on_screen = on_screen;
         let mut wanted = false;
-        // The first look at both, whatever tool shows (the page's first Promise.all, line 892).
+        // The first look at both, whatever tool shows (the page's `Promise.all` of `load`, `loadServer` and `loadModes`).
         if !self.started {
             self.started = true;
             self.load_profiles();
@@ -991,18 +1071,18 @@ impl Home for LauncherHome {
             wanted = true;
         }
         if on_screen {
-            if now >= self.next_server {
+            if now >= self.next_server && !self.asking(&Tag::Server) {
                 self.load_server();
                 wanted = true;
             }
-            // A stand-in for the page's reload on window focus (line 894): mere_base has no such event.
-            if now >= self.next_profiles {
+            // A stand-in for the page's reload on window focus (its `focus` listener): mere_base has no such event.
+            if now >= self.next_profiles && !self.asking(&Tag::Profiles) {
                 self.load_profiles();
                 wanted = true;
             }
         }
-        // The launch is followed whatever the tool (lines 537-544).
-        if self.launching.as_ref().is_some_and(|l| !l.over) && now >= self.next_launch {
+        // The launch is followed whatever the tool (`play`'s follow).
+        if self.launching.as_ref().is_some_and(|l| !l.over) && now >= self.next_launch && !self.asking(&Tag::Launch) {
             self.next_launch = now + 1.0;
             self.send(Tag::Launch, "GET", "/api/launch", None);
             wanted = true;

@@ -22,9 +22,10 @@ pub const ORIGIN: &str = "native://launcher";
 /// The runs of the preview tool on this pack: the engine runs in this process (world_preview::run), with the mod of
 /// the world-preview repository found beside the pack or at WORLD_PREVIEW_DIR, the glue mod's jar on top of the
 /// pack's mods (the section then shows the pack's own ores), and the folders serve.ps1 is given. Without the
-/// repository, Generate says it failed.
+/// repository, or when the pack's scripts/common.ps1 could not be read (the reason goes to the log), Generate says
+/// it failed.
 pub fn runs(api: &launcher::api::Api, repo: &std::path::Path) -> Runs {
-    let paths = api.preview_paths();
+    let paths = api.preview_paths().map_err(|why| api.write_log(&why)).ok();
     let mut mods = Vec::new();
     match api.glue_mod() {
         Ok(jar) => mods.push(jar),
@@ -33,16 +34,16 @@ pub fn runs(api: &launcher::api::Api, repo: &std::path::Path) -> Runs {
     let root = repo.join("run").join("app").join("preview");
     let _ = std::fs::create_dir_all(&root);
     Runs {
-        engine_dir: paths.engine.join("mod").join("build.gradle").exists().then_some(paths.engine.clone()),
+        engine_dir: paths.as_ref().map(|p| p.engine.clone()).filter(|engine| engine.join("mod").join("build.gradle").exists()),
         engine: preview::run::engine(),
-        pack: Some(paths.pack.clone()),
-        apply_pack: paths.source_pack.clone(),
+        pack: Some(paths.as_ref().map_or_else(|| api.repo.join("pack"), |p| p.pack.clone())),
+        apply_pack: paths.as_ref().and_then(|p| p.source_pack.clone()),
         root,
         mods,
         launcher: Box::new(mere_win32::SystemLauncher),
-        server_dir: Some(paths.dir.clone()),
-        out_dir: Some(paths.out.clone()),
-        exports_dir: Some(paths.exports.clone()),
+        server_dir: paths.as_ref().map(|p| p.dir.clone()),
+        out_dir: paths.as_ref().map(|p| p.out.clone()),
+        exports_dir: paths.as_ref().map(|p| p.exports.clone()),
     }
 }
 
