@@ -163,10 +163,10 @@ impl PreviewApp {
         self.state.history = history::load(&runs.history());
         self.state.before = std::fs::read_to_string(runs.before()).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| Figures::from_json(&j));
         // A pack is a place Apply can write to; the real machine is asked about what runs on it.
-        self.state.pack_known = runs.pack.is_some();
+        self.state.pack_known = runs.config_pack().is_some();
         // The pack's values are the ones its file holds now: an apply, or an edit by hand, moved them since the
         // copy in `settings.rs` was made. A form still on that copy follows.
-        let held = runs.pack.as_ref().and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
+        let held = runs.config_pack().as_ref().and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
         if let Some(held) = held {
             if self.state.made.is_none() && self.state.values == self.state.baseline {
                 self.state.values = held;
@@ -396,7 +396,7 @@ impl PreviewApp {
     /// and when another cut is asked for, dropped outside the section view. A cut that is not the one last looked
     /// at starts with a fresh look; coming back to the same one keeps it.
     fn sync_cut(&mut self) {
-        let Some(section) = self.drawn.as_ref().or(self.world.as_ref()).filter(|w| self.state.view == 5 && !w.coarse()).and_then(|w| w.section.as_ref()) else {
+        let Some(section) = self.drawn.as_ref().or(self.world.as_ref()).filter(|w| self.state.view == crate::paint::SECTION && !w.coarse()).and_then(|w| w.section.as_ref()) else {
             self.shown = None;
             return;
         };
@@ -689,7 +689,7 @@ impl PreviewApp {
     /// are kept with it, for they become the pack's if it works.
     fn apply(&mut self) {
         let (Some(runs), Some(host)) = (self.runs.as_ref(), self.apply_host.clone()) else { return };
-        let (Some(pack), None) = (runs.pack.clone(), self.applying.as_ref()) else { return };
+        let (Some(pack), None) = (runs.config_pack(), self.applying.as_ref()) else { return };
         let target = Target { pack, own_server: Some(runs.server()) };
         let values = self.state.values;
         self.state.apply = Notice::Working;
@@ -737,8 +737,11 @@ impl PreviewApp {
         self.state.said.clear();
         let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let folder = runs.exports().join(run::folder_name(self.state.made.as_ref().map(|m| m.seed.as_str()), secs));
-        // A preview stopped at a coarser detail has no flat land to give; structures need the marks' rasteriser.
-        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Height, View::Temperature].into_iter().filter(|k| !(*k == View::Flat && world.coarse())).collect();
+        // A preview stopped at a coarser detail has no level land to give; structures need the marks' rasteriser.
+        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature]
+            .into_iter()
+            .filter(|k| !(k.needs_full() && world.coarse()))
+            .collect();
         let n = world.samples as u32;
         let mut steps = Vec::new();
         let result = (|| -> std::io::Result<()> {

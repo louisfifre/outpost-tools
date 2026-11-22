@@ -14,9 +14,12 @@ use crate::settings::grouped;
 /// The groups each view relates to, by `PreviewState::view` (0 to 4 the strip's views, 5 the section).
 /// Page: biomes ['biomes','continents'], flat ['relief'], height ['relief','continents'], temperature
 /// ['biomes'], structures ['biomes'], section ['ores','caves','relief'].
-const OPENS_FOR: [&[usize]; 6] = [
+const OPENS_FOR: [&[usize]; 9] = [
     &[0, 2],    // Biomes
     &[1],       // Flat
+    &[1],       // Steepness
+    &[1],       // Cliffs
+    &[0],       // Vegetation
     &[1, 2],    // Height (shown as "Relief")
     &[0],       // Temperature
     &[0],       // Structures

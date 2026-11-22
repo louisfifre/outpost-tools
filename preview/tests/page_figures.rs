@@ -135,7 +135,7 @@ fn f2_the_lists_and_the_absent_biomes_are_the_pages() {
     let lists = field(&meta, "lists");
     let samples2 = (world.samples * world.samples) as f64;
     let mut strings = 0;
-    for (i, kind) in ["biomes", "flat", "height", "temperature", "structures"].into_iter().enumerate() {
+    for (i, kind) in ["biomes", "flat", "slope", "cliffs", "vegetation", "height", "temperature", "structures"].into_iter().enumerate() {
         let theirs = field(lists, kind);
         let ours = world.measured.lists[i].as_ref();
         if matches!(theirs, Json::Null) {

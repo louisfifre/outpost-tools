@@ -77,12 +77,12 @@ fn near(a: [u8; 3], b: [u8; 3], tolerance: i32) -> bool {
 fn m1_the_five_views_and_the_themes() {
     let Some(world) = load() else { return };
     take(&world, true, state(0), "map_biomes_light.png");
-    take(&world, true, state(2), "map_relief_light.png");
+    take(&world, true, state(5), "map_relief_light.png");
     take(&world, false, state(0), "map_biomes.png");
     take(&world, false, state(1), "map_flat.png");
-    take(&world, false, state(3), "map_temperature.png");
-    let mut s = state(4);
-    s.chosen[4] = surface_kinds(&world);
+    take(&world, false, state(6), "map_temperature.png");
+    let mut s = state(7);
+    s.chosen[View::Structures.index()] = surface_kinds(&world);
     take(&world, false, s, "map_structures.png");
     let mut s = state(0);
     s.chosen[0] = ["minecraft:badlands", "minecraft:savanna"].iter().map(|s| s.to_string()).collect();
@@ -98,7 +98,7 @@ fn m1_the_five_views_and_the_themes() {
 #[test]
 fn m2_rest_look_shows_each_point_as_its_texel() {
     let Some(world) = load() else { return };
-    let shot_dark = take(&world, false, state(2), "map_relief.png");
+    let shot_dark = take(&world, false, state(5), "map_relief.png");
     let img = paint(&world, View::Height, true, &BTreeSet::new());
     let n = world.samples;
     let side = shot_dark.side;
@@ -153,7 +153,7 @@ fn m2_rest_look_shows_each_point_as_its_texel() {
 #[test]
 fn m3_zoomed_in_every_texel_is_a_hard_block() {
     let Some(world) = load() else { return };
-    let mut s = state(2);
+    let mut s = state(5);
     s.look = Look { k: 8.0, x: -2.0, y: -2.0 };
     let shot = take(&world, false, s, "map_relief_zoom8.png");
     let img = paint(&world, View::Height, true, &BTreeSet::new());
@@ -205,8 +205,8 @@ fn m3_zoomed_in_every_texel_is_a_hard_block() {
 fn m4_a_structure_mark_is_a_disc_of_its_colour() {
     let Some(world) = load() else { return };
     let s = world.structures.as_ref().unwrap();
-    let mut st = state(4);
-    st.chosen[4] = surface_kinds(&world);
+    let mut st = state(7);
+    st.chosen[View::Structures.index()] = surface_kinds(&world);
     let shot = take(&world, false, st, "map_structures_marks.png");
     let side = shot.side as f64;
     let span = world.span();

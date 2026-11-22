@@ -141,3 +141,31 @@ fn a5_a_value_typed_and_not_generated_is_there_at_the_next_start() {
     assert_eq!(second.app.state().baseline[i], SETTINGS[i].pack, "and the pack's value is still the pack's");
     assert_ne!(second.app.ids().pack_marks[i], mere_ui::Id::ROOT, "the field says it differs from the pack");
 }
+
+/// A prod copy runs on a snapshot of the pack that each deploy replaces: Apply writes the source pack (`apply_pack`)
+/// and leaves the snapshot, which runs keep using, as it is.
+#[test]
+fn a7_the_source_pack_is_written_not_the_snapshot_the_runs_use() {
+    let source = pack("apply_a7_source");
+    let snapshot = pack("apply_a7_snapshot");
+    let (source_file, snapshot_file) = (source.join("pack/config/tectonic.json"), snapshot.join("pack/config/tectonic.json"));
+    let snapshot_before = std::fs::read_to_string(&snapshot_file).unwrap();
+    let theme = Theme::dark();
+    let mut r = Renderer::offscreen(W, H, 1.0).expect("offscreen renderer");
+    let mut runs = common::runs(&snapshot, &[]);
+    runs.pack = Some(snapshot.join("pack"));
+    runs.apply_pack = Some(source.join("pack"));
+    let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState::default(), None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
+    app.start(&mut r);
+    app.event(Event::Resized { width_px: W, height_px: H, scale: 1.0 });
+    app.frame(&mut r, 0.0);
+    app.frame(&mut r, 0.0);
+    let mut rig = Rig { app, r, theme };
+    rig.app.state_mut().values[index("max_y")] = 448.0;
+    rig.frame();
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    rig.until(20, "the write to end", |r| !r.app.applying());
+    assert!(std::fs::read_to_string(&source_file).unwrap().contains("\"max_y\": 448"), "the source pack holds the value");
+    assert_eq!(std::fs::read_to_string(&snapshot_file).unwrap(), snapshot_before, "the snapshot is untouched");
+}

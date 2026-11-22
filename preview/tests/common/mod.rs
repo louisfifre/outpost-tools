@@ -217,6 +217,7 @@ pub fn runs(root: &Path, env: &[(&str, &str)]) -> Runs {
         engine_dir: Some(root.to_path_buf()),
         engine: stub(env),
         pack: None,
+        apply_pack: None,
         root: root.to_path_buf(),
         mods: Vec::new(),
         launcher: Box::new(SystemLauncher),

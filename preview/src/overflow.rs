@@ -133,7 +133,8 @@ pub struct Inputs<'a> {
     pub shapes: bool,
 }
 
-pub const VIEW_COUNT: usize = 6;
+/// The map views and the section.
+pub const VIEW_COUNT: usize = crate::paint::MAP_VIEWS + 1;
 
 /// The word of view `i` (the five views, then the section).
 pub fn view_word(i: usize) -> &'static str {

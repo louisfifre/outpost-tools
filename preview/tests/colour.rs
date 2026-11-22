@@ -60,12 +60,12 @@ fn c4_look_wheel_and_drag() {
 
 #[test]
 fn c5_views_and_keys() {
-    for i in 0..5 {
+    for i in 0..preview::paint::MAP_VIEWS {
         let v = View::from_index(i).unwrap();
         assert_eq!(View::from_key(v.key()), Some(v));
         assert_eq!(v.index(), i);
     }
-    assert_eq!(View::from_index(5), None);
+    assert_eq!(View::from_index(preview::paint::SECTION), None);
     assert_eq!(View::from_key("height"), Some(View::Height));
     assert_eq!(View::from_key("section"), None);
 }

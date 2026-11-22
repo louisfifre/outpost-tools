@@ -6,30 +6,35 @@ use std::collections::BTreeSet;
 use mere_base::{Cmd, Color, Vec2};
 
 use crate::bands::{HEIGHT_STEPS, SEA_DEPTHS};
+use crate::ground;
 use crate::colour::{SEA_VEIL, climate, flat_colour, flat_sea_colour, height_colour, steep_colour, temperature_colour};
 use crate::map::Look;
 use crate::world::World;
 
-/// What the map shows: the strip's first five tabs, in order.
+/// What the map shows: the strip's first eight tabs, in order.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum View {
     Biomes,
     Flat,
+    Slope,
+    Cliffs,
+    Vegetation,
     Height,
     Temperature,
     Structures,
 }
 
+/// How many map views there are. The strip's pressed index goes from 0 to `MAP_VIEWS - 1` for them, and
+/// `SECTION` is the one after: the section is a view of the strip but not of the map.
+pub const MAP_VIEWS: usize = 8;
+pub const SECTION: usize = MAP_VIEWS;
+
 impl View {
+    pub const ALL: [View; MAP_VIEWS] =
+        [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature, View::Structures];
+
     pub fn from_index(i: usize) -> Option<View> {
-        Some(match i {
-            0 => View::Biomes,
-            1 => View::Flat,
-            2 => View::Height,
-            3 => View::Temperature,
-            4 => View::Structures,
-            _ => return None,
-        })
+        View::ALL.get(i).copied()
     }
 
     pub fn index(self) -> usize {
@@ -38,12 +43,28 @@ impl View {
 
     /// The page's key for the view (`data-view`, `?view=`).
     pub fn key(self) -> &'static str {
-        ["biomes", "flat", "height", "temperature", "structures"][self as usize]
+        ["biomes", "flat", "slope", "cliffs", "vegetation", "height", "temperature", "structures"][self as usize]
     }
 
     pub fn from_key(key: &str) -> Option<View> {
-        (0..5).filter_map(View::from_index).find(|v| v.key() == key)
+        View::ALL.into_iter().find(|v| v.key() == key)
     }
+
+    /// The views that tell level land from one point to the next, 16 blocks away: a coarser map cannot give them.
+    pub fn needs_full(self) -> bool {
+        matches!(self, View::Flat | View::Slope | View::Cliffs)
+    }
+}
+
+/// Whether the strip's tab `i` needs the map at the full 16-block detail (the page's `needsFull`): the views that
+/// tell level land, the structures, and the section.
+pub fn needs_full(i: usize) -> bool {
+    i == SECTION || View::from_index(i).is_some_and(|v| v.needs_full() || v == View::Structures)
+}
+
+/// Whether the strip's tab `i` is made after the full map only: the structures and the section.
+pub fn comes_at_the_end(i: usize) -> bool {
+    i == SECTION || i == View::Structures.index()
 }
 
 /// `Math.max(low, Math.min(high, v))`.
@@ -92,6 +113,11 @@ pub fn rows(world: &World, view: View) -> Option<(Vec<u16>, Vec<String>)> {
                 .collect();
             Some((at, ids(3)))
         }
+        View::Slope | View::Cliffs | View::Vegetation => {
+            let at = ground::rows(world, view)?;
+            let count = ground::colours(view).len();
+            Some((at, ids(count)))
+        }
         View::Structures => None,
     }
 }
@@ -118,6 +144,7 @@ pub fn paint(world: &World, view: View, dark: bool, chosen: &BTreeSet<String>) -
     let lit: Vec<bool> = list.as_ref().map_or(Vec::new(), |(_, ids)| ids.iter().map(|id| chosen.contains(id)).collect());
     let choosing = lit.contains(&true);
     let row_at = list.as_ref().map(|(at, _)| at);
+    let ground_colours = ground::colours(view);
 
     let mut px = vec![0u8; total * 4];
     for i in 0..total {
@@ -161,6 +188,12 @@ pub fn paint(world: &World, view: View, dark: bool, chosen: &BTreeSet<String>) -
             let t = as_f64(temperature_colour(climate(&world.biomes[biome])));
             c = if water { [0, 1, 2].map(|k| (t[k] + SEA_VEIL[k] as f64) / 2.0) } else { t };
             shade = clamp(1.0 + slope * 0.006, 0.85, 1.15);
+        } else if matches!(view, View::Slope | View::Cliffs | View::Vegetation) {
+            c = as_f64(ground_colours[row_at.expect("a view with rows")[i] as usize]);
+            // Vegetation keeps a trace of the relief; the other two are flat colours, like Flat.
+            if view == View::Vegetation && !water {
+                shade = clamp(1.0 + slope * 0.006, 0.85, 1.15);
+            }
         } else if view == View::Flat {
             c = as_f64(if water {
                 flat_sea_colour()

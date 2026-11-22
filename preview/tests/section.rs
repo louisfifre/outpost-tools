@@ -31,7 +31,7 @@ fn load() -> Option<World> {
 }
 
 fn state() -> PreviewState {
-    PreviewState { view: 5, ..PreviewState::default() }
+    PreviewState { view: preview::paint::SECTION, ..PreviewState::default() }
 }
 
 fn tmp(name: &str) -> PathBuf {
@@ -164,10 +164,10 @@ fn c1_layout_of_the_section_at_1400() {
     assert_eq!((cv.w as f64, cv.h as f64), ids.cut_box, "the laid-out box is the arithmetic one");
     assert_eq!(cv.y + cv.h, BAR_H + CONTENT_TOP + 804.0, "the cut view ends with the frame");
     assert_eq!(rig.rect(ids.under).y, 864.0);
-    assert_eq!(ids.tabs.len(), 6, "the section has no 2D and 3D tabs");
+    assert_eq!(ids.tabs.len(), 9, "the section has no 2D and 3D tabs");
     let section = world.section.as_ref().unwrap();
     // Section is pressed: its tab is filled in the colour of the text.
-    let t = rig.rect(ids.tabs[5]);
+    let t = rig.rect(ids.tabs[8]);
     assert_eq!(rig.px(&rgba, t.x as usize + 3, t.y as usize + 3), DARK_TEXT);
     assert_ne!(ids.next_cut, Id::ROOT);
     assert_ne!(ids.export, Id::ROOT);
@@ -593,7 +593,7 @@ fn c11_a_small_window_draws_ores_two_blocks_wide() {
 fn cli_shot_is_byte_identical_to_the_test_shot() {
     let Some(world) = load() else { return };
     // The command line builds its state from the world (the page's loadWorld): the form holds the run's settings.
-    let mut rig = Rig::new(&world, false, PreviewState { view: 5, ..PreviewState::for_world(Some(&world)) }, W, H);
+    let mut rig = Rig::new(&world, false, PreviewState { view: preview::paint::SECTION, ..PreviewState::for_world(Some(&world)) }, W, H);
     let mine = mere_png::encode(W, H, &rig.rgba());
     let out = tmp("cli_section.png");
     let _ = std::fs::remove_file(&out);

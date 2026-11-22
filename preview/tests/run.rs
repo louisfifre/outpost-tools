@@ -265,7 +265,7 @@ fn shows(rig: &Rig, rgba: &[u8], img: &[u8], n: usize) -> bool {
     })
 }
 
-/// Puts the stage on a view (2 the height, 4 the structures, 5 the section) and says what its note says.
+/// Puts the stage on a view (5 the height, 7 the structures, 8 the section) and says what its note says.
 fn note_on(rig: &mut Rig, view: usize) -> String {
     rig.app.state_mut().view = view;
     rig.park();
@@ -305,11 +305,11 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert!(shows(&rig, &rgba, &paint(&sketch, View::Height, true, &BTreeSet::new()), sketch.samples), "the stage shows the sketch, not veiled");
     assert!(rig.app.ids().status_text.ends_with(text::SKETCH_READABLE), "{}", rig.app.ids().status_text);
     assert_eq!(rig.app.ids().figures_text, figures_before, "the figures stay those of the map before");
-    assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
-    assert_eq!(note_on(&mut rig, 5), text::SECTION_PENDING);
-    assert_eq!(note_on(&mut rig, 2), "");
-    assert_eq!(click_view(&mut rig, 4), 2, "Structures is greyed while the run has none");
-    assert_eq!(click_view(&mut rig, 5), 2, "Section is greyed while the run has none");
+    assert_eq!(note_on(&mut rig, 7), text::STRUCTURES_PENDING);
+    assert_eq!(note_on(&mut rig, 8), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 5), "");
+    assert_eq!(click_view(&mut rig, 7), 5, "Structures is greyed while the run has none");
+    assert_eq!(click_view(&mut rig, 8), 5, "Section is greyed while the run has none");
 
     // The map is there while the cuts, the ores and the structures are still being made.
     std::fs::write(out.join("go-map"), "").unwrap();
@@ -321,12 +321,12 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert!(rig.app.running(), "the run goes on");
     assert!(!rig.app.ids().status_text.contains(text::SKETCH_READABLE), "a map is no sketch");
     assert_eq!(rig.app.ids().steps_items.last().map(String::as_str), Some(format!("{} {}", text::NOW_MARK, text::STEP_EXTRAS).as_str()));
-    assert_eq!(note_on(&mut rig, 5), text::SECTION_PENDING);
-    assert_eq!(note_on(&mut rig, 4), text::STRUCTURES_PENDING);
+    assert_eq!(note_on(&mut rig, 8), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 7), text::STRUCTURES_PENDING);
     rig.shot("run_map_ready_structures.png");
-    assert_eq!(note_on(&mut rig, 2), "");
-    assert_eq!(click_view(&mut rig, 4), 2, "Structures is still greyed beside the run's map");
-    assert_eq!(click_view(&mut rig, 5), 2);
+    assert_eq!(note_on(&mut rig, 5), "");
+    assert_eq!(click_view(&mut rig, 7), 5, "Structures is still greyed beside the run's map");
+    assert_eq!(click_view(&mut rig, 8), 5);
 
     // The run's end: everything is there, the structures and the cuts included.
     std::fs::write(out.join("go-end"), "").unwrap();
@@ -335,12 +335,12 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     let rgba = rig.shot("run_finished.png");
     assert!(shows(&rig, &rgba, &paint(&map, View::Height, true, &BTreeSet::new()), map.samples));
     assert_eq!(rig.app.world().unwrap().made.as_ref().unwrap().seed, "r8-seed");
-    assert_eq!(click_view(&mut rig, 4), 4, "Structures can be chosen again");
-    assert_eq!(click_view(&mut rig, 2), 2);
-    assert_eq!(note_on(&mut rig, 4), "");
+    assert_eq!(click_view(&mut rig, 7), 7, "Structures can be chosen again");
+    assert_eq!(click_view(&mut rig, 5), 5);
+    assert_eq!(note_on(&mut rig, 7), "");
     rig.shot("run_finished_structures.png");
     assert_eq!(rig.app.painted_view(), Some(View::Structures), "the structures are drawn");
-    assert_eq!(note_on(&mut rig, 5), "");
+    assert_eq!(note_on(&mut rig, 8), "");
     rig.frame();
     assert!(rig.app.shown().is_some(), "the section shows a cut");
 }

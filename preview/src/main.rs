@@ -76,7 +76,7 @@ fn parse_camera(s: &str) -> Option<Vec3> {
 fn apply_view(state: &mut PreviewState, key: &str) {
     match key {
         "" => {}
-        "section" => state.view = 5,
+        "section" => state.view = preview::paint::SECTION,
         "flat2d" => state.in3d = false,
         "relief3d" => state.in3d = true,
         _ => match View::from_key(key) {
@@ -225,12 +225,12 @@ fn main() {
         };
         match (part, world.as_ref().and_then(|w| w.structures.as_ref())) {
             (None, _) => {
-                state.chosen[4].insert(id.to_string());
+                state.chosen[View::Structures.index()].insert(id.to_string());
             }
             (Some(under), Some(s)) => {
                 for (i, kind) in s.ids.iter().enumerate() {
                     if s.under[i] == under && s.count[i] > 0 {
-                        state.chosen[4].insert(kind.clone());
+                        state.chosen[View::Structures.index()].insert(kind.clone());
                     }
                 }
             }
@@ -276,7 +276,7 @@ fn main() {
     let theme = if dark { Theme::dark() } else { Theme::light() };
     // The window holds its minimum itself; a picture is raised to it too, so that it shows the layout the app has.
     let (w, h) = preview::min_size_px(size);
-    let runs = Runs { engine_dir, engine: preview::run::engine(), pack, root: runs_root(runs), mods: Vec::new(), launcher: Box::new(mere_win32::SystemLauncher), server_dir: None, out_dir: None, exports_dir: None };
+    let runs = Runs { engine_dir, engine: preview::run::engine(), pack, apply_pack: None, root: runs_root(runs), mods: Vec::new(), launcher: Box::new(mere_win32::SystemLauncher), server_dir: None, out_dir: None, exports_dir: None };
     let mut state = state;
     state.reduce_motion = mere_win32::reduced_motion();
     let mut app = PreviewApp::new(theme, dark, Vec2::new(w as f32, h as f32), state, world).follow_scheme(follows).with_runs(runs);

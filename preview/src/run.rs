@@ -320,6 +320,9 @@ pub struct Runs {
     pub engine_dir: Option<PathBuf>,
     pub engine: Engine,
     pub pack: Option<PathBuf>,
+    /// The pack whose config/tectonic.json Apply writes and the form reads its pack values from, when it is not the
+    /// one runs use: a prod copy's pack is a snapshot that a deploy replaces, so an Apply there would be lost.
+    pub apply_pack: Option<PathBuf>,
     pub root: PathBuf,
     /// Jars added to the server on top of the pack's mods.
     pub mods: Vec<PathBuf>,
@@ -332,6 +335,10 @@ pub struct Runs {
 }
 
 impl Runs {
+    /// Where Apply writes, and where the pack's values are read: the source pack when given, else the run's pack.
+    pub fn config_pack(&self) -> Option<PathBuf> {
+        self.apply_pack.clone().or_else(|| self.pack.clone())
+    }
     /// The generator's output folder.
     pub fn out(&self) -> PathBuf {
         self.out_dir.clone().unwrap_or_else(|| self.root.join("out"))
@@ -409,7 +416,7 @@ mod tests {
 
     #[test]
     fn u1b_named_folders_win_over_the_root() {
-        let mut r = Runs { engine_dir: Some(PathBuf::from("wp")), engine: engine(), pack: None, root: PathBuf::from(r"C:\r"), mods: Vec::new(), launcher: Box::new(Nothing), server_dir: None, out_dir: None, exports_dir: None };
+        let mut r = Runs { engine_dir: Some(PathBuf::from("wp")), engine: engine(), pack: None, apply_pack: None, root: PathBuf::from(r"C:\r"), mods: Vec::new(), launcher: Box::new(Nothing), server_dir: None, out_dir: None, exports_dir: None };
         assert_eq!((r.server(), r.out(), r.exports()), (PathBuf::from(r"C:\r\server"), PathBuf::from(r"C:\r\out"), PathBuf::from(r"C:\r\exports")));
         r.server_dir = Some(PathBuf::from(r"D:\s"));
         r.out_dir = Some(PathBuf::from(r"D:\o"));

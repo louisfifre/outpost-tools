@@ -78,7 +78,7 @@ fn p1_paint_is_byte_identical_to_the_pages() {
     println!("colours, structures ({} kinds) and flat land ({flat} points) equal", s.ids.len());
 
     let cases: Vec<String> = meta.get("cases").unwrap().array().unwrap().iter().map(|v| v.text().unwrap()).collect();
-    assert_eq!(cases.len(), 12, "twelve cases");
+    assert_eq!(cases.len(), 18, "eight views in two schemes, and two with a choice");
     for name in &cases {
         let (view, dark, chosen) = match name.as_str() {
             "biomes_chosen_dark" => (View::Biomes, true, set(&["minecraft:badlands", "minecraft:savanna"])),

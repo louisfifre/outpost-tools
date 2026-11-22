@@ -39,7 +39,7 @@ for (const name of ['heightSteps', 'seaDepths', 'clamp']) {
 
 // (3) the functions, each up to the first later line that is exactly two spaces and a brace.
 const functions = [];
-for (const name of ['zones', 'measure', 'listOf', 'structureList', 'bands', 'paint', 'loadStructures']) {
+for (const name of ['zones', 'steepness', 'measure', 'listOf', 'structureList', 'bands', 'paint', 'loadStructures']) {
   const start = need(lines.findIndex(l => new RegExp(`^  (async )?function ${name}\\(`).test(l)), `function ${name}`);
   const end = need(lines.findIndex((l, i) => i > start && l === '  }'), `the end of function ${name}`);
   functions.push(...lines.slice(start, end + 1));
@@ -49,7 +49,7 @@ const prelude = `
 let world, view, quiet = null, exporting = false, in3d = false;
 let drawing3d, drawingCut;
 const scheme = { matches: true };
-const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
+const chosen = { biomes: new Set(), flat: new Set(), slope: new Set(), cliffs: new Set(), vegetation: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
 let captured = null;
 const map = { width: 0, height: 0, classList: { toggle() {} } };
 const pen = {
@@ -61,7 +61,7 @@ const drawMarks = () => {};
 const refresh3d = async () => {}, showCut = async () => {};
 const text = {
   heightBands: (s, st, d) => Array(d.length + 1 + st.length + 1).fill(''),
-  legend: { flat: ['', '', ''], temperature: ['', '', '', '', ''] },
+  legend: { flat: ['', '', ''], temperature: ['', '', '', '', ''], slope: Array(6).fill(''), cliffs: Array(5).fill(''), vegetation: Array(5).fill('') },
 };
 `;
 
@@ -87,7 +87,7 @@ const run = (name, dark, key, ids = []) => {
   cases.push(name);
 };
 for (const [scheme_name, dark] of [['dark', true], ['light', false]]) {
-  for (const key of ['biomes', 'flat', 'height', 'temperature', 'structures']) run(key + '_' + scheme_name, dark, key);
+  for (const key of ['biomes', 'flat', 'slope', 'cliffs', 'vegetation', 'height', 'temperature', 'structures']) run(key + '_' + scheme_name, dark, key);
 }
 run('biomes_chosen_dark', true, 'biomes', ['minecraft:badlands', 'minecraft:savanna']);
 run('height_chosen_light', false, 'height', ['3', '4']);
