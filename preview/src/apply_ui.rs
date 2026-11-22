@@ -6,7 +6,7 @@ use mere_layout::{Align, Edges, Margin, Side, Style};
 use mere_ui::{ButtonLook, ButtonOpts, TabLook, TabOpts, TextLook, Tone, Ui, choice_style};
 
 use crate::apply::{Fail, Notice, Running, Snapshot};
-use crate::settings::original_values;
+use crate::settings::{original_values, same_values};
 use crate::shell::{ShellIds, Want};
 use crate::text;
 
@@ -47,9 +47,9 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     ids.apply_text.clear();
     let style = Style { column: true, shrink: 0.0, pad: Edges::new(10.0, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, 6.0), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
-        let differs = *s.values != *s.baseline;
+        let differs = !same_values(s.values, s.baseline);
         // The pack holds the form but the launcher's copy of it is behind: Apply is lit with no field marked.
-        let behind = !differs && s.snapshot.is_some_and(|x| x != *s.values);
+        let behind = !differs && s.snapshot.is_some_and(|x| !same_values(&x, s.values));
         let working = *s.notice == Notice::Working;
         let enabled = s.pack_known && (differs || behind) && !working;
         let line = Style { wrap: true, align_items: Align::Baseline, gap: mere_base::Vec2::new(10.0, 4.0), ..Style::default() };
@@ -67,7 +67,7 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
                 ui.text(text::BACK_TO, TextLook::body(Tone::Muted));
                 let original = original_values();
                 for (key, name, hint, to) in [("pack", text::PACK, text::PROFILE_PACK_HINT, *s.baseline), ("original", text::ORIGINAL, text::ORIGINAL_HINT, original)] {
-                    let r = ui.tab(key, name, TabLook::Choice, TabOpts { pressed: *s.values == to, disabled: false });
+                    let r = ui.tab(key, name, TabLook::Choice, TabOpts { pressed: same_values(s.values, &to), disabled: false });
                     ui.title(r.id, hint);
                     if r.clicked {
                         *s.values = to;

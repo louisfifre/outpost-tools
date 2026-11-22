@@ -232,3 +232,18 @@ fn a10_a_snapshot_behind_the_pack_lights_apply_and_is_brought_up_to_date() {
     rig.click_on(id);
     assert!(!rig.app.applying(), "both files hold the values: Apply is disabled again");
 }
+
+/// A field's arithmetic leaves float noise far under the millionth the file holds: that is no change, so Apply stays
+/// off, the field is not marked and "Pack" stays pressed, as Apply itself would write nothing.
+#[test]
+fn a11_float_noise_is_not_a_change_from_the_pack() {
+    let root = pack("apply_a11");
+    let mut rig = rig(&root, true, vec![]);
+    let i = index("vertical_scale");
+    rig.app.state_mut().values[i] = rig.app.state().baseline[i] + 1e-12;
+    rig.frame();
+    assert_eq!(rig.app.ids().pack_marks[i], mere_ui::Id::ROOT, "the field is not marked");
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    assert!(!rig.app.applying(), "Apply is disabled: the pack already holds the value");
+}

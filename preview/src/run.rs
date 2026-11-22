@@ -37,9 +37,9 @@ pub struct Ask {
 }
 
 impl Ask {
-    /// `sameAs` (line 785): the form's seed (trimmed), area, detail and every value, to 1e-9.
+    /// `sameAs` (line 785): the form's seed (trimmed), area, detail and every value (`settings::same_values`).
     pub fn same_as(&self, seed: &str, samples: u32, detail: u32, values: &[f64; 43]) -> bool {
-        seed.trim() == self.seed && samples == self.samples && detail == self.detail && self.values.iter().zip(values).all(|(a, b)| (a - b).abs() < 1e-9)
+        seed.trim() == self.seed && samples == self.samples && detail == self.detail && crate::settings::same_values(&self.values, values)
     }
 }
 

@@ -453,6 +453,8 @@ struct Scratch {
 
 impl Scratch {
     fn new() -> Scratch {
+        #[cfg(test)]
+        tests::SCRATCHES.with(|n| n.set(n.get() + 1));
         Scratch { met: vec![0; 32768], stamp: 0, balls: vec![0.0; 128] }
     }
 }
@@ -786,7 +788,8 @@ impl Play {
         let cells = section.cuts[at].cells.as_deref().expect("a cut that is drawn has its cells");
         let ctx = Ctx { seed: &world.seed, at, section, cells, ground, l: section.length as f64, min_y: section.min_y, top_y: section.top_y() };
         let Play { layer, drawn, plays, version, .. } = self;
-        let mut scratch = Scratch::new();
+        // Made at the first chunk to draw: the cut is drawn at each frame, and most frames draw no new chunk.
+        let mut scratch: Option<Scratch> = None;
         let (first, last) = (from.max(0), to.min(ground.chunks as i64 - 1));
         for c in first..=last {
             let c = c as usize;
@@ -795,9 +798,10 @@ impl Play {
             }
             drawn[c] = true;
             *version += 1;
+            let scratch = scratch.get_or_insert_with(Scratch::new);
             for play in plays.iter() {
                 let kind = (play.kind + 1) as u8;
-                play_chunk(&ctx, play, c, 0, false, &mut scratch, &mut |x, y, z| {
+                play_chunk(&ctx, play, c, 0, false, scratch, &mut |x, y, z| {
                     if z >= DRAWN_SLICE.0 && z < DRAWN_SLICE.1 {
                         // A typed array drops a write whose index is not an integer inside it.
                         let i = (ctx.top_y - y) * ctx.l + x;
@@ -971,5 +975,33 @@ mod tests {
         let g = ground_of(&world(), &section, &cells, &cut);
         assert_eq!(g.top, 3.0);
         assert_eq!((g.crop, g.rows), (36, 28));
+    }
+
+    thread_local! {
+        /// How many `Scratch` this thread made.
+        pub(super) static SCRATCHES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    #[test]
+    fn a_frame_that_draws_no_new_chunk_makes_no_scratch() {
+        // 32 x 8, rock under y 4: two chunks, no rule to play.
+        let (l, h) = (32usize, 8usize);
+        let mut cells = vec![0u8; l * h];
+        for x in 0..l {
+            for y in 0..4 {
+                cells[(7 - y) * l + x] = 1;
+            }
+        }
+        let cut = Cut { file: String::new(), x: 0.0, z: 0.0, cells: Some(cells.clone()) };
+        let section = Section { length: l, height: h, min_y: 0.0, cuts: vec![cut], rules: vec![], biomes: BTreeMap::new() };
+        let ground = ground_of(&world(), &section, &cells, &section.cuts[0]);
+        let mut play = Play { per_chunk: std::array::from_fn(|_| None), layer: vec![0; l * h], drawn: vec![false; ground.chunks], counted: 0, version: 0, plays: vec![] };
+        let made = || SCRATCHES.with(|n| n.get());
+        let start = made();
+        play.draw_chunks(&world(), &section, 0, &ground, 0, 1);
+        assert_eq!(made() - start, 1, "one scratch for the chunks drawn in one call");
+        assert_eq!(play.drawn, vec![true; ground.chunks]);
+        play.draw_chunks(&world(), &section, 0, &ground, 0, 1);
+        assert_eq!(made() - start, 1, "every chunk was drawn: no scratch");
     }
 }
