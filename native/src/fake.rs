@@ -14,8 +14,8 @@ pub const FIXED_NOW_MS: i64 = 1_795_262_400_000;
 
 #[derive(Default)]
 pub struct FakeApi {
-    /// The JSON a GET answers, by path.
-    gets: Mutex<BTreeMap<String, Value>>,
+    /// The status and JSON a GET answers, by path; 404 and {} when not set.
+    gets: Mutex<BTreeMap<String, (u16, Value)>>,
     /// The status and body a POST answers, by path; 200 and {} when not set.
     posts: Mutex<BTreeMap<String, (u16, Value)>>,
     /// Every request: method, path, body text.
@@ -24,7 +24,11 @@ pub struct FakeApi {
 
 impl FakeApi {
     pub fn set_get(&self, path: &str, body: Value) {
-        self.gets.lock().unwrap().insert(path.to_string(), body);
+        self.set_get_status(path, 200, body);
+    }
+    /// A GET that answers status, as the api does when it cannot answer (a 503 with its reason).
+    pub fn set_get_status(&self, path: &str, status: u16, body: Value) {
+        self.gets.lock().unwrap().insert(path.to_string(), (status, body));
     }
     pub fn set_post(&self, path: &str, status: u16, body: Value) {
         self.posts.lock().unwrap().insert(path.to_string(), (status, body));
@@ -46,10 +50,7 @@ impl Backend for FakeApi {
     fn ask(&self, method: &str, path: &str, body: &[u8]) -> Answer {
         self.asked.lock().unwrap().push((method.to_string(), path.to_string(), String::from_utf8_lossy(body).into_owned()));
         let (status, value) = if method == "GET" {
-            match self.gets.lock().unwrap().get(path) {
-                Some(v) => (200, v.clone()),
-                None => (404, json!({})),
-            }
+            self.gets.lock().unwrap().get(path).cloned().unwrap_or((404, json!({})))
         } else {
             self.posts.lock().unwrap().get(path).cloned().unwrap_or((200, json!({})))
         };

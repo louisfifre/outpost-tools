@@ -219,6 +219,23 @@ fn h9c_a_stop_that_does_not_end_the_server_releases_the_button_after_30_s() {
     assert_eq!(rig.api.count("POST", "/api/server/stop"), 2);
 }
 
+/// H9d: an api that cannot read the pack (503) says why under both parts, and the reason goes once it answers.
+#[test]
+fn h9d_an_unreadable_pack_says_why_until_it_is_read() {
+    const WHY: &str = "scripts/common.ps1 could not be read: The term 'Find-Prism' is not recognized.";
+    let api = std::sync::Arc::new(launcher_native::fake::fixture());
+    let (profiles, server) = (api_get(&api, "/api/profiles"), api_get(&api, "/api/server"));
+    api.set_get_status("/api/profiles", 503, json!({"error": WHY}));
+    api.set_get_status("/api/server", 503, json!({"error": WHY}));
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    assert_eq!(rig.home().notes(), (WHY, WHY));
+    assert!(rig.says(WHY));
+    rig.api.set_get("/api/profiles", profiles);
+    rig.api.set_get("/api/server", server);
+    rig.wait(10.0);
+    assert_eq!(rig.home().notes(), ("", ""));
+}
+
 /// H10: the server's fields: the icon opens them reversed; without props, or while it runs, they are locked.
 #[test]
 fn h10_server_fields_and_locks() {

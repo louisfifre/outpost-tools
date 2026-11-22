@@ -235,6 +235,8 @@ pub struct LauncherHome {
     stop_asked: f64,
     /// Why the last stop failed, while the server still runs.
     stop_refused: Option<String>,
+    /// The api's reason for its last 503, while it may still be shown.
+    unavailable: Option<String>,
     filled_for: Option<String>,
     status: String,
     server_note: String,
@@ -272,6 +274,7 @@ impl LauncherHome {
             stopping: false,
             stop_asked: 0.0,
             stop_refused: None,
+            unavailable: None,
             filled_for: None,
             status: String::new(),
             server_note: String::new(),
@@ -360,9 +363,11 @@ impl LauncherHome {
             Tag::Profiles => {
                 if !ok {
                     // A departure: the page's first load says nothing.
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                     return;
                 }
+                self.available();
                 let p = Profiles::parse(&d.body);
                 self.profiles = p.profiles;
                 self.locked = p.locked;
@@ -375,8 +380,14 @@ impl LauncherHome {
             // `loadServer` (630-638).
             Tag::Server => {
                 if !ok {
+                    // The page says nothing; the api's reason when it could not read the pack.
+                    if d.status == 503 {
+                        let why = self.failure(&d);
+                        self.say_server(&why);
+                    }
                     return;
                 }
+                self.available();
                 let server = Server::parse(&d.body);
                 if matches!(server.state.as_str(), "stopped" | "failed") {
                     self.stopping = false;
@@ -410,7 +421,8 @@ impl LauncherHome {
                     self.next_launch = self.now + 1.0;
                 } else {
                     self.launching = None;
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                     self.load_profiles();
                 }
             }
@@ -448,7 +460,10 @@ impl LauncherHome {
                 }
                 400 => self.say(text::REFUSED),
                 409 => self.say(text::LOCKED),
-                _ => self.say(text::FAILED),
+                _ => {
+                    let why = self.failure(&d);
+                    self.say(&why);
+                }
             },
             // 677-688.
             Tag::SaveServer => match d.status {
@@ -457,18 +472,45 @@ impl LauncherHome {
                 }
                 400 => self.say_server(text::REFUSED),
                 409 => self.say_server(text::SERVER_LOCKED),
-                _ => self.say_server(text::FAILED),
+                _ => {
+                    let why = self.failure(&d);
+                    self.say_server(&why);
+                }
             },
             Tag::Folder => {
                 if !ok {
-                    self.say(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say(&why);
                 }
             }
             Tag::ServerFolder => {
                 if !ok {
-                    self.say_server(text::FAILED);
+                    let why = self.failure(&d);
+                    self.say_server(&why);
                 }
             }
+        }
+    }
+
+    /// What a failed request says: the api's reason when it answered 503 (the pack's scripts/common.ps1 could not
+    /// be read), which is kept to be taken back once the api answers again; that it failed otherwise.
+    fn failure(&mut self, d: &Done) -> String {
+        if d.status != 503 {
+            return text::FAILED.to_string();
+        }
+        let why = said(d);
+        self.unavailable = Some(why.clone());
+        why
+    }
+
+    /// The api answers again: a 503 reason still shown is no longer so.
+    fn available(&mut self) {
+        let Some(why) = self.unavailable.take() else { return };
+        if self.status == why {
+            self.say("");
+        }
+        if self.server_note == why {
+            self.say_server("");
         }
     }
 
