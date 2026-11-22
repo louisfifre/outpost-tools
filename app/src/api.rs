@@ -15,7 +15,7 @@ use std::{
     fs,
     path::PathBuf,
     process::Child,
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, MutexGuard, OnceLock, PoisonError},
 };
 
 use serde_json::{Value, json};
@@ -130,6 +130,12 @@ impl Api {
         }
     }
 
+    // A request that panicked while it held the lock leaves it poisoned. What it guards (the processes followed, the
+    // last launch) stays whole enough to read, so the requests after it go on instead of panicking in turn.
+    fn live(&self) -> MutexGuard<'_, Live> {
+        self.live.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     // Only a success is kept: a failure is asked again at the next request, so a pack fixed while the launcher runs
     // is seen without a restart, and no request works on empty paths.
     fn config(&self) -> Result<&Config, Failure> {
@@ -180,12 +186,12 @@ impl Api {
                 }
                 "/api/profiles" => self.profiles()?,
                 "/api/launch" => {
-                    let mut live = self.live.lock().unwrap();
+                    let mut live = self.live();
                     let state = self.launch_state(&mut live);
                     Reply::json(200, json!({ "id": live.launch.as_ref().map(|l| l.id.clone()), "state": state }))
                 }
                 "/api/server" => {
-                    let mut live = self.live.lock().unwrap();
+                    let mut live = self.live();
                     Reply::json(200, self.server_info(&mut live)?)
                 }
                 "/api/ping" => Reply::empty(200),
@@ -340,5 +346,20 @@ mod tests {
         assert!(api.config_from(|| read(true)).is_ok());
         assert!(api.config_from(|| read(false)).is_ok());
         assert_eq!(asked.get(), 2);
+    }
+
+    #[test]
+    fn a_request_that_panicked_holding_the_lock_does_not_stop_the_next() {
+        let api = Api::new(PathBuf::from(r"C:\no-such-pack"), "native://test".into());
+        std::thread::scope(|s| {
+            let held = s.spawn(|| {
+                let _live = api.live.lock();
+                panic!("a request panicked");
+            });
+            assert!(held.join().is_err());
+        });
+        assert!(api.live.is_poisoned());
+        let reply = api.handle("GET", "/api/launch", None, b"");
+        assert_eq!(reply.status, 200);
     }
 }

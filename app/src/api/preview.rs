@@ -99,7 +99,7 @@ impl Api {
     // so the section shows the pack's own ores. A preview from before -Exports keeps its exports in <Dir>\exports;
     // one from before -ParentPid stops once its pings stop instead.
     pub(super) fn start_preview(&self) -> Result<(), Failure> {
-        let mut live = self.live.lock().unwrap();
+        let mut live = self.live();
         if live.preview.as_mut().is_some_and(|p| p.try_wait().ok().flatten().is_none()) {
             return Ok(());
         }

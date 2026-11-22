@@ -42,7 +42,7 @@ impl Api {
     pub(super) fn profiles(&self) -> Result<Reply, Failure> {
         let instances = self.instances()?;
         let state = {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self.live();
             prism_state(&system::processes(&mut live.system))
         };
         let mut profiles = Vec::new();
@@ -101,7 +101,7 @@ impl Api {
 
     pub(super) fn launch(&self, id: &str) -> Result<Reply, Failure> {
         let prism = self.prism()?.clone();
-        let mut live = self.live.lock().unwrap();
+        let mut live = self.live();
         if prism_state(&system::processes(&mut live.system)).games.iter().any(|(game, _)| game == id) {
             return Ok(Reply::empty(409));
         }
@@ -163,7 +163,7 @@ impl Api {
             return Ok(Reply::empty(400));
         }
         {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self.live();
             // Prism would write its own copy of the settings over ours when the game closes.
             if prism_state(&system::processes(&mut live.system)).running {
                 return Ok(Reply::empty(409));

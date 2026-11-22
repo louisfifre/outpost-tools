@@ -108,7 +108,7 @@ impl Api {
     }
 
     pub(super) fn server_start(&self) -> Result<Reply, Failure> {
-        let mut live = self.live.lock().unwrap();
+        let mut live = self.live();
         if matches!(self.server_state(&mut live)?, "preparing" | "starting" | "running") {
             return Ok(Reply::empty(409));
         }
@@ -134,7 +134,7 @@ impl Api {
 
     pub(super) fn server_stop(&self) -> Result<Reply, Failure> {
         {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self.live();
             if self.server_state(&mut live)? != "running" {
                 return Ok(Reply::empty(409));
             }
@@ -189,7 +189,7 @@ impl Api {
             return Ok(Reply::empty(400));
         }
         {
-            let mut live = self.live.lock().unwrap();
+            let mut live = self.live();
             // The server reads its settings when it starts: a change now would say something that is not so.
             if matches!(self.server_state(&mut live)?, "preparing" | "starting" | "running") {
                 return Ok(Reply::empty(409));
