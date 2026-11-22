@@ -25,7 +25,7 @@ use crate::colour::biome_colour;
 use crate::figures::{self, CellKind, Figures, List, blocks, figure_cells, js_round, percent};
 use crate::history::{Entry, PLOT_H, here, trend};
 use crate::map::{Carry, Look, frame_cmds, point_under, structure_near, tick_at};
-use crate::paint::{View, rows};
+use crate::paint::{View, row_at};
 use crate::panels::{self, Plan};
 use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Steps, duration};
 use crate::scene::{self, Level};
@@ -1508,9 +1508,10 @@ fn map_canvas(ui: &mut Ui, s: &mut PreviewState, t: &Theme, side: f32, world: &W
             // A press that stays in place is the click that chooses (lines 1821-1827); the structures are
             // chosen in the list only.
             if resp.clicked && view != View::Structures && s.carry.is_some_and(|c| !c.carried) {
-                if let (Some(p), Some((at, ids))) = (pointer, rows(world, view)) {
-                    let (_, _, i) = point_under(world, s.look, side, Vec2::new(p.x - rect.x, p.y - rect.y));
-                    let id = ids[at[i] as usize].clone();
+                // The row of the point under the click alone, not the whole map's.
+                let under = pointer.map(|p| point_under(world, s.look, side, Vec2::new(p.x - rect.x, p.y - rect.y)).2);
+                if let Some((at, ids)) = under.and_then(|i| row_at(world, view, i)) {
+                    let id = ids[at as usize].clone();
                     let set = &mut s.chosen[view.index()];
                     if !set.remove(&id) {
                         set.insert(id);

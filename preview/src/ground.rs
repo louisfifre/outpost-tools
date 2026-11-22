@@ -34,57 +34,84 @@ pub fn steepness(heights: &[i16], n: usize, sea: f64, i: usize) -> f64 {
 
 /// The row of each point in `view` (Slope, Cliffs or Vegetation), or None for another view.
 pub fn rows(world: &World, view: View) -> Option<Vec<u16>> {
-    let n = world.samples;
-    let total = n * n;
-    let (h, sea) = (&world.heights, world.sea_level);
-    let water = |i: usize| (h[i] as f64) < sea;
+    let total = world.samples * world.samples;
     Some(match view {
-        // Level, gentle, sloping, steep, wall, then water.
-        View::Slope => (0..total)
-            .map(|i| {
-                if water(i) {
-                    return 5;
-                }
-                let gap = steepness(h, n, sea, i);
-                SLOPE_EDGES.iter().position(|&edge| gap <= edge).unwrap_or(SLOPE_EDGES.len()) as u16
-            })
-            .collect(),
-        // Flat at the foot of a wall, wall, flat on top of a wall, other land, water.
-        View::Cliffs => (0..total)
-            .map(|i| {
-                if water(i) {
-                    return 4;
-                }
-                let flat = world.flat_at[i] == 1;
-                if !flat && steepness(h, n, sea, i) <= WALL {
-                    return 3;
-                }
-                let x = (i % n) as isize;
-                let (mut below, mut above) = (false, false);
-                for dz in -REACH..=REACH {
-                    for dx in -REACH..=REACH {
-                        let j = i as isize + dz * n as isize + dx;
-                        if (dz != 0 || dx != 0) && j >= 0 && (j as usize) < total && x + dx >= 0 && x + dx < n as isize && !water(j as usize) {
-                            let rise = h[j as usize] as f64 - h[i] as f64;
-                            above |= rise >= WALL;
-                            below |= -rise >= WALL;
-                        }
-                    }
-                }
-                if flat {
-                    if above { 0 } else if below { 2 } else { 3 }
-                } else {
-                    1
-                }
-            })
-            .collect(),
-        // Bare, open, forest, dense, water: read from the biome's name, so a modded biome counts without a table.
+        View::Slope => (0..total).map(|i| slope_row(world, i)).collect(),
+        View::Cliffs => (0..total).map(|i| cliff_row(world, i)).collect(),
         View::Vegetation => {
+            // The biome's cover read once per biome, not once per point.
             let cover: Vec<u16> = world.biomes.iter().map(|b| cover_of(&b.id)).collect();
-            (0..total).map(|i| if water(i) { 4 } else if cover[world.biome_at[i] as usize] == 4 { 1 } else { cover[world.biome_at[i] as usize] }).collect()
+            (0..total).map(|i| vegetation_row(world, i, cover[world.biome_at[i] as usize])).collect()
         }
         _ => return None,
     })
+}
+
+/// The row of point `i` alone in `view`, what `rows(world, view)?[i]` gives, without the rest of the map: a click
+/// that chooses needs only the point under it.
+pub fn row_at(world: &World, view: View, i: usize) -> Option<u16> {
+    Some(match view {
+        View::Slope => slope_row(world, i),
+        View::Cliffs => cliff_row(world, i),
+        View::Vegetation => vegetation_row(world, i, cover_of(&world.biomes[world.biome_at[i] as usize].id)),
+        _ => return None,
+    })
+}
+
+fn water(world: &World, i: usize) -> bool {
+    (world.heights[i] as f64) < world.sea_level
+}
+
+/// Level, gentle, sloping, steep, wall, then water.
+fn slope_row(world: &World, i: usize) -> u16 {
+    if water(world, i) {
+        return 5;
+    }
+    let gap = steepness(&world.heights, world.samples, world.sea_level, i);
+    SLOPE_EDGES.iter().position(|&edge| gap <= edge).unwrap_or(SLOPE_EDGES.len()) as u16
+}
+
+/// Flat at the foot of a wall, wall, flat on top of a wall, other land, water.
+fn cliff_row(world: &World, i: usize) -> u16 {
+    let n = world.samples;
+    let total = n * n;
+    let h = &world.heights;
+    if water(world, i) {
+        return 4;
+    }
+    let flat = world.flat_at[i] == 1;
+    if !flat && steepness(h, n, world.sea_level, i) <= WALL {
+        return 3;
+    }
+    let x = (i % n) as isize;
+    let (mut below, mut above) = (false, false);
+    for dz in -REACH..=REACH {
+        for dx in -REACH..=REACH {
+            let j = i as isize + dz * n as isize + dx;
+            if (dz != 0 || dx != 0) && j >= 0 && (j as usize) < total && x + dx >= 0 && x + dx < n as isize && !water(world, j as usize) {
+                let rise = h[j as usize] as f64 - h[i] as f64;
+                above |= rise >= WALL;
+                below |= -rise >= WALL;
+            }
+        }
+    }
+    if flat {
+        if above { 0 } else if below { 2 } else { 3 }
+    } else {
+        1
+    }
+}
+
+/// Bare, open, forest, dense, water: read from the biome's name (`cover`, the biome's `cover_of`), so a modded
+/// biome counts without a table.
+fn vegetation_row(world: &World, i: usize, cover: u16) -> u16 {
+    if water(world, i) {
+        4
+    } else if cover == 4 {
+        1
+    } else {
+        cover
+    }
 }
 
 /// The row of a biome's name; 4 for a water biome (a land point under one reads as open). Water goes first, so a
