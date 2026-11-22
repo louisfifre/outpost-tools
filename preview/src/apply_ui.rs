@@ -35,6 +35,7 @@ pub fn notice_words(n: &Notice) -> String {
 pub struct Apply<'a> {
     pub values: &'a mut [f64; 43],
     pub baseline: &'a [f64; 43],
+    pub snapshot: Option<[f64; 43]>,
     pub pack_known: bool,
     pub notice: &'a Notice,
     pub want: &'a mut Option<Want>,
@@ -47,13 +48,15 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     let style = Style { column: true, shrink: 0.0, pad: Edges::new(10.0, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, 6.0), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
         let differs = *s.values != *s.baseline;
+        // The pack holds the form but the launcher's copy of it is behind: Apply is lit with no field marked.
+        let behind = !differs && s.snapshot.is_some_and(|x| x != *s.values);
         let working = *s.notice == Notice::Working;
-        let enabled = s.pack_known && differs && !working;
+        let enabled = s.pack_known && (differs || behind) && !working;
         let line = Style { wrap: true, align_items: Align::Baseline, gap: mere_base::Vec2::new(10.0, 4.0), ..Style::default() };
         ui.node("applyLine", line, |ui| {
             let r = ui.button_with("applyPack", text::APPLY_TO_PACK, ButtonLook::Link, ButtonOpts { disabled: !enabled, grow: 0.0 });
             ids.apply = r.id;
-            let hint = if !s.pack_known { text::APPLY_NO_PACK } else if !differs { text::APPLY_SAME } else { text::APPLY_HINT };
+            let hint = if !s.pack_known { text::APPLY_NO_PACK } else if behind { text::APPLY_BEHIND_HINT } else if !differs { text::APPLY_SAME } else { text::APPLY_HINT };
             ui.title(r.id, hint);
             if r.clicked && enabled {
                 *s.want = Some(Want::Apply);
@@ -83,6 +86,9 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
             let tone = if matches!(*s.notice, Notice::Failed(_) | Notice::Done { snapshot: Snapshot::Failed, .. }) { Tone::Warn } else { Tone::Muted };
             ids.apply_text = words.clone();
             ids.apply_note = ui.node("applyNote", Style::default(), |ui| ui.paragraph(&words, TextLook::small(tone)));
+        }
+        if behind && !working {
+            ui.paragraph(text::APPLY_BEHIND, TextLook::small(Tone::Muted));
         }
         // Said once, here, whatever happens: the seams are a fact of the world already generated.
         if s.pack_known {

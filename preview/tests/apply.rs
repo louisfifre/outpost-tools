@@ -145,6 +145,18 @@ fn a5_a_value_typed_and_not_generated_is_there_at_the_next_start() {
 /// A prod copy: the source pack (`apply_pack`, the checkout's, which a deploy keeps) and the snapshot the runs and the
 /// game's sync use (`pack`). Applies max_y = 448 and returns the rig.
 fn prod_copy(name: &str, snapshot: &PathBuf, source: &PathBuf) -> Rig {
+    let mut rig = open_prod(snapshot, source);
+    rig.app.state_mut().values[index("max_y")] = 448.0;
+    rig.frame();
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    rig.until(20, &format!("the write of {name} to end"), |r| !r.app.applying());
+    rig.frame();
+    rig
+}
+
+/// The window opened on a prod copy's two packs.
+fn open_prod(snapshot: &PathBuf, source: &PathBuf) -> Rig {
     let theme = Theme::dark();
     let mut r = Renderer::offscreen(W, H, 1.0).expect("offscreen renderer");
     let mut runs = common::runs(snapshot, &[]);
@@ -155,14 +167,7 @@ fn prod_copy(name: &str, snapshot: &PathBuf, source: &PathBuf) -> Rig {
     app.event(Event::Resized { width_px: W, height_px: H, scale: 1.0 });
     app.frame(&mut r, 0.0);
     app.frame(&mut r, 0.0);
-    let mut rig = Rig { app, r, theme };
-    rig.app.state_mut().values[index("max_y")] = 448.0;
-    rig.frame();
-    let id = rig.app.ids().apply;
-    rig.click_on(id);
-    rig.until(20, &format!("the write of {name} to end"), |r| !r.app.applying());
-    rig.frame();
-    rig
+    Rig { app, r, theme }
 }
 
 /// A prod copy runs on a snapshot of the pack that each deploy replaces, and the game's sync serves it: Apply writes
@@ -203,4 +208,27 @@ fn a9_from_a_checkout_one_file_is_written_and_no_limit_is_said() {
     rig.frame();
     assert_eq!(rig.app.state().apply, Notice::Done { running: vec![], snapshot: Snapshot::Absent });
     assert_eq!(rig.app.ids().apply_text, text::APPLIED);
+}
+/// The checkout already holds the form's values (an Apply made before the snapshot was written too, or a deploy of an
+/// older commit) but the snapshot is behind: nothing differs from the pack, yet Apply is lit, and it repairs the snapshot.
+#[test]
+fn a10_a_snapshot_behind_the_pack_lights_apply_and_is_brought_up_to_date() {
+    let source = pack("apply_a10_source");
+    let snapshot = pack("apply_a10_snapshot");
+    let (source_file, snapshot_file) = (source.join("pack/config/tectonic.json"), snapshot.join("pack/config/tectonic.json"));
+    let held = std::fs::read_to_string(&source_file).unwrap();
+    std::fs::write(&source_file, held.replace("\"max_y\": 320,", "\"max_y\": 448,")).unwrap();
+    let mut rig = open_prod(&snapshot, &source);
+    assert_eq!(rig.app.state().values, rig.app.state().baseline, "the form is the checkout's");
+    assert!(std::fs::read_to_string(&snapshot_file).unwrap().contains("\"max_y\": 320"));
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    assert!(rig.app.applying(), "Apply is enabled though the form equals the pack");
+    rig.until(20, "the write to end", |r| !r.app.applying());
+    rig.frame();
+    assert!(std::fs::read_to_string(&snapshot_file).unwrap().contains("\"max_y\": 448"), "the snapshot holds the form's values");
+    assert_eq!(rig.app.state().apply, Notice::Done { running: vec![], snapshot: Snapshot::Written });
+    let id = rig.app.ids().apply;
+    rig.click_on(id);
+    assert!(!rig.app.applying(), "both files hold the values: Apply is disabled again");
 }
