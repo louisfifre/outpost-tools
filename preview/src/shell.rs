@@ -10,6 +10,7 @@
 //! and touch, and the no3d note.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
@@ -208,11 +209,13 @@ pub struct PreviewState {
     /// The press to act on after this build.
     pub want: Option<Want>,
     /// A copy of the learned pace the shell reads for the detail tabs' waits; the application owns the file.
-    pub pace: Pace,
+    /// Shared, like `history` and `before`: the application compares the state with a copy at each build pass, and
+    /// these are only read by the shell, so the copy shares them rather than duplicating them.
+    pub pace: Arc<Pace>,
     /// The history of the figures, every seed: the shell follows the runs of the map on screen (history::here).
-    pub history: Vec<Entry>,
+    pub history: Arc<Vec<Entry>>,
     /// The figures of the run before the one on screen (the page's preview.before).
-    pub before: Option<Figures>,
+    pub before: Option<Arc<Figures>>,
     /// What the list's filter holds.
     pub filter: String,
     /// The tool on screen. The preview's state, its run and its timers go on while Home is shown: the launcher
@@ -293,8 +296,8 @@ impl Default for PreviewState {
             said: String::new(),
             steps: Steps::Empty,
             want: None,
-            pace: Pace::default(),
-            history: Vec::new(),
+            pace: Arc::default(),
+            history: Arc::default(),
             before: None,
             filter: String::new(),
             mode: Mode::Preview,
@@ -1885,7 +1888,7 @@ fn figures_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                 align_items: Align::Baseline,
                 ..Style::default()
             };
-            let cells = world.map_or(Vec::new(), |w| figure_cells(&w.measured.figures, s.before.as_ref()));
+            let cells = world.map_or(Vec::new(), |w| figure_cells(&w.measured.figures, s.before.as_deref()));
             ids.figures_text = cells.iter().map(|c| c.text.clone()).collect();
             // Which figure the cells are at (a name starts one), and the last name's id, for the titles.
             let (mut at, mut name_id) = (usize::MAX, Id::ROOT);
@@ -1930,7 +1933,7 @@ fn figures_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             let look = TextLook { tone: if goal { Tone::Text } else { Tone::Muted }, ..body };
                             let v = ui.node(&key, Style { min_w: Dim::Px(panels::FIG_CHANGE), justify: Justify::End, ..Style::default() }, |ui| ui.text(&cell.text, look));
                             // What the figure was in the run before (line 1530).
-                            if let (false, Some(b)) = (cell.text.is_empty(), s.before.as_ref()) {
+                            if let (false, Some(b)) = (cell.text.is_empty(), s.before.as_deref()) {
                                 let k = figures::KEYS[at];
                                 let was = if k == "count" { format!("{}", b.count) } else { b.get(k).map_or(String::new(), |v| figures::format_value(b, k, v)) };
                                 ui.title(v, &text::was(&was));
@@ -2023,4 +2026,21 @@ pub fn picture_with(theme: Theme, size: Vec2, world: Option<&World>, state: Prev
     }
     let (list, ids) = last.expect("the loop runs at least once");
     (list, ui, ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The application compares the state with a copy of it at each build pass: the copy shares the history, the
+    /// figures before and the pace, which only the application changes, rather than duplicating them.
+    #[test]
+    fn a_copy_of_the_state_shares_what_only_the_application_changes() {
+        let s = PreviewState { before: Some(Arc::new(Figures::default())), ..PreviewState::default() };
+        let copy = s.clone();
+        assert!(Arc::ptr_eq(&s.history, &copy.history));
+        assert!(Arc::ptr_eq(&s.pace, &copy.pace));
+        assert!(Arc::ptr_eq(s.before.as_ref().unwrap(), copy.before.as_ref().unwrap()));
+        assert_eq!(s, copy);
+    }
 }

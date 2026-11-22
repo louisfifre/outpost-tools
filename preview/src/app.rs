@@ -163,9 +163,9 @@ impl PreviewApp {
     /// and the figures of the run before, which the page keeps in its localStorage.
     pub fn with_runs(mut self, runs: Runs) -> PreviewApp {
         self.pace = Pace::load(&runs.pace());
-        self.state.pace = self.pace.clone();
-        self.state.history = history::load(&runs.history());
-        self.state.before = std::fs::read_to_string(runs.before()).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| Figures::from_json(&j));
+        self.state.pace = Arc::new(self.pace.clone());
+        self.state.history = Arc::new(history::load(&runs.history()));
+        self.state.before = std::fs::read_to_string(runs.before()).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| Figures::from_json(&j)).map(Arc::new);
         // A pack is a place Apply can write to; the real machine is asked about what runs on it.
         self.state.pack_known = runs.config_pack().is_some();
         // The pack's values are the ones its file holds now: an apply, or an edit by hand, moved them since the
@@ -225,7 +225,7 @@ impl PreviewApp {
         let (Some(world), Some(made)) = (&self.world, &self.state.made) else { return };
         let at = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64);
         let entry = history::entry(made, &world.measured.figures, at);
-        if !history::remember(&mut self.state.history, entry) {
+        if !history::remember(Arc::make_mut(&mut self.state.history), entry) {
             return;
         }
         if let Some(runs) = &self.runs {
@@ -548,7 +548,7 @@ impl PreviewApp {
                     self.meshed = None;
                     // The figures of the map being replaced are the run before (lines 2656-2658).
                     if let Some(old) = self.world.as_ref().map(|w| w.measured.figures) {
-                        self.state.before = Some(old);
+                        self.state.before = Some(Arc::new(old));
                         if let Err(e) = std::fs::write(&before_file, old.to_json()) {
                             observe!(Warn, "the figures of the run before could not be kept: {e}");
                         }
@@ -573,7 +573,7 @@ impl PreviewApp {
                     if let Err(e) = self.pace.save(&pace_file) {
                         observe!(Warn, "the pace could not be kept: {e}");
                     }
-                    self.state.pace = self.pace.clone();
+                    self.state.pace = Arc::new(self.pace.clone());
                     // Line 2661: the new map is kept in the history.
                     self.remember();
                     finished = true;
@@ -789,7 +789,7 @@ impl PreviewApp {
             // The settings and figures come last, as the page's last step; the pictures are already kept if this fails.
             let (seed, values) = self.state.made.as_ref().map_or((self.state.seed.as_str(), &self.state.values), |m| (m.seed.as_str(), &m.values));
             let ores = self.shown.as_ref().map(|s| &s.play.per_chunk);
-            let data = crate::export_data::export_json(world, seed, values, &kinds, self.state.before.as_ref(), ores);
+            let data = crate::export_data::export_json(world, seed, values, &kinds, self.state.before.as_deref(), ores);
             std::fs::write(folder.join("export.json"), data)?;
             steps.push((text::EXPORT_DATA.to_string(), 0));
             Ok(())
@@ -864,7 +864,9 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         gfx.begin(self.theme.ground);
         // The scrollbar's gutter comes a frame late, and a click changes the state after its widget was
         // built: build again until neither is pending, at most three times, so a picture shows the settled page.
-        let mut list = DrawList::default();
+        // The last frame's list lends its buffer: each pass copies into it with no new allocation (mere-ui gives
+        // the list only as `end_frame`'s borrow, so a pass that turns out to be the last cannot be told in advance).
+        let mut list = std::mem::take(&mut self.last);
         // A press the shell recorded is acted on here, after its build, and the page is built again to show it.
         for _ in 0..4 {
             let before = self.state.clone();
@@ -872,7 +874,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
             self.ui.begin_frame(self.size);
             let stage = self.drawn.as_ref().or(self.world.as_ref());
             self.ids = build_run(&mut self.ui, &mut self.state, self.size, self.world.as_ref(), stage, self.shown.as_ref(), self.home.as_mut().map(|h| &mut **h as &mut dyn Home));
-            list = self.ui.end_frame().clone();
+            list.cmds.clone_from(&self.ui.end_frame().cmds);
             if let Some(want) = self.state.want.take() {
                 self.act(want);
             }
