@@ -27,6 +27,8 @@ pub const JAVA_H: f32 = 52.0;
 /// frame, around the 18 px line (`FRAME + INSET_TIGHT` above and below makes `CONTROL`).
 const PAD_V: f32 = FRAME + INSET_TIGHT;
 const _: () = assert!(18.0 + 2.0 * PAD_V == CONTROL);
+/// How long a server still running after its stop was taken holds the stop button, in seconds.
+const STOP_WAIT: f64 = 30.0;
 use preview::Home;
 use preview::PAGE;
 use preview::bar::icons;
@@ -195,6 +197,11 @@ fn left<T: PartialEq + Clone>(slot: &mut Option<T>, before: &T, now: &T, resp: &
     false
 }
 
+/// What a failed answer says: the api's own sentence, or that the request failed.
+fn said(d: &Done) -> String {
+    d.body["error"].as_str().map(String::from).unwrap_or_else(|| text::FAILED.to_string())
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Want {
     Play(String),
@@ -224,6 +231,10 @@ pub struct LauncherHome {
     sform: ServerForm,
     server_open: bool,
     stopping: bool,
+    /// When the last stop was asked, on the poll's clock.
+    stop_asked: f64,
+    /// Why the last stop failed, while the server still runs.
+    stop_refused: Option<String>,
     filled_for: Option<String>,
     status: String,
     server_note: String,
@@ -259,6 +270,8 @@ impl LauncherHome {
             sform: ServerForm::default(),
             server_open: false,
             stopping: false,
+            stop_asked: 0.0,
+            stop_refused: None,
             filled_for: None,
             status: String::new(),
             server_note: String::new(),
@@ -367,6 +380,11 @@ impl LauncherHome {
                 let server = Server::parse(&d.body);
                 if matches!(server.state.as_str(), "stopped" | "failed") {
                     self.stopping = false;
+                    self.stop_refused = None;
+                }
+                // A stop that was taken but left the server running does not hold the button for ever.
+                if self.stopping && server.state == "running" && self.now - self.stop_asked >= STOP_WAIT {
+                    self.stopping = false;
                 }
                 let key = format!("{} {}", server.state, server.props.is_some());
                 self.server = Some(server);
@@ -399,16 +417,17 @@ impl LauncherHome {
             // 640-646.
             Tag::ServerStart => {
                 if !ok {
-                    let why = d.body["error"].as_str().map(String::from).unwrap_or_else(|| text::FAILED.to_string());
-                    self.say_server(&why);
+                    self.say_server(&said(&d));
                 }
                 self.load_server();
             }
-            // 648-653.
+            // 648-653, with the server's own reason (the page says only that it failed).
             Tag::ServerStop => {
                 if !ok {
                     self.stopping = false;
-                    self.say_server(text::FAILED);
+                    let why = said(&d);
+                    self.say_server(&why);
+                    self.stop_refused = Some(why);
                 }
                 self.load_server();
             }
@@ -466,7 +485,10 @@ impl LauncherHome {
     fn lock_server(&mut self) {
         let Some(server) = &self.server else { return };
         if server.busy() {
-            self.say_server(text::SERVER_LOCKED);
+            // Why the last stop failed stays in place of the lock's sentence: it is what the user needs then.
+            if self.stop_refused.as_deref() != Some(self.server_note.as_str()) {
+                self.say_server(text::SERVER_LOCKED);
+            }
         } else if server.props.is_none() {
             self.say_server(text::FIRST_START);
         } else if self.server_note == text::SERVER_LOCKED || self.server_note == text::FIRST_START {
@@ -975,6 +997,8 @@ impl Home for LauncherHome {
                 // 648-653.
                 Want::ServerStop => {
                     self.stopping = true;
+                    self.stop_asked = self.now;
+                    self.stop_refused = None;
                     self.send(Tag::ServerStop, "POST", "/api/server/stop", None);
                 }
                 Want::ServerSave => self.save_server(),
