@@ -12,8 +12,8 @@ use std::any::Any;
 
 use mere_base::Vec2;
 use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
-use mere_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
-use mere_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
+use mere_ui::tokens::{CONTROL, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
+use mere_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui};
 
 /// The widest the two columns grow together, the page's cap (index.html's `.page`).
 pub const COLUMNS_MAX: f32 = 1120.0;
@@ -652,7 +652,6 @@ impl LauncherHome {
     /// `.col header`: a row as tall as the back button's square, so that the header keeps its height
     /// with or without it, and a hairline.
     fn header(&mut self, ui: &mut Ui, key: &str, back: bool, title: &str) -> Id {
-        let t = *ui.theme();
         ui.node(key, Style { column: true, ..Style::default() }, |ui| {
             ui.node("bar", Style { min_h: Dim::Px(ICON_SQUARE), align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                 if back {
@@ -665,7 +664,7 @@ impl LauncherHome {
                 }
                 ui.text(&title.to_uppercase(), TextLook::heading());
             });
-            ui.fill(Style { h: Dim::Px(FRAME), shrink: 0.0, ..Style::default() }, t.edge);
+            ui.rule(mere_ui::Rule::Section, Edges::default());
         })
     }
 
@@ -678,12 +677,6 @@ impl LauncherHome {
             margin: Margin { left: Side::Px(-INSET), right: Side::Px(-INSET), ..Margin::default() },
             ..Style::default()
         }
-    }
-
-    /// The lit box of a row under the pointer.
-    fn row_lit(ui: &Ui) -> mere_base::Color {
-        let t = *ui.theme();
-        mix(t.text, FADE_TINT, t.ground)
     }
 
     fn who(ui: &mut Ui, name: &str, line: &str, now: bool) {
@@ -707,7 +700,7 @@ impl LauncherHome {
 
     fn profiles_part(&mut self, ui: &mut Ui) {
         let clock = ui.clock();
-        let lit = Self::row_lit(ui);
+        let lit = ui.theme().tint();
         match self.current.clone() {
             None => {
                 self.ids.profiles_header = self.header(ui, "header", false, text::PROFILES_GROUP);
@@ -823,7 +816,7 @@ impl LauncherHome {
 
     /// The server's part (the second `section.col`).
     fn server_part(&mut self, ui: &mut Ui) {
-        let lit = Self::row_lit(ui);
+        let lit = ui.theme().tint();
         self.ids.server_header = self.header(ui, "header", false, text::SERVER_GROUP);
         let line = self.server_line();
         let (running, busy) = self.server.as_ref().map_or((false, false), |s| (s.state == "running", s.busy()));
