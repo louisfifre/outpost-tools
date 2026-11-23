@@ -13,7 +13,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use std::collections::VecDeque;
 
-use mere_base::{App, Cursor, DrawList, Event, Gfx, Hit, Rect, Vec2, WindowRequest, observe};
+use mere_base::{App, Cursor, DrawList, Event, Gfx, Hit, Launcher, Rect, Vec2, WindowRequest, observe};
 use mere_ui::{Id, Theme, Ui, chrome_hit};
 
 use crate::cut::{self, CUT_IMAGE, NAV_H, NAV_IMAGE, CutLook};
@@ -106,6 +106,8 @@ pub struct PreviewApp {
     sources: Option<Sources>,
     /// The ticked places as `places.json` holds them; None without runs, where nothing is kept.
     ticked_saved: Option<BTreeSet<String>>,
+    /// The folders the person chose in the list, in the order chosen: kept in `places.json` with the ticks.
+    chosen: Vec<PathBuf>,
     /// The form's values as `draft.json` holds them; None without runs, where nothing is kept.
     draft_saved: Option<[f64; 43]>,
     /// The run's own picture, which the stage shows over `world` while the run goes on: its last sketch, the map's
@@ -157,6 +159,7 @@ impl PreviewApp {
             applying: None,
             sources: None,
             ticked_saved: None,
+            chosen: Vec::new(),
             draft_saved: None,
             drawn: None,
             base: None,
@@ -204,16 +207,59 @@ impl PreviewApp {
         self
     }
 
-    /// The places, found again, ticked as the runs' folder keeps them.
+    /// The places, found again, with the folders chosen and ticked as the runs' folder keeps them.
     fn find_places(&mut self) {
-        let repo = self.runs.as_ref().map_or_else(Repo::default, |r| Repo { pack: r.config_pack(), snapshot: snapshot_pack(r) });
-        let mut found = places::find(self.sources.as_ref().unwrap_or(&Sources::default()), &repo);
         let kept = self.runs.as_ref().map(|r| places::load(&r.places()));
-        places::tick(&mut found, kept.clone().flatten().as_ref());
+        if let Some(runs) = &self.runs {
+            self.chosen = places::load_chosen(&runs.places());
+        }
+        self.state.places = self.places_ticked(kept.clone().flatten().as_ref());
         // What is written differs from what was kept when a kept place is gone or a single game was ticked: the
         // next frame keeps the set as it is now.
         self.ticked_saved = kept.map(Option::unwrap_or_default);
-        self.state.places = found;
+    }
+
+    fn places_ticked(&self, kept: Option<&BTreeSet<String>>) -> Vec<places::Place> {
+        let repo = self.runs.as_ref().map_or_else(Repo::default, |r| Repo { pack: r.config_pack(), snapshot: snapshot_pack(r) });
+        let mut found = places::find(self.sources.as_ref().unwrap_or(&Sources::default()), &repo, &self.chosen);
+        places::tick(&mut found, kept);
+        found
+    }
+
+    /// "Choose a folder…": the system's dialog, then the folder becomes a place of the list, ticked, when it is a
+    /// game (one already listed is only ticked); a folder that is no game is refused in a sentence.
+    fn choose_folder(&mut self) {
+        let asked = match &self.runs {
+            Some(runs) => runs.launcher.choose_folder(text::CHOOSE_FOLDER_TITLE),
+            None => mere_win32::SystemLauncher.choose_folder(text::CHOOSE_FOLDER_TITLE),
+        };
+        let folder = match asked {
+            Ok(Some(folder)) => folder,
+            Ok(None) => return,
+            Err(e) => {
+                observe!(Warn, "the folder dialog did not open: {e}");
+                return;
+            }
+        };
+        let Some(dir) = places::game_dir(&folder) else {
+            observe!(Info, "apply: {} has no mods folder: not a game", folder.display());
+            self.state.folder_refused = true;
+            return;
+        };
+        self.state.folder_refused = false;
+        let key = places::key_of(&dir);
+        if !self.state.places.iter().any(|p| p.key == key) {
+            self.chosen.push(folder);
+        }
+        let mut ticked = places::ticked_set(&self.state.places);
+        ticked.insert(key);
+        self.state.places = self.places_ticked(Some(&ticked));
+        if let Some(runs) = &self.runs {
+            if let Err(e) = places::save(&runs.places(), &ticked, &self.chosen) {
+                observe!(Warn, "places: {}: {e}", runs.places().display());
+            }
+            self.ticked_saved = Some(ticked);
+        }
     }
 
     /// Puts another machine under Apply (a test's).
@@ -662,6 +708,7 @@ impl PreviewApp {
             Want::Close => self.requests.push_back(WindowRequest::Close),
             Want::Export => self.export(),
             Want::Apply => self.apply(),
+            Want::ChooseFolder => self.choose_folder(),
             Want::OpenFolder => {
                 if let (Steps::Saved { folder }, Some(runs)) = (&self.state.steps, &self.runs) {
                     if let Err(e) = runs.launcher.open_folder(&PathBuf::from(folder)) {
@@ -941,7 +988,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         if let (Some(runs), Some(saved)) = (&self.runs, &self.ticked_saved) {
             let now = places::ticked_set(&self.state.places);
             if *saved != now {
-                if let Err(e) = places::save(&runs.places(), &now) {
+                if let Err(e) = places::save(&runs.places(), &now, &self.chosen) {
                     observe!(Warn, "places: {}: {e}", runs.places().display());
                 }
                 self.ticked_saved = Some(now);

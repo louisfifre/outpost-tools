@@ -1,16 +1,18 @@
-//! Where Apply writes: every place on this machine that holds a Tectonic config (`config/tectonic.json`), each a row
-//! of the tick list above Apply. A place's file is only ever rewritten, never created: a folder that has none is no
-//! place, and one whose file went away since is refused when it is written.
+//! Where Apply writes: every place found on this machine that holds a Tectonic config (`config/tectonic.json`), and
+//! every game folder the person chose, each a row of the tick list above Apply. A place's file is only ever
+//! rewritten, never created: a folder found without one is no place, and a place whose file is missing (a chosen game
+//! that has none, a file that went away since) is refused when it is written.
 //!
 //! The places, in the list's order:
 //! - the games: the Prism instances the host lists, then the installations of the official launcher, read from the
-//!   game folders its own `launcher_profiles.json` declares;
+//!   game folders its own `launcher_profiles.json` declares, then the folders the person chose ("Choose a folder…"),
+//!   each as long as it is a game, one that holds a mods folder;
 //! - when the program drives a pack repository, under a rule: its test server, and the pack's source folder (the
 //!   write of the former "Apply to pack", a prod copy's snapshot included).
 //!
-//! Which places are ticked is the person's: it is kept in the window's own data (`places.json` beside `draft.json`)
-//! and nothing is ticked that they did not tick, except a single game when it is the only place found and nothing
-//! was kept yet.
+//! Which places are ticked is the person's: it is kept in the window's own data (`places.json` beside `draft.json`),
+//! with the folders they chose, and nothing is ticked that they did not tick, except a single game when it is the
+//! only place found and nothing was kept yet.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -104,7 +106,8 @@ fn read_held(file: &Path) -> Option<[f64; 43]> {
     std::fs::read_to_string(file).ok().and_then(|t| crate::apply::read_values(&t))
 }
 
-fn key_of(dir: &Path) -> String {
+/// What the ticked set keeps of a folder: the folder, lowercased, with Windows' separators.
+pub fn key_of(dir: &Path) -> String {
     dir.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
 }
 
@@ -142,8 +145,15 @@ pub struct Repo {
     pub snapshot: Option<PathBuf>,
 }
 
-/// Every place found, none ticked, each with what its file holds.
-pub fn find(sources: &Sources, repo: &Repo) -> Vec<Place> {
+/// The game folder of a folder the person chose: the folder itself when it holds a mods folder, or the game folder
+/// inside it (a Prism instance's `minecraft`) when that one does. None: it is not a game. A Tectonic config is not
+/// asked for: Apply says so when it writes.
+pub fn game_dir(chosen: &Path) -> Option<PathBuf> {
+    [chosen.to_path_buf(), chosen.join("minecraft"), chosen.join(".minecraft")].into_iter().find(|d| d.join("mods").is_dir())
+}
+
+/// Every place found, none ticked, each with what its file holds. `chosen` are the folders the person chose, as kept.
+pub fn find(sources: &Sources, repo: &Repo, chosen: &[PathBuf]) -> Vec<Place> {
     let mut places: Vec<Place> = Vec::new();
     let mut add = |kind: Kind, name: String, short: String, how: &str, shown: &Path, dir: PathBuf, snapshot: Option<PathBuf>| {
         let key = key_of(&dir);
@@ -158,14 +168,24 @@ pub fn find(sources: &Sources, repo: &Repo) -> Vec<Place> {
     let prism = sources.prism.iter().filter(|g| has_config(&g.dir)).map(|g| (g, text::PRISM));
     let launcher = sources.minecraft.as_deref().map(official).unwrap_or_default();
     let launcher: Vec<Game> = launcher.into_iter().filter(|g| has_config(&g.dir)).collect();
-    let games: Vec<(&Game, &str)> = prism.chain(launcher.iter().map(|g| (g, text::OFFICIAL_LAUNCHER))).collect();
+    // A chosen folder goes by its own name and is shown as it was chosen; its game folder may be inside it.
+    let picked: Vec<(Game, &PathBuf)> = chosen
+        .iter()
+        .filter_map(|c| game_dir(c).map(|dir| (Game { name: c.file_name().map_or_else(|| c.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned()), dir }, c)))
+        .collect();
+    let games: Vec<(&Game, &str)> = prism.chain(launcher.iter().map(|g| (g, text::OFFICIAL_LAUNCHER))).chain(picked.iter().map(|(g, _)| (g, text::CHOSEN_HOW))).collect();
     for (g, how) in &games {
         // Two games of one name are told apart by their launcher, in the place line as on the board.
         let twin = games.iter().filter(|(o, _)| o.name.to_lowercase() == g.name.to_lowercase()).count() > 1;
         let short = if twin { format!("{} ({how})", g.name) } else { g.name.clone() };
         // A Prism instance is known by its own folder, which holds its game folder (`minecraft`).
         let inner = g.dir.file_name().is_some_and(|n| n.eq_ignore_ascii_case("minecraft") || n.eq_ignore_ascii_case(".minecraft"));
-        let shown = if *how == text::PRISM && inner { g.dir.parent().unwrap_or(&g.dir) } else { &g.dir };
+        let chose = picked.iter().find(|(p, _)| std::ptr::eq(p, *g)).map(|(_, c)| c.as_path());
+        let shown = match chose {
+            Some(c) => c,
+            None if *how == text::PRISM && inner => g.dir.parent().unwrap_or(&g.dir),
+            None => &g.dir,
+        };
         add(Kind::Game, text::your_game(&g.name), short, how, shown, g.dir.clone(), None);
     }
     if let Some(dir) = sources.dev_server.as_ref().filter(|d| d.join("config").is_dir()) {
@@ -203,16 +223,24 @@ pub fn load(file: &Path) -> Option<BTreeSet<String>> {
     Some(list.iter().filter_map(Json::text).collect())
 }
 
-pub fn save(file: &Path, ticked: &BTreeSet<String>) -> std::io::Result<()> {
-    let quoted: Vec<String> = ticked.iter().map(|k| format!("\"{}\"", k.replace('\\', "\\\\").replace('"', "\\\""))).collect();
-    std::fs::write(file, format!("{{\"ticked\":[{}]}}", quoted.join(",")))
+/// The folders the person chose, as `save` wrote them, in the order they were chosen.
+pub fn load_chosen(file: &Path) -> Vec<PathBuf> {
+    let Some(data) = read_json(file) else { return Vec::new() };
+    data.get("chosen").and_then(Json::array).map_or_else(Vec::new, |l| l.iter().filter_map(Json::text).map(PathBuf::from).collect())
+}
+
+pub fn save(file: &Path, ticked: &BTreeSet<String>, chosen: &[PathBuf]) -> std::io::Result<()> {
+    let quote = |k: &str| format!("\"{}\"", k.replace('\\', "\\\\").replace('"', "\\\""));
+    let ticked: Vec<String> = ticked.iter().map(|k| quote(k)).collect();
+    let chosen: Vec<String> = chosen.iter().map(|c| quote(&c.to_string_lossy())).collect();
+    std::fs::write(file, format!("{{\"ticked\":[{}],\"chosen\":[{}]}}", ticked.join(","), chosen.join(",")))
 }
 
 /// What the place line says: the one place ticked, how many, or what to do.
 pub fn line(places: &[Place]) -> String {
     let ticked: Vec<&Place> = places.iter().filter(|p| p.ticked).collect();
     match ticked.as_slice() {
-        [] if places.is_empty() => text::PLACE_NONE_FOUND.to_string(),
+        [] if places.is_empty() => text::PLACE_CHOOSE_FOLDER.to_string(),
         [] if places.iter().any(|p| p.kind == Kind::Game) => text::PLACE_CHOOSE_GAME.to_string(),
         [] => text::PLACE_CHOOSE.to_string(),
         [one] => text::place_to(&one.short),
@@ -286,7 +314,7 @@ mod tests {
             minecraft: Some(mc),
             dev_server: Some(server.clone()),
         };
-        let places = find(&sources, &Repo { pack: Some(pack.clone()), snapshot: None });
+        let places = find(&sources, &Repo { pack: Some(pack.clone()), snapshot: None }, &[]);
         let rows: Vec<(Kind, &str, &str, &str)> = places.iter().map(|p| (p.kind, p.name.as_str(), p.short.as_str(), p.how.as_str())).collect();
         assert_eq!(rows, vec![
             (Kind::Game, "Exploration, your game", "Exploration (Prism Launcher)", "Prism Launcher"),
@@ -301,7 +329,7 @@ mod tests {
         assert_eq!(places[0].held, vec![None], "a file that lacks the keys holds nothing known");
         // Without the server's config folder, no server.
         std::fs::remove_dir_all(server.join("config")).unwrap();
-        assert!(find(&sources, &Repo::default()).iter().all(|p| p.kind == Kind::Game));
+        assert!(find(&sources, &Repo::default(), &[]).iter().all(|p| p.kind == Kind::Game));
         let _ = std::fs::remove_dir_all(r);
     }
 
@@ -311,16 +339,16 @@ mod tests {
         let a = game(&r.join("a"), true);
         let b = game(&r.join("b"), true);
         let sources = Sources { prism: vec![Game { name: "A".into(), dir: a.clone() }, Game { name: "B".into(), dir: b.clone() }], ..Sources::default() };
-        let mut places = find(&sources, &Repo::default());
+        let mut places = find(&sources, &Repo::default(), &[]);
         let file = r.join("places.json");
         assert_eq!(load(&file), None, "nothing kept yet");
         places[1].ticked = true;
-        save(&file, &ticked_set(&places)).unwrap();
+        save(&file, &ticked_set(&places), &[]).unwrap();
         let kept = load(&file).unwrap();
         assert_eq!(kept, BTreeSet::from([key_of(&b)]));
         // The next session: B's folder is gone, A stays unticked.
         std::fs::remove_dir_all(&b).unwrap();
-        let mut again = find(&sources, &Repo::default());
+        let mut again = find(&sources, &Repo::default(), &[]);
         tick(&mut again, Some(&kept));
         assert_eq!(again.len(), 1);
         assert!(!again[0].ticked, "only what was ticked is ticked");
@@ -333,16 +361,46 @@ mod tests {
         let r = root("single");
         let a = game(&r.join("a"), true);
         let sources = Sources { prism: vec![Game { name: "A".into(), dir: a }], ..Sources::default() };
-        let mut places = find(&sources, &Repo::default());
+        let mut places = find(&sources, &Repo::default(), &[]);
         tick(&mut places, None);
         assert!(places[0].ticked, "the only place, a game: ticked");
         tick(&mut places, Some(&BTreeSet::new()));
         assert!(!places[0].ticked, "unticked by the person: it stays so");
         // The pack's source alone is never ticked by itself.
         let pack = game(&r.join("repo/pack"), true);
-        let mut only_source = find(&Sources::default(), &Repo { pack: Some(pack), snapshot: None });
+        let mut only_source = find(&Sources::default(), &Repo { pack: Some(pack), snapshot: None }, &[]);
         tick(&mut only_source, None);
         assert!(!only_source[0].ticked);
+        let _ = std::fs::remove_dir_all(r);
+    }
+
+    #[test]
+    fn a_chosen_folder_is_a_game_when_it_holds_a_mods_folder() {
+        let r = root("chosen");
+        let plain = r.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(game_dir(&plain), None, "no mods folder: not a game");
+        let own = game(&r.join("Survival"), false);
+        assert_eq!(game_dir(&own), Some(own.clone()));
+        // A Prism instance chosen by its own folder: the game folder inside it.
+        let inner = game(&r.join(r"instances\Atelier\minecraft"), true);
+        let instance = r.join(r"instances\Atelier");
+        assert_eq!(game_dir(&instance), Some(inner.clone()));
+        let found = find(&Sources::default(), &Repo::default(), &[own.clone(), plain, instance.clone()]);
+        let rows: Vec<(Kind, &str, &str, &str, &str)> = found.iter().map(|p| (p.kind, p.name.as_str(), p.short.as_str(), p.how.as_str(), p.path.as_str())).collect();
+        let (own_s, inst_s) = (own.to_string_lossy().into_owned(), instance.to_string_lossy().into_owned());
+        assert_eq!(rows, vec![
+            (Kind::Game, "Survival, your game", "Survival", text::CHOSEN_HOW, own_s.as_str()),
+            (Kind::Game, "Atelier, your game", "Atelier", text::CHOSEN_HOW, inst_s.as_str()),
+        ], "a folder that is no game is left out; each is shown as it was chosen");
+        assert_eq!(found[1].dir, inner, "the instance's game folder is the one written");
+        assert_eq!(found[0].held, vec![None], "a game without a Tectonic config holds nothing yet");
+        // Kept with the ticks.
+        let file = r.join("places.json");
+        save(&file, &BTreeSet::from([found[0].key.clone()]), &[own.clone(), instance.clone()]).unwrap();
+        assert_eq!(load_chosen(&file), vec![own, instance]);
+        assert_eq!(load(&file), Some(BTreeSet::from([found[0].key.clone()])));
+        assert_eq!(load_chosen(&r.join("nowhere.json")), Vec::<PathBuf>::new());
         let _ = std::fs::remove_dir_all(r);
     }
 
@@ -352,8 +410,8 @@ mod tests {
         let a = game(&r.join("a"), true);
         let b = game(&r.join("b"), true);
         let sources = Sources { prism: vec![Game { name: "Exploration".into(), dir: a }, Game { name: "Atelier".into(), dir: b }], ..Sources::default() };
-        let mut places = find(&sources, &Repo::default());
-        assert_eq!(line(&[]), text::PLACE_NONE_FOUND);
+        let mut places = find(&sources, &Repo::default(), &[]);
+        assert_eq!(line(&[]), text::PLACE_CHOOSE_FOLDER);
         assert_eq!(line(&places), text::PLACE_CHOOSE_GAME);
         places[0].ticked = true;
         assert_eq!(line(&places), "To: Exploration");

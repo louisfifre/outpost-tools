@@ -1,7 +1,8 @@
 //! The Apply block under the settings: the two choices that put every value back (to the pack's, to Tectonic's own;
 //! each is pressed while the form is there, both when the pack is Tectonic's own), the place line that opens the
-//! list of places above itself (`places.rs`, the kit's tick list), Apply (the only control that writes), what the
-//! last apply said, and the warning about seams. The shell only records the press (`Want::Apply`); the application
+//! list of places above itself (`places.rs`, the kit's tick list, ending on "Choose a folder…"), Apply (the only
+//! control that writes), what the last apply said, what to do when no game was found or a folder was refused, and
+//! the warning about seams. The shell only records the press (`Want::Apply`); the application
 //! writes (`apply.rs`).
 
 use mere_layout::{Edges, Style};
@@ -71,6 +72,8 @@ pub struct Apply<'a> {
     pub baseline: &'a [f64; 43],
     pub places: &'a mut Vec<Place>,
     pub open: &'a mut bool,
+    /// The last folder chosen was no game.
+    pub refused: bool,
     pub notice: &'a Notice,
     pub want: &'a mut Option<Want>,
 }
@@ -82,6 +85,8 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     ids.place_line = mere_ui::Id::ROOT;
     ids.place_list = mere_ui::Id::ROOT;
     ids.place_rows.clear();
+    ids.place_action = mere_ui::Id::ROOT;
+    ids.place_note = "";
     ids.place_text.clear();
     let style = Style { column: true, shrink: 0.0, pad: Edges::new(10.0, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, 6.0), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
@@ -112,11 +117,13 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         let enabled = stale && !working;
         let no_game = !s.places.iter().any(|p| p.kind == Kind::Game);
 
-        // The place line, and the list of places hung above it: the corner over Apply, never a dialog.
+        // The place line, and the list of places hung above it: the corner over Apply, never a dialog. It opens even
+        // with no place found, for its last row: "Choose a folder…".
         let line = places::line(s.places);
         ids.place_text = line.clone();
-        let opts = TickListOpts { up: true, disabled: s.places.is_empty() };
+        let opts = TickListOpts { up: true, disabled: false };
         let mut rows = Vec::new();
+        let (mut action, mut choose) = (mere_ui::Id::ROOT, false);
         let places = &mut *s.places;
         let r = ui.tick_list("place", &line, s.open, opts, |ui| {
             let mut before = None;
@@ -129,10 +136,21 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
                 let row = TickRow { name: &p.name, how: &p.how, path: &p.path, disabled: false };
                 rows.push(ui.tick_row(&format!("p{i}"), row, &mut p.ticked).id);
             }
+            if !places.is_empty() {
+                ui.tick_rule();
+            }
+            let a = ui.tick_action("choose", text::CHOOSE_FOLDER);
+            (action, choose) = (a.id, a.clicked);
         });
         ids.place_line = r.line.id;
         ids.place_list = r.list.unwrap_or(mere_ui::Id::ROOT);
         ids.place_rows = rows;
+        ids.place_action = action;
+        // The system's dialog takes the screen: the list closes under it and the line keeps the keyboard.
+        if choose {
+            *s.open = false;
+            *s.want = Some(Want::ChooseFolder);
+        }
         if r.enter && enabled {
             *s.want = Some(Want::Apply);
         }
@@ -169,8 +187,13 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         if behind && !working {
             ui.paragraph(text::APPLY_BEHIND, TextLook::small(Tone::Muted));
         }
-        if no_game {
+        // A folder refused says why in amber, in the place of the sentence that asked for it.
+        if s.refused {
+            ui.paragraph(text::NOT_A_GAME, TextLook::small(Tone::Warn));
+            ids.place_note = text::NOT_A_GAME;
+        } else if no_game {
             ui.paragraph(text::NO_GAME_FOUND, TextLook::small(Tone::Muted));
+            ids.place_note = text::NO_GAME_FOUND;
         }
         // Said at rest: the sentence after an Apply says what changes in a world in its place.
         if !matches!(s.notice, Notice::Done(_)) || !said {

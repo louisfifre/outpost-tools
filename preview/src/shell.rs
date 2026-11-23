@@ -98,8 +98,10 @@ pub enum Want {
     Stop,
     Export,
     OpenFolder,
-    /// Write the panel's values into the pack's config.
+    /// Write the panel's values into the Tectonic config of each place ticked.
     Apply,
+    /// Ask the person for a game folder in the system's dialog ("Choose a folder…" in the list of places).
+    ChooseFolder,
     /// The window's buttons: the app turns them into requests to the window.
     Minimize,
     Maximize,
@@ -159,11 +161,13 @@ pub struct PreviewState {
     /// What the pack's config holds: the values `pack` puts back, and what Apply is compared to. The pack's own,
     /// copied from `settings`, until an Apply writes the panel's.
     pub baseline: [f64; 43],
-    /// Where Apply writes: every place found that holds a Tectonic config, each ticked or not, with what its file
-    /// holds (`places.rs`). Apply is lit while a place ticked does not hold the form.
+    /// Where Apply writes: every place found that holds a Tectonic config and every game folder chosen, each ticked
+    /// or not, with what its file holds (`places.rs`). Apply is lit while a place ticked does not hold the form.
     pub places: Vec<crate::places::Place>,
     /// The list of places is open above its line.
     pub places_open: bool,
+    /// The last folder chosen in the list was no game: said in amber until a folder is taken.
+    pub folder_refused: bool,
     /// What the last Apply said.
     pub apply: crate::apply::Notice,
     /// The pressed detail: an index in `text::DETAILS`.
@@ -273,6 +277,7 @@ impl Default for PreviewState {
             baseline: pack_values(),
             places: Vec::new(),
             places_open: false,
+            folder_refused: false,
             apply: Default::default(),
             detail: 2,
             settings_y: 0.0,
@@ -389,6 +394,10 @@ pub struct ShellIds {
     pub place_line: Id,
     pub place_list: Id,
     pub place_rows: Vec<Id>,
+    /// The list's "Choose a folder…" row, while the list is open.
+    pub place_action: Id,
+    /// The sentence under Apply about the places: no game found, or the folder chosen refused.
+    pub place_note: &'static str,
     pub place_text: String,
     /// The Apply button and the words under it (Id::ROOT when not built), and what they say, a line per sentence.
     pub apply: Id,
@@ -524,6 +533,8 @@ impl Default for ShellIds {
             place_line: o,
             place_list: o,
             place_rows: Vec::new(),
+            place_action: o,
+            place_note: "",
             place_text: String::new(),
             run: o,
             status: o,
@@ -824,7 +835,7 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
         s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, t, stacked);
-        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, notice: &s.apply, want: &mut s.want }, ids);
+        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 

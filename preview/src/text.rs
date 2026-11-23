@@ -631,7 +631,12 @@ pub fn and_list(names: &[&str]) -> String {
     }
 }
 pub const APPLY_SEAMS: &str = "On a world that already exists, new values leave visible seams between old and new chunks. They take full effect on a new world.";
-pub const NO_GAME_FOUND: &str = "No installed game was found.";
+pub const NO_GAME_FOUND: &str = "No installed game was found. Choose the folder of your game, the one that holds the mods folder.";
+/// In amber, after a folder chosen in the list was refused.
+pub const NOT_A_GAME: &str = "That folder has no mods folder, so it is not a game. Choose the folder that holds the mods folder.";
+/// The list's last row, and the title of the system's dialog it opens.
+pub const CHOOSE_FOLDER: &str = "Choose a folder\u{2026}";
+pub const CHOOSE_FOLDER_TITLE: &str = "Choose the folder of your game";
 /// The place line, which opens the list of places.
 pub fn place_to(what: &str) -> String {
     format!("To: {what}")
@@ -641,13 +646,15 @@ pub fn places_count(n: usize) -> String {
 }
 pub const PLACE_CHOOSE_GAME: &str = "To: choose a game";
 pub const PLACE_CHOOSE: &str = "To: choose a place";
-pub const PLACE_NONE_FOUND: &str = "To: no game found";
+pub const PLACE_CHOOSE_FOLDER: &str = "To: choose a folder";
 /// A row of the list: the place in the player's words, then how it is reached (beside its folder).
 pub fn your_game(name: &str) -> String {
     format!("{name}, your game")
 }
 pub const PRISM: &str = "Prism Launcher";
 pub const OFFICIAL_LAUNCHER: &str = "Minecraft Launcher";
+/// How a game reached through "Choose a folder…" is known: by the person's choice, not by a launcher.
+pub const CHOSEN_HOW: &str = "Chosen folder";
 pub const SERVER_PLACE: &str = "Test server, shared with everyone who joins";
 pub const SERVER_SHORT: &str = "Test server";
 pub const SERVER_HOW: &str = "Dedicated server";

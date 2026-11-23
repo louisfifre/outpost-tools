@@ -4,12 +4,14 @@
 
 mod common;
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
 
-use mere_base::{App, Event, Key, Mods, Vec2};
+use mere_base::{App, Event, Key, Launcher, Mods, Vec2};
 use mere_ui::{Id, Theme};
-use mere_win32::Renderer;
+use mere_win32::{Renderer, SystemLauncher};
 use preview::apply::{Host, Notice, Proc, Refusal, Running, Snapshot};
 use preview::places::{Game, Kind, Sources};
 use preview::settings::{Kind as SetKind, SETTINGS, pack_values};
@@ -22,6 +24,26 @@ struct Machine(Vec<Proc>);
 impl Host for Machine {
     fn processes(&self) -> Result<Vec<Proc>, String> {
         Ok(self.0.clone())
+    }
+}
+
+/// The system's launcher, but for its folder dialog, which answers with the folders given, one per ask, then with
+/// a cancel: no test opens the real dialog.
+struct Chooser(Mutex<VecDeque<PathBuf>>);
+
+impl Launcher for Chooser {
+    fn spawn(&self, cmd: &mut Command) -> std::io::Result<Child> {
+        SystemLauncher.spawn(cmd)
+    }
+    fn stop(&self, child: &mut Child) -> std::io::Result<()> {
+        SystemLauncher.stop(child)
+    }
+    fn open_folder(&self, path: &Path) -> std::io::Result<()> {
+        SystemLauncher.open_folder(path)
+    }
+    fn choose_folder(&self, title: &str) -> std::io::Result<Option<PathBuf>> {
+        assert_eq!(title, text::CHOOSE_FOLDER_TITLE);
+        Ok(self.0.lock().unwrap().pop_front())
     }
 }
 
@@ -78,11 +100,13 @@ struct Open<'a> {
     world: bool,
     size: (u32, u32),
     root: &'a Path,
+    /// What the folder dialog answers, in turn.
+    choose: Vec<PathBuf>,
 }
 
 impl<'a> Open<'a> {
     fn on(root: &'a Path) -> Open<'a> {
-        Open { pack: false, sources: None, procs: Vec::new(), world: false, size: (W, H), root }
+        Open { pack: false, sources: None, procs: Vec::new(), world: false, size: (W, H), root, choose: Vec::new() }
     }
 }
 
@@ -91,6 +115,7 @@ fn open(o: Open) -> Rig {
     let (w, h) = o.size;
     let mut r = Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
     let mut runs = common::runs(o.root, &[]);
+    runs.launcher = Box::new(Chooser(Mutex::new(o.choose.into())));
     if o.pack {
         runs.pack = Some(o.root.join("pack"));
     }
@@ -411,6 +436,9 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(list.y + list.h <= line.y, "the list hangs above the line");
     assert_eq!(rig.app.ids().place_rows.len(), 1);
     assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_rows[0]), "the first row has the focus");
+    assert_ne!(rig.app.ids().place_action, Id::ROOT, "\"Choose a folder\u{2026}\" stays with a single game");
+    let action = rig.rect(rig.app.ids().place_action);
+    assert!(action.y > rig.rect(rig.app.ids().place_rows[0]).y && action.y + action.h <= list.y + list.h, "it is the list's last row");
     rig.park();
     rig.shot("apply3_one_open.png");
     // Enter, from the list, applies.
@@ -458,6 +486,7 @@ fn b4_b5_two_games_nothing_ticked_then_one() {
     rig.click_on(id);
     assert!(rig.app.state().places_open, "the list stays open while ticking");
     assert_eq!(rig.app.ids().place_text, "To: Exploration (Minecraft Launcher)");
+    assert_ne!(rig.app.ids().place_action, Id::ROOT);
     rig.park();
     rig.shot("apply3_two_open.png");
     // A press outside closes the list and reaches nothing.
@@ -478,7 +507,7 @@ fn b4_b5_two_games_nothing_ticked_then_one() {
     assert_eq!(again.app.state().places.len(), 1);
     assert_eq!(again.app.ids().place_text, text::PLACE_CHOOSE_GAME, "the place gone is no longer ticked; the one left was not ticked");
     assert!(!again.app.state().places[0].ticked, "a single game left is not ticked against a kept choice");
-    assert_eq!(std::fs::read_to_string(root.join("places.json")).unwrap(), "{\"ticked\":[]}", "dropped from the set");
+    assert_eq!(std::fs::read_to_string(root.join("places.json")).unwrap(), "{\"ticked\":[],\"chosen\":[]}", "dropped from the set");
 }
 
 /// The sources of `two_games` on folders already made.
@@ -531,15 +560,66 @@ fn b7_nothing_found() {
     let mut rig = open(Open { sources: Some(Sources { minecraft: Some(mc), ..Sources::default() }), world: true, ..Open::on(&root) });
     moved(&mut rig);
     assert!(rig.app.state().places.is_empty());
-    assert_eq!(rig.app.ids().place_text, text::PLACE_NONE_FOUND);
-    let id = rig.app.ids().place_line;
-    rig.click_on(id);
-    assert!(!rig.app.state().places_open, "an empty list does not open");
+    // At rest: the line says what to choose, the sentence how, Apply is dim.
+    assert_eq!(rig.app.ids().place_text, text::PLACE_CHOOSE_FOLDER);
+    assert_eq!(rig.app.ids().place_note, text::NO_GAME_FOUND);
     let id = rig.app.ids().apply;
     rig.click_on(id);
     assert!(!rig.app.applying());
-    rig.park();
+    rest(&mut rig, Vec2::new(700.0, 820.0));
     rig.shot("apply3_none.png");
+    // The list opens all the same, on its one row: "Choose a folder…", with no rule above it.
+    open_list(&mut rig);
+    assert!(rig.app.ids().place_rows.is_empty());
+    let (list, action) = (rig.rect(rig.app.ids().place_list), rig.rect(rig.app.ids().place_action));
+    assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_action), "the one row has the focus");
+    assert_eq!(action.y - list.y, 5.0, "only the frame and the padding above the row, no rule: {action:?} in {list:?}");
+    rig.park();
+    rig.shot("apply3_none_open.png");
+    // Its dialog cancelled: nothing changes, and the line has the keyboard back.
+    let id = rig.app.ids().place_action;
+    rig.click_on(id);
+    assert!(!rig.app.state().places_open, "the list closes under the dialog");
+    assert!(rig.app.state().places.is_empty() && !rig.app.state().folder_refused);
+    assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_line));
+}
+
+#[test]
+fn b8_a_chosen_folder_that_is_not_a_game_is_refused_and_a_game_is_taken() {
+    let root = common::root("apply_b8");
+    let plain = root.join("Downloads");
+    std::fs::create_dir_all(&plain).unwrap();
+    let survival = holder(&root.join(r"Games\Survival"));
+    let o = Open { sources: Some(Sources::default()), world: true, choose: vec![plain, survival.clone()], ..Open::on(&root) };
+    let mut rig = open(o);
+    moved(&mut rig);
+    // 8: a folder with no mods folder is refused in one amber sentence, in the place of the one that asked for it.
+    open_list(&mut rig);
+    let id = rig.app.ids().place_action;
+    rig.click_on(id);
+    assert!(!rig.app.state().places_open);
+    assert!(rig.app.state().places.is_empty(), "no place was added");
+    assert_eq!(rig.app.ids().place_text, text::PLACE_CHOOSE_FOLDER);
+    assert_eq!(rig.app.ids().place_note, text::NOT_A_GAME);
+    rest(&mut rig, Vec2::new(700.0, 820.0));
+    rig.shot("apply3_refused.png");
+    // Then the game's folder: a row of the list, ticked, written by Apply.
+    open_list(&mut rig);
+    let id = rig.app.ids().place_action;
+    rig.click_on(id);
+    let rows: Vec<(Kind, &str, &str, bool)> = rig.app.state().places.iter().map(|p| (p.kind, p.name.as_str(), p.how.as_str(), p.ticked)).collect();
+    assert_eq!(rows, vec![(Kind::Game, "Survival, your game", text::CHOSEN_HOW, true)]);
+    assert_eq!(rig.app.ids().place_text, "To: Survival");
+    assert_eq!(rig.app.ids().place_note, "", "the refusal is gone");
+    apply_now(&mut rig);
+    assert!(std::fs::read_to_string(file_of(&survival)).unwrap().contains("\"vertical_scale\": 1.75,"));
+    assert_eq!(rig.app.ids().apply_text, "Saved for Survival. Restart the game to use it. Only land nobody has visited yet will change.");
+    // The next session keeps the folder and its tick.
+    drop(rig);
+    let again = open(Open { sources: Some(Sources::default()), ..Open::on(&root) });
+    assert_eq!(again.app.state().places.len(), 1);
+    assert!(again.app.state().places[0].ticked);
+    assert_eq!(again.app.ids().place_text, "To: Survival");
 }
 
 #[test]
@@ -563,6 +643,7 @@ fn b9_the_maintainer_s_machine_with_the_list_open() {
     assert_eq!(kinds, vec![(Kind::Game, true), (Kind::Game, false), (Kind::Server, false), (Kind::Source, false)], "the repository's places last, not ticked");
     assert_eq!(rig.app.ids().place_text, "To: Exploration");
     open_list(&mut rig);
+    assert_ne!(rig.app.ids().place_action, Id::ROOT, "the list ends on \"Choose a folder\u{2026}\"");
     rig.park();
     rig.shot("apply3_maint.png");
     // No scroll bar: every row is inside the window.
