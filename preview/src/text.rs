@@ -611,3 +611,25 @@ pub const APPLY_FAIL_READ: &str = "The pack\u{2019}s config could not be read.";
 pub const APPLY_FAIL_WRITE: &str = "The pack\u{2019}s config could not be written.";
 pub const APPLY_FAIL_KEY: &str = "The pack\u{2019}s config does not look as expected. Nothing was written.";
 pub const APPLY_SEAMS: &str = "On a world that already exists, new values leave visible seams between old and new chunks. They take full effect on a new world.";
+/// The place line, which opens the list of places.
+pub fn place_to(what: &str) -> String {
+    format!("To: {what}")
+}
+pub fn places_count(n: usize) -> String {
+    format!("{n} places")
+}
+pub const PLACE_CHOOSE_GAME: &str = "To: choose a game";
+pub const PLACE_CHOOSE: &str = "To: choose a place";
+pub const PLACE_NONE_FOUND: &str = "To: no game found";
+/// A row of the list: the place in the player's words, then how it is reached (beside its folder).
+pub fn your_game(name: &str) -> String {
+    format!("{name}, your game")
+}
+pub const PRISM: &str = "Prism Launcher";
+pub const OFFICIAL_LAUNCHER: &str = "Minecraft Launcher";
+pub const SERVER_PLACE: &str = "Test server, shared with everyone who joins";
+pub const SERVER_SHORT: &str = "Test server";
+pub const SERVER_HOW: &str = "Dedicated server";
+pub const SOURCE_PLACE: &str = "Pack source folder, for its next version";
+pub const SOURCE_SHORT: &str = "Pack source folder";
+pub const SOURCE_HOW: &str = "Repository";

@@ -19,6 +19,7 @@ pub mod map;
 pub mod overflow;
 pub mod paint;
 pub mod panels;
+pub mod places;
 pub mod run;
 pub mod scene;
 pub mod section;
