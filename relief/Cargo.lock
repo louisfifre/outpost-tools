@@ -706,8 +706,8 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "world-preview"
-version = "0.22.0"
-source = "git+https://github.com/louisfifre/world-preview?tag=v0.22.0#a9e61a84efd839a7b8d19a7291fadfc0e462f054"
+version = "0.24.0"
+source = "git+https://github.com/louisfifre/world-preview?tag=v0.24.0#78705a128117dd02bf50a9dc9ba7074df366ac40"
 dependencies = [
  "regex",
  "serde_json",
