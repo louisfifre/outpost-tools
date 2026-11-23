@@ -134,7 +134,7 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let home = LauncherHome::new(Bridge::threads(api.clone()), Calendar::real());
     let theme = if dark { Theme::dark() } else { Theme::light() };
     let (w, h) = preview::min_size_px((1280, 880));
-    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, mere_win32::reduced_motion()).follow_scheme(scheme == "system");
+    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, mere_win32::reduced_motion()).follow_scheme(scheme == "system").with_places(launcher_native::sources(&api));
     if unreadable {
         app.state_mut().trouble = text::UNREADABLE.to_string();
     }

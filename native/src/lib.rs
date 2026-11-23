@@ -47,6 +47,19 @@ pub fn runs(api: &launcher::api::Api, repo: &std::path::Path) -> Runs {
     }
 }
 
+/// Where the preview's Apply looks for places on this machine: Prism's instances as the launcher lists them, the
+/// official launcher's installations, and the pack's test server. What cannot be read is left out, the reason in the
+/// log.
+pub fn sources(api: &launcher::api::Api) -> preview::places::Sources {
+    let mut sources = preview::places::Sources::system();
+    match api.prism_games() {
+        Ok(games) => sources.prism = games.into_iter().map(|(name, dir)| preview::places::Game { name, dir }).collect(),
+        Err(why) => api.write_log(&format!("apply: Prism's instances are not known: {why}")),
+    }
+    sources.dev_server = api.preview_paths().ok().map(|p| p.dev_server);
+    sources
+}
+
 /// The app: the preview's, in Home, with the launcher's Home and, when given, the runs the preview tool starts.
 pub fn app(theme: Theme, dark: bool, size: Vec2, world: Option<World>, runs: Option<Runs>, home: LauncherHome, reduce_motion: bool) -> PreviewApp {
     let mut state = PreviewState::for_world(world.as_ref());
