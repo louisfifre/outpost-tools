@@ -1,5 +1,5 @@
 //! Where Apply writes: every place found on this machine that holds a Tectonic config (`config/tectonic.json`), and
-//! every game folder the person chose, each a row of the tick list above Apply. A place's file is only ever
+//! every game folder the person chose, each a row of the dropdown above Apply. A place's file is only ever
 //! rewritten, never created: a folder found without one is no place, and a place whose file is missing (a chosen game
 //! that has none, a file that went away since) is refused when it is written.
 //!
@@ -7,7 +7,7 @@
 //! - the games: the Prism instances the host lists, then the installations of the official launcher, read from the
 //!   game folders its own `launcher_profiles.json` declares, then the folders the person chose ("Choose a folder…"),
 //!   each as long as it is a game, one that holds a mods folder;
-//! - when the program drives a pack repository, under a rule: its test server, and the pack's source folder (the
+//! - when the program drives a pack repository, under a separator: its test server, and the pack's source folder (the
 //!   write of the former "Apply to pack", a prod copy's snapshot included).
 //!
 //! Which places are ticked is the person's: it is kept in the window's own data (`places.json` beside `draft.json`),

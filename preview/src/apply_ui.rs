@@ -1,12 +1,12 @@
 //! The Apply block under the settings: the two choices that put every value back (to the pack's, to Tectonic's own;
 //! each is pressed while the form is there, both when the pack is Tectonic's own), the place line that opens the
-//! list of places above itself (`places.rs`, the kit's tick list, ending on "Choose a folder…"), Apply (the only
-//! control that writes), what the last apply said, what to do when no game was found or a folder was refused, and
-//! the warning about seams. The shell only records the press (`Want::Apply`); the application
+//! list of places above itself (`places.rs`, the kit's dropdown with check boxes, ending on "Choose a folder…"),
+//! Apply (the only control that writes), what the last apply said, what to do when no game was found or a folder was
+//! refused, and the warning about seams. The shell only records the press (`Want::Apply`); the application
 //! writes (`apply.rs`).
 
 use mere_layout::{Edges, Style};
-use mere_ui::{ButtonLook, ButtonOpts, TabLook, TabOpts, TextLook, TickListOpts, TickRow, Tone, Ui, choice_style};
+use mere_ui::{ButtonLook, ButtonOpts, DropdownOpts, Mark, OptionRow, TabLook, TabOpts, TextLook, Tone, Ui, choice_style};
 
 use crate::apply::{Notice, Refusal, Report, Running, Snapshot};
 use crate::places::{self, Kind, Place};
@@ -121,25 +121,30 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         // with no place found, for its last row: "Choose a folder…".
         let line = places::line(s.places);
         ids.place_text = line.clone();
-        let opts = TickListOpts { up: true, disabled: false };
+        let opts = DropdownOpts { up: true, disabled: false };
         let mut rows = Vec::new();
         let (mut action, mut choose) = (mere_ui::Id::ROOT, false);
         let places = &mut *s.places;
-        let r = ui.tick_list("place", &line, s.open, opts, |ui| {
+        let r = ui.dropdown("place", &line, s.open, opts, |ui| {
             let mut before = None;
             for (i, p) in places.iter_mut().enumerate() {
-                // The repository's places come after the games, under a thin rule.
+                // The repository's places come after the games, under a separator.
                 if before == Some(Kind::Game) && p.kind != Kind::Game {
-                    ui.tick_rule();
+                    ui.dropdown_separator();
                 }
                 before = Some(p.kind);
-                let row = TickRow { name: &p.name, how: &p.how, path: &p.path, disabled: false };
-                rows.push(ui.tick_row(&format!("p{i}"), row, &mut p.ticked).id);
+                // Several places at once: each row has its check box, and a press flips that place alone.
+                let row = OptionRow { label: &p.name, detail: &p.how, detail_tail: &p.path, mark: Mark::Check, selected: p.ticked, disabled: false };
+                let o = ui.option(&format!("p{i}"), row);
+                if o.clicked {
+                    p.ticked = !p.ticked;
+                }
+                rows.push(o.id);
             }
             if !places.is_empty() {
-                ui.tick_rule();
+                ui.dropdown_separator();
             }
-            let a = ui.tick_action("choose", text::CHOOSE_FOLDER);
+            let a = ui.dropdown_action("choose", text::CHOOSE_FOLDER);
             (action, choose) = (a.id, a.clicked);
         });
         ids.place_line = r.line.id;
