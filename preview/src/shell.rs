@@ -886,11 +886,12 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
                     // The pack's value, said beside a field that differs from it.
                     let pack = (!same_value(values[i], baseline[i])).then(|| value_words(set.kind, baseline[i]));
                     let open = *help.open == Some(i);
-                    let facts = setting_facts(i, baseline);
-                    let about = HelpText { title: set.label, hint: text::setting_hint(set.key), facts: &facts };
+                    // The facts are written only for the row whose help is open.
+                    let facts = open.then(|| setting_facts(i, baseline));
+                    let about = facts.as_deref().map(|facts| HelpText { title: set.label, hint: text::setting_hint(set.key), facts });
                     let row = ValueRow { label: set.label, note: pack.as_deref().unwrap_or(""), mark: text::HELP_MARK, width, control_w: panels::setting_field(), gutter: 0.0 };
                     let v = &mut values[i];
-                    let r = ui.value_row(set.key, row, open.then_some(about), |ui| match set.kind {
+                    let r = ui.value_row(set.key, row, about, |ui| match set.kind {
                         Kind::Number(spec) => {
                             ui.number("field", v, spec);
                         }
@@ -926,7 +927,7 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
             ids.group_heads.push(r.head);
         }
         // Line 161.
-        ids.reset = ui.node("reset", Style { column: true, shrink: 0.0, pad: Edges::new(12.0, 0.0, 0.0, 0.0), ..Style::default() }, |ui| {
+        ids.reset = ui.node("reset", Style { column: true, shrink: 0.0, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), ..Style::default() }, |ui| {
             ui.paragraph(text::PACK_NOTE, TextLook::small(Tone::Muted));
         });
     };
@@ -1015,7 +1016,7 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
     let style = Style { column: true, margin: Margin { top: Side::Auto, ..Margin::default() }, shrink: 0.0, ..Style::default() };
     ids.run = ui.node("run", style, |ui| {
         ui.rule(Rule::Section, Edges::default());
-        let inner = Style { column: true, pad: Edges::new(12.0, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, 8.0), ..Style::default() };
+        let inner = Style { column: true, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() };
         ui.node("runBody", inner, |ui| {
             // `#status:empty { display: none }`: nothing to say, no box.
             ids.status_text = status_words(s);
@@ -1185,7 +1186,7 @@ fn steps_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
     };
     let muted = TextLook::body(Tone::Muted);
     let now_look = TextLook::body(Tone::Text);
-    let column = Style { column: true, gap: Vec2::new(0.0, 4.0), ..Style::default() };
+    let column = Style { column: true, gap: Vec2::new(0.0, mere_ui::tokens::GAP_TIGHT), ..Style::default() };
     ids.steps = ui.node("steps", column, |ui| match &shown {
         Steps::Empty => {}
         Steps::Run { done, now, share } => {
@@ -1678,7 +1679,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             ui.text(&tail, small);
             said.push_str(&tail);
             // `#pick button.none { margin-left: 8px }`.
-            ui.node("gap", Style { w: Dim::Px(8.0), shrink: 0.0, ..Style::default() }, |_| {});
+            ui.node("gap", Style { w: Dim::Px(mere_ui::tokens::GAP), shrink: 0.0, ..Style::default() }, |_| {});
             let none = if counted { text::PICK_NONE_MARKS } else { text::PICK_NONE };
             let r = ui.action("none", none, ActionLook::PickNone);
             ids.pick_none = r.id;
@@ -1831,8 +1832,8 @@ fn figures_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             ui.node(&key, Style { justify: Justify::End, ..Style::default() }, |ui| ui.text(&cell.text, TextLook::small(Tone::Muted)));
                         }
                         CellKind::Rule => {
-                            let span = Style { col_span_all: true, pad: Edges::vh(4.0, 0.0), ..Style::default() };
-                            ui.node(&key, span, |ui| ui.fill(Style { h: Dim::Px(1.0), grow: 1.0, shrink: 0.0, ..Style::default() }, t.line));
+                            let span = Style { col_span_all: true, column: true, pad: Edges::vh(mere_ui::tokens::GAP_TIGHT, 0.0), ..Style::default() };
+                            ui.node(&key, span, |ui| ui.rule(Rule::Separator, Edges::default()));
                         }
                         // Line 299: a name is read whole, so it may take a second line.
                         CellKind::Name => {
@@ -1884,7 +1885,7 @@ fn history_body(ui: &mut Ui, history: &[Entry], ids: &mut ShellIds, t: &Theme, p
     let f = &world.measured.figures;
     let runs = here(history, &made.seed, f.span, f.step);
     let len = runs.len();
-    ids.history_body = ui.hover_area("history", Style { column: true, gap: Vec2::new(0.0, 8.0), ..Style::default() }, |ui, at| {
+    ids.history_body = ui.hover_area("history", Style { column: true, gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() }, |ui, at| {
         // The pointer picks the nearest run, across every line at once (line 1630).
         // `#history { cursor: crosshair }` (line 310).
         if at.is_some() {

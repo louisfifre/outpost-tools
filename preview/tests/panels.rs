@@ -148,7 +148,7 @@ fn the_natural_widths_are_the_widest_rows_under_the_maximum() {
     let [left, right] = panels::natural();
     assert!((PANEL_MIN..=PANEL_MAX).contains(&left) && (PANEL_MIN..=PANEL_MAX).contains(&right), "{left} {right}");
     // "Lanterns over underground rivers": 32 cells of 7.2 px, the two gaps and the field, and the scrollbar's gutter.
-    let widest = mere_ui::TextLook::body(mere_ui::Tone::Text).width("Lanterns over underground rivers") + 2.0 * panels::SETTING_GAP + panels::setting_field() + mere_ui::GUTTER;
+    let widest = mere_ui::TextLook::body(mere_ui::Tone::Text).width("Lanterns over underground rivers") + 2.0 * mere_ui::tokens::GAP + panels::setting_field() + mere_ui::GUTTER;
     assert_eq!(left, widest.ceil());
     // That row is the widest label of the settings.
     for s in preview::settings::SETTINGS.iter() {
@@ -295,7 +295,7 @@ fn a_double_click_returns_the_panel_to_its_natural_width() {
 fn the_grip_draws_a_line_only_under_the_pointer() {
     let mut rig = Rig::new(1400, H as u32, state(), None);
     let g = rig.rect(rig.ids().grips[0]);
-    assert_eq!(g.w, panels::GRIP_W);
+    assert_eq!(g.w, mere_ui::SPLIT_GRIP_W);
     let (x, y) = (g.x + (g.w / 2.0).floor(), g.y + g.h / 2.0);
     let t = rig.theme;
     rig.move_to(Vec2::new(5.0, 400.0));
