@@ -23,7 +23,8 @@ use crate::home::Home;
 use crate::json::Json;
 use crate::map::MAP_IMAGE;
 use crate::paint::{View, paint};
-use crate::apply::{self, Fail, Host, Notice, Outcome, SystemHost, Target};
+use crate::apply::{self, Host, Notice, Refusal, Report, Spot, SystemHost, Written};
+use crate::places::{self, Kind, Repo, Sources};
 use crate::run::{self, Ask, DETAIL_BLOCKS, Drawn, Follow, Pace, Runs, Steps};
 use crate::scene::{self, Level};
 use crate::section::Shown;
@@ -98,9 +99,13 @@ pub struct PreviewApp {
     drape: Vec<u8>,
     /// The launcher's Home, when the host gave one.
     home: Option<Box<dyn Home>>,
-    /// Apply to pack: the machine it asks (given with a pack), and the write under way with the values it writes.
+    /// Apply: the machine it asks about what runs, and the write under way with the places and values it writes.
     apply_host: Option<Arc<dyn Host>>,
-    applying: Option<(JoinHandle<Outcome>, [f64; 43])>,
+    applying: Option<(JoinHandle<Report>, Vec<Spot>, [f64; 43])>,
+    /// Where places are looked for (the host's launchers, its test server); None looks only at the pack.
+    sources: Option<Sources>,
+    /// The ticked places as `places.json` holds them; None without runs, where nothing is kept.
+    ticked_saved: Option<BTreeSet<String>>,
     /// The form's values as `draft.json` holds them; None without runs, where nothing is kept.
     draft_saved: Option<[f64; 43]>,
     /// The run's own picture, which the stage shows over `world` while the run goes on: its last sketch, the map's
@@ -150,6 +155,8 @@ impl PreviewApp {
             home: None,
             apply_host: None,
             applying: None,
+            sources: None,
+            ticked_saved: None,
             draft_saved: None,
             drawn: None,
             base: None,
@@ -166,8 +173,6 @@ impl PreviewApp {
         self.state.pace = Arc::new(self.pace.clone());
         self.state.history = Arc::new(history::load(&runs.history()));
         self.state.before = std::fs::read_to_string(runs.before()).ok().and_then(|t| Json::parse(&t).ok()).and_then(|j| Figures::from_json(&j)).map(Arc::new);
-        // A pack is a place Apply can write to; the real machine is asked about what runs on it.
-        self.state.pack_known = runs.config_pack().is_some();
         // The pack's values are the ones its file holds now: an apply, or an edit by hand, moved them since the
         // copy in `settings.rs` was made. A form still on that copy follows.
         let held = runs.config_pack().as_ref().and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
@@ -177,8 +182,6 @@ impl PreviewApp {
             }
             self.state.baseline = held;
         }
-        // From a prod copy, what the snapshot's file holds too: Apply is lit while it is behind the form.
-        self.state.snapshot = snapshot_pack(&runs).and_then(|p| std::fs::read_to_string(p.join("config").join("tectonic.json")).ok()).and_then(|t| apply::read_values(&t));
         // What was typed last, generated or not, comes back over the last run's values.
         if let Some(typed) = crate::draft::load(&runs.draft(), &self.state.values) {
             self.state.values = typed;
@@ -189,7 +192,28 @@ impl PreviewApp {
         }
         self.runs = Some(runs);
         self.remember();
+        self.find_places();
         self
+    }
+
+    /// Where the places Apply writes to are looked for, beside the pack of the runs: the host's launchers and test
+    /// server (a test gives folders of its own).
+    pub fn with_places(mut self, sources: Sources) -> PreviewApp {
+        self.sources = Some(sources);
+        self.find_places();
+        self
+    }
+
+    /// The places, found again, ticked as the runs' folder keeps them.
+    fn find_places(&mut self) {
+        let repo = self.runs.as_ref().map_or_else(Repo::default, |r| Repo { pack: r.config_pack(), snapshot: snapshot_pack(r) });
+        let mut found = places::find(self.sources.as_ref().unwrap_or(&Sources::default()), &repo);
+        let kept = self.runs.as_ref().map(|r| places::load(&r.places()));
+        places::tick(&mut found, kept.clone().flatten().as_ref());
+        // What is written differs from what was kept when a kept place is gone or a single game was ticked: the
+        // next frame keeps the set as it is now.
+        self.ticked_saved = kept.map(Option::unwrap_or_default);
+        self.state.places = found;
     }
 
     /// Puts another machine under Apply (a test's).
@@ -712,36 +736,43 @@ impl PreviewApp {
         }
     }
 
-    /// Apply to pack: the write goes to a thread of its own, since looking at the machine takes a moment. The values
-    /// are kept with it, for they become the pack's if it works.
+    /// Apply: the writes go to a thread of their own, since looking at the machine takes a moment. Each place ticked
+    /// is written, in the list's order; the values are kept with them, for they become the pack's if its source is
+    /// written.
     fn apply(&mut self) {
-        let (Some(runs), Some(host)) = (self.runs.as_ref(), self.apply_host.clone()) else { return };
-        let (Some(pack), None) = (runs.config_pack(), self.applying.as_ref()) else { return };
-        // From a prod copy the game's sync serves the snapshot (`runs.pack`), so it is written as well as the source.
-        let snapshot = snapshot_pack(runs);
-        let target = Target { pack, snapshot, own_server: Some(runs.server()) };
+        if self.applying.is_some() {
+            return;
+        }
+        let spots: Vec<Spot> = self.state.places.iter().filter(|p| p.ticked).map(Spot::of).collect();
+        if spots.is_empty() {
+            return;
+        }
+        let host = self.apply_host.clone().unwrap_or_else(|| Arc::new(SystemHost));
+        // The preview's own server is not the dev server: it reads its own copy.
+        let own = self.runs.as_ref().map(Runs::server);
         let values = self.state.values;
         self.state.apply = Notice::Working;
-        self.applying = Some((std::thread::spawn(move || apply::apply(&*host, &target, &values)), values));
+        let job = spots.clone();
+        self.applying = Some((std::thread::spawn(move || apply::apply(&*host, &job, own.as_deref(), &values)), spots, values));
     }
 
-    /// The write ended: its words, and the pack's values become the ones written.
+    /// The writes ended: their words, what each place holds now, and the pack's values become the ones written when
+    /// its source was.
     fn look_apply(&mut self) -> bool {
-        if !self.applying.as_ref().is_some_and(|(t, _)| t.is_finished()) {
+        if !self.applying.as_ref().is_some_and(|(t, ..)| t.is_finished()) {
             return false;
         }
-        let Some((thread, values)) = self.applying.take() else { return false };
-        match thread.join() {
-            Ok(Outcome::Applied(_, running, snapshot)) => {
-                self.state.baseline = values;
-                if snapshot == apply::Snapshot::Written {
-                    self.state.snapshot = Some(values);
-                }
-                self.state.apply = Notice::Done { running, snapshot };
-            }
-            Ok(Outcome::Failed(f)) => self.state.apply = Notice::Failed(f),
-            Err(_) => self.state.apply = Notice::Failed(Fail::Write),
+        let Some((thread, spots, values)) = self.applying.take() else { return false };
+        let report = thread.join().unwrap_or_else(|_| {
+            observe!(Warn, "apply: the write stopped short");
+            let places = spots.into_iter().map(|s| Written { key: s.key, short: s.short, kind: s.kind, result: Err(Refusal::Write), snapshot: apply::Snapshot::Absent }).collect();
+            Report { values, places, running: Vec::new() }
+        });
+        if report.saved().any(|w| w.kind == Kind::Source) {
+            self.state.baseline = values;
         }
+        self.state.places.iter_mut().for_each(places::Place::refresh);
+        self.state.apply = Notice::Done(report);
         true
     }
 
@@ -904,6 +935,16 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                     observe!(Warn, "draft: {}: {e}", runs.draft().display());
                 }
                 self.draft_saved = Some(self.state.values);
+            }
+        }
+        // So are the places ticked.
+        if let (Some(runs), Some(saved)) = (&self.runs, &self.ticked_saved) {
+            let now = places::ticked_set(&self.state.places);
+            if *saved != now {
+                if let Err(e) = places::save(&runs.places(), &now) {
+                    observe!(Warn, "places: {}: {e}", runs.places().display());
+                }
+                self.ticked_saved = Some(now);
             }
         }
         // Before the list is drawn, so that the first frame already shows the picture.

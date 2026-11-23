@@ -592,25 +592,46 @@ pub const FIGURE_DEFS: [&str; 7] = [
     "",
     "Surface biomes met in this area, of all those the generator can place. The others are named at the end of the list of biomes.",
 ];
-/// Apply to pack: the settings' values written into the pack's Tectonic config.
-pub const APPLY_TO_PACK: &str = "Apply to pack";
-pub const APPLY_HINT: &str = "Write these values into the pack\u{2019}s Tectonic config, for the game to use";
-pub const APPLY_NO_PACK: &str = "No pack is known: start with --pack";
-pub const APPLY_SAME: &str = "The pack already holds these values";
+/// Apply: the settings' values written into the Tectonic config of each place ticked in the list above it.
+pub const APPLY: &str = "Apply";
+pub const APPLY_HINT: &str = "Write these values into the Tectonic config of each place ticked above";
+pub const APPLY_NO_PLACE: &str = "Tick a place above first";
+pub const APPLY_SAME: &str = "Every place ticked already holds these values";
 pub const APPLY_BEHIND: &str = "The launcher\u{2019}s copy of the pack is behind the pack: Apply brings it up to date.";
 pub const APPLY_BEHIND_HINT: &str = "Write these values into the launcher\u{2019}s copy of the pack, which is behind the pack";
 pub const APPLY_WORKING: &str = "Applying\u{2026}";
-pub const APPLIED: &str = "Applied to the pack.";
+/// After an Apply, once per place saved: the places, and what makes them take the values.
+pub fn saved_for(places: &str) -> String {
+    format!("Saved for {places}.")
+}
+pub const APPLY_RESTART: &str = "Restart the game to use it.";
+pub const APPLY_LAND: &str = "Only land nobody has visited yet will change.";
+/// After the pack's source or the test server was saved: what is running then takes it at its next start.
 pub const APPLY_GAME: &str = "The game is running: it takes them at its next start.";
 pub const APPLY_SERVER: &str = "The dev server is running: it takes them at its next start.";
 pub const APPLY_BOTH: &str = "The game and the dev server are running: they take them at their next start.";
 /// From a prod copy of the launcher: the one limit left, said after the sentence above it.
 pub const APPLY_PROD_LIMIT: &str = "They hold in the game until the next deploy, unless they are committed to the pack repository.";
 pub const APPLY_FAIL_SNAPSHOT: &str = "Written to the pack, but not to the launcher\u{2019}s copy of it: the game keeps the old values.";
-pub const APPLY_FAIL_READ: &str = "The pack\u{2019}s config could not be read.";
-pub const APPLY_FAIL_WRITE: &str = "The pack\u{2019}s config could not be written.";
-pub const APPLY_FAIL_KEY: &str = "The pack\u{2019}s config does not look as expected. Nothing was written.";
+/// A place refused, in amber, with why.
+pub fn not_saved(place: &str, why: &str) -> String {
+    format!("Not saved for {place}: {why}")
+}
+pub const REFUSED_IN_USE: &str = "the game is using the file. Close the game, then apply again.";
+pub const REFUSED_MISSING: &str = "it has no Tectonic config, and Apply does not create one.";
+pub const REFUSED_KEY: &str = "its Tectonic config does not look as expected. Nothing was written there.";
+pub const REFUSED_READ: &str = "its Tectonic config could not be read.";
+pub const REFUSED_WRITE: &str = "its Tectonic config could not be written.";
+/// Names in a sentence: "A", "A and B", "A, B and C".
+pub fn and_list(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
 pub const APPLY_SEAMS: &str = "On a world that already exists, new values leave visible seams between old and new chunks. They take full effect on a new world.";
+pub const NO_GAME_FOUND: &str = "No installed game was found.";
 /// The place line, which opens the list of places.
 pub fn place_to(what: &str) -> String {
     format!("To: {what}")

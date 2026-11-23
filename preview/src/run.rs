@@ -369,6 +369,10 @@ impl Runs {
     pub fn draft(&self) -> PathBuf {
         self.root.join("draft.json")
     }
+    /// The places Apply writes to that are ticked (`places.rs`).
+    pub fn places(&self) -> PathBuf {
+        self.root.join("places.json")
+    }
     /// The page's localStorage `preview.before`: the figures of the run before the one on screen.
     pub fn before(&self) -> PathBuf {
         self.root.join("before.json")
