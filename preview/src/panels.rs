@@ -32,8 +32,9 @@ pub const MIN_HEIGHT: f32 = 600.0;
 pub const GRIP_W: f32 = 8.0;
 
 // The content's own measures: the rows are built with these same names (shell.rs, mere-ui's list), so the natural widths follow them.
-/// `.setting`: the gap between its three columns. The field's width is `setting_field()`.
-pub const SETTING_GAP: f32 = 10.0;
+/// A setting's row (the kit's value row): its three columns are the kit's `gap` apart. The field's width is
+/// `setting_field()`.
+pub const SETTING_GAP: f32 = mere_ui::tokens::GAP;
 /// The gap between the columns of the figures grid, and the least widths of its value and change columns (the
 /// list rows' own, so that a figures row and a list row of one panel read alike).
 pub const FIG_GAP: f32 = 14.0;
