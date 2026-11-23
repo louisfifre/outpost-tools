@@ -18,6 +18,8 @@ pub struct PreviewPaths {
     pub dir: PathBuf,
     pub out: PathBuf,
     pub exports: PathBuf,
+    /// The pack's test server (`$DevServerDir`): a place Apply can write to.
+    pub dev_server: PathBuf,
 }
 
 /// A prod copy (<checkout>\prod\current, staged by the pack repository's launcher\deploy-prod.ps1) holds a snapshot of
@@ -141,6 +143,7 @@ impl Api {
             dir: config.preview_dir.clone(),
             out: config.preview_dir.join("out"),
             exports: config.preview_exports.clone(),
+            dev_server: config.dev_server.clone(),
         })
     }
 

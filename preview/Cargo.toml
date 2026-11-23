@@ -7,11 +7,11 @@ publish = false
 license = "GPL-3.0-only"
 
 [dependencies]
-mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.14.0" }
-mere-layout = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.14.0" }
-mere-ui = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.14.0" }
-mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.14.0" }
-mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.14.0" }
+mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
+mere-layout = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
+mere-ui = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
+mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
+mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
 # The engine, as a library, from the world-preview repository.
 world-preview = { git = "https://github.com/louisfifre/world-preview", tag = "v0.24.0" }
 

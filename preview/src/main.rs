@@ -12,7 +12,9 @@
 //! The colours (step 18): the window follows the system's light or dark setting and switches live, as the page does
 //! with `prefers-color-scheme`; `--theme dark` or `light` fixes them (`--light` is `--theme light`). A picture is dark
 //! unless asked, so that it does not depend on the machine; `--theme system` reads the setting once.
-//! With --pack, the settings panel's Apply to pack writes its values into the pack's config/tectonic.json (only the\n//! values that differ, comments kept); nothing else is written there.
+//! The settings panel's Apply writes its values into the config/tectonic.json of each place ticked in the list above it
+//! (only the values that differ, comments kept): the games of this machine that hold one (the window looks for them;
+//! a picture does not), and with --pack the pack's own. Nothing else is written there.
 //! The history and the run before (`history.json`, `before.json`) are kept in --runs, the page's localStorage as files.
 //! The view keys, --biome and --structure are the page's own `?view=`, `&biome=` and `&structure=`; --camera is its
 //! `?camera=`, the 3D view's start in widths of the area (step 15); --level is how finely the 3D view draws the land
@@ -280,6 +282,10 @@ fn main() {
     let mut state = state;
     state.reduce_motion = mere_win32::reduced_motion();
     let mut app = PreviewApp::new(theme, dark, Vec2::new(w as f32, h as f32), state, world).follow_scheme(follows).with_runs(runs);
+    // The window looks for the games of this machine; a picture does not depend on the machine.
+    if shot.is_none() {
+        app = app.with_places(preview::places::Sources::system());
+    }
     app.ui_mut().set_clipboard(Box::new(mere_win32::SystemClipboard));
     match shot {
         Some(path) => {

@@ -256,14 +256,22 @@ fn check_panel(r: &Rig, what: &str) {
 #[test]
 fn h7_a_long_hint_wraps_and_the_cross_keeps_its_line() {
     // A long hint at the natural width, and a long title in the narrowest stacked panel, where it wraps too.
-    let wide = PreviewState { help: Some(index("ultrasmooth")), ..PreviewState::default() };
+    // The list scrolled a little: under it the place line and Apply leave it too short to show that row at the top.
+    let wide = PreviewState { help: Some(index("ultrasmooth")), settings_y: 150.0, ..PreviewState::default() };
     let r = Rig::new(Theme::dark(), SIZE, wide);
     check_panel(&r, "wide");
     assert!(r.rect(r.ids.help_text).h >= 3.0 * 18.0, "the long hint wraps onto several lines");
 
     // Stacked, the panels' column is scrolled to its end, where that row is: a help goes with its row.
     let narrow = PreviewState { help: Some(index("river_lanterns")), panel_y: [10_000.0, 0.0], ..PreviewState::default() };
-    let r = Rig::new(Theme::dark(), Vec2::new(preview::MIN_SIZE.0, 800.0), narrow);
+    let mut r = Rig::new(Theme::dark(), Vec2::new(preview::MIN_SIZE.0, 800.0), narrow);
+    // Under the list, the place line and Apply can push that row above the window: scrolled back until it is in sight.
+    let (y, top) = (r.rect(r.ids.rows[index("river_lanterns")]).y, r.rect(r.ids.left).y);
+    if y < top {
+        r.s.panel_y[0] += y - top - 10.0;
+        r.frame();
+        r.frame();
+    }
     check_panel(&r, "narrow");
     assert!(r.rect(r.ids.help_title).h >= 2.0 * 18.0, "the long title wraps beside the cross");
 }

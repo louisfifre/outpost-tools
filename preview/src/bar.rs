@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 
 use mere_base::{Cmd, Color, Rect, Vec2};
 use mere_layout::{Align, Dim, Display, Edges, Overflow, Position, Style, Track, Tracks};
-use mere_ui::{Icon, IconLook, IconOpts, MenuRow, Slide, TabLook, TabOpts, TextLook, Tone, Ui, strip_style};
+use mere_ui::{Icon, IconLook, IconOpts, TabMenuRow, Slide, TabLook, TabOpts, TextLook, Tone, Ui, strip_style};
 
 use crate::overflow::{self, Form, VIEW_COUNT};
 use crate::run::Drawn;
@@ -333,9 +333,9 @@ fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&Wo
     }
     if form.has_more() {
         // The views the strip lacks room for, then, when the bar is narrower still, 2D and 3D.
-        let mut rows: Vec<MenuRow> = form.more.iter().map(|&v| MenuRow { text: overflow::view_word(v).to_string(), disabled: off[v] }).collect();
+        let mut rows: Vec<TabMenuRow> = form.more.iter().map(|&v| TabMenuRow { text: overflow::view_word(v).to_string(), disabled: off[v] }).collect();
         if form.shapes_in_more {
-            rows.extend(text::SHAPES.iter().map(|w| MenuRow { text: w.to_string(), disabled: false }));
+            rows.extend(text::SHAPES.iter().map(|w| TabMenuRow { text: w.to_string(), disabled: false }));
         }
         let r = ui.tab_menu("more", text::MORE, &rows);
         ids.more = r.resp.id;

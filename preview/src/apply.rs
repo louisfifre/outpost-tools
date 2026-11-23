@@ -1,9 +1,10 @@
-//! "Apply to pack": the panel's values written into the pack's `config/tectonic.json`, so that the game uses them.
+//! Apply: the panel's values written into the `config/tectonic.json` of each place ticked (`places.rs`), so that
+//! the game uses them.
 //!
-//! The file is the pack's source (the maintainer's own, comments and all), so it is edited as text: only a value
-//! that differs is replaced, in place, and the file is swapped in by a rename. Nothing else is written: a game
-//! client and the dev server get the file when packwiz-installer copies it into them at their next start, so
-//! a running one is not in the way. After the write the machine is looked at once, only to say that.
+//! A file may be the pack's source (the maintainer's own, comments and all), so each is edited as text: only a value
+//! that differs is replaced, in place, and the file is swapped in by a rename. A place whose file is missing is
+//! refused, never given a new one. Each place has its own outcome: one refused does not stop the others. After the
+//! writes the machine is looked at once, only to say what takes the values at its next start.
 //!
 //! What runs is asked of a `Host`, so that a test fakes the machine. The real one asks PowerShell for the command
 //! lines of the Java processes (a command line is not readable from Rust's std).
@@ -12,6 +13,7 @@ use std::process::{Command, Stdio};
 
 use mere_base::Launcher;
 
+use crate::places::Kind;
 use crate::settings::SETTINGS;
 
 /// A running Java process: its program's name and its command line, both as the system gives them.
@@ -35,9 +37,13 @@ pub enum Running {
     /// The pack's dev server, by the folder its Fabric launcher jar is in.
     Server(PathBuf),
 }
-/// Why a write did not happen, short enough for the panel (the detail goes to the log).
+/// Why a place was not written, short enough for the panel (the detail goes to the log).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Fail {
+pub enum Refusal {
+    /// The place has no Tectonic config (any more): none is created.
+    Missing,
+    /// Another program holds the file (the game, most likely).
+    InUse,
     Read,
     Write,
     /// A key of the panel is missing from the file, or appears twice.
@@ -45,14 +51,27 @@ pub enum Fail {
 }
 
 /// What the panel says about the last apply.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum Notice {
     #[default]
     None,
     Working,
-    /// Written; what was running then, which reads the file at its next start.
-    Done { running: Vec<Running>, snapshot: Snapshot },
-    Failed(Fail),
+    Done(Report),
+}
+
+/// The end of an apply: the values written, each place's outcome in the list's order, and what was running then,
+/// which reads the files at its next start.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Report {
+    pub values: [f64; 43],
+    pub places: Vec<Written>,
+    pub running: Vec<Running>,
+}
+
+impl Report {
+    pub fn saved(&self) -> impl Iterator<Item = &Written> {
+        self.places.iter().filter(|w| w.result.is_ok())
+    }
 }
 
 /// What became of the second file, the snapshot a prod copy of the launcher runs from (the game's sync reads it).
@@ -67,29 +86,30 @@ pub enum Snapshot {
     Failed,
 }
 
-/// Where the pack is, and the server the preview itself runs (not the dev server: it reads its own copy).
-#[derive(Clone, Debug)]
-pub struct Target {
-    pub pack: PathBuf,
-    /// A prod copy's own pack, which its game sync serves: written after `pack` (the source, which a deploy keeps).
+/// One place to write: its file, and for a prod copy's pack source the snapshot's after it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spot {
+    pub key: String,
+    pub short: String,
+    pub kind: Kind,
+    pub file: PathBuf,
     pub snapshot: Option<PathBuf>,
-    pub own_server: Option<PathBuf>,
 }
 
-impl Target {
-    pub fn config(&self) -> PathBuf {
-        self.pack.join("config").join("tectonic.json")
-    }
-
-    fn snapshot_config(&self) -> Option<PathBuf> {
-        self.snapshot.as_ref().map(|p| p.join("config").join("tectonic.json"))
+impl Spot {
+    pub fn of(p: &crate::places::Place) -> Spot {
+        Spot { key: p.key.clone(), short: p.short.clone(), kind: p.kind, file: p.config(), snapshot: p.snapshot_config() }
     }
 }
 
-pub enum Outcome {
-    /// Written (how many values changed), and what was running.
-    Applied(usize, Vec<Running>, Snapshot),
-    Failed(Fail),
+/// A place's outcome: how many values changed in its file, or why it was refused.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Written {
+    pub key: String,
+    pub short: String,
+    pub kind: Kind,
+    pub result: Result<usize, Refusal>,
+    pub snapshot: Snapshot,
 }
 fn lower(p: &Path) -> String {
     p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase()
@@ -180,15 +200,15 @@ fn spell(old: &str, switch: bool, value: f64) -> String {
 
 /// The config with the values that differ replaced, and how many. A key that the file lacks (or has twice) is an
 /// error: nothing is guessed.
-pub fn rewrite(config: &str, values: &[f64; 43]) -> Result<(String, usize), Fail> {
+pub fn rewrite(config: &str, values: &[f64; 43]) -> Result<(String, usize), Refusal> {
     let lines: Vec<&str> = config.split('\n').collect();
     let mut edits: Vec<(usize, usize, usize, String)> = Vec::new();
     for (i, set) in SETTINGS.iter().enumerate() {
         let found = find(&lines, set.key).map_err(|_| {
             mere_base::observe!(Warn, "apply: the key '{}' is missing from the config or appears twice", set.key);
-            Fail::Key
+            Refusal::Key
         })?;
-        let old = number_of(&found.token).ok_or(Fail::Key)?;
+        let old = number_of(&found.token).ok_or(Refusal::Key)?;
         let switch = matches!(set.kind, crate::settings::Kind::Switch);
         let new = if switch { f64::from(values[i] != 0.0) } else { values[i] };
         if !crate::settings::same_value(old, new) {
@@ -225,52 +245,66 @@ pub fn read_values(config: &str) -> Option<[f64; 43]> {
     Some(out)
 }
 
-/// The same values into the snapshot's file, by the same path. A file that already holds them is left alone.
-fn write_snapshot(file: &Path, values: &[f64; 43]) -> Snapshot {
-    let result = std::fs::read_to_string(file).map_err(|e| e.to_string()).and_then(|text| {
-        let (text, count) = rewrite(&text, values).map_err(|f| format!("{f:?}"))?;
-        if count > 0 { write_atomic(file, &text).map_err(|e| e.to_string()) } else { Ok(()) }
-    });
-    match result {
-        Ok(()) => Snapshot::Written,
-        Err(e) => {
-            mere_base::observe!(Warn, "apply: the snapshot {} was not written: {e}", file.display());
-            Snapshot::Failed
-        }
-    }
+/// Another program holds the file: Windows' sharing and lock violations.
+fn in_use(e: &std::io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(32 | 33))
 }
 
-/// The whole of an apply: the file is written whatever runs, then the machine is looked at to say what will only
-/// see the values at its next start. A machine that cannot be looked at is no reason to refuse.
-pub fn apply(host: &dyn Host, target: &Target, values: &[f64; 43]) -> Outcome {
-    let file = target.config();
-    let text = match std::fs::read_to_string(&file) {
-        Ok(t) => t,
-        Err(e) => {
-            mere_base::observe!(Warn, "apply: {}: {e}", file.display());
-            return Outcome::Failed(Fail::Read);
+/// One file: read, its values that differ replaced, swapped in. A missing file is refused, not created; a file that
+/// already holds the values is left alone. How many values changed.
+pub fn write_place(file: &Path, values: &[f64; 43]) -> Result<usize, Refusal> {
+    let said = |e: &std::io::Error| mere_base::observe!(Warn, "apply: {}: {e}", file.display());
+    let text = std::fs::read_to_string(file).map_err(|e| {
+        said(&e);
+        match e.kind() {
+            std::io::ErrorKind::NotFound => Refusal::Missing,
+            _ if in_use(&e) => Refusal::InUse,
+            _ => Refusal::Read,
         }
-    };
-    let (text, count) = match rewrite(&text, values) {
-        Ok(r) => r,
-        Err(f) => return Outcome::Failed(f),
-    };
+    })?;
+    let (text, count) = rewrite(&text, values)?;
     if count > 0 {
-        if let Err(e) = write_atomic(&file, &text) {
-            mere_base::observe!(Warn, "apply: {}: {e}", file.display());
-            return Outcome::Failed(Fail::Write);
-        }
+        write_atomic(file, &text).map_err(|e| {
+            said(&e);
+            // Swapping a file in over one another program has open without sharing its deletion is denied: when the
+            // file is not read-only, that program is what is in the way.
+            let denied = e.raw_os_error() == Some(5) && std::fs::metadata(file).is_ok_and(|m| !m.permissions().readonly());
+            if in_use(&e) || denied { Refusal::InUse } else { Refusal::Write }
+        })?;
     }
     mere_base::observe!(Info, "apply: {count} values written to {}", file.display());
-    let snapshot = target.snapshot_config().map_or(Snapshot::Absent, |f| write_snapshot(&f, values));
+    Ok(count)
+}
+
+/// The whole of an apply: each place is written whatever runs and whatever became of the others, a source's snapshot
+/// after it; then the machine is looked at to say what will only see the values at its next start. A machine that
+/// cannot be looked at is no reason to refuse. `own_server` is the preview's own server, which is not the dev server.
+pub fn apply(host: &dyn Host, spots: &[Spot], own_server: Option<&Path>, values: &[f64; 43]) -> Report {
+    let places = spots
+        .iter()
+        .map(|s| {
+            let result = write_place(&s.file, values);
+            let snapshot = match (&result, &s.snapshot) {
+                (Ok(_), Some(f)) => match write_place(f, values) {
+                    Ok(_) => Snapshot::Written,
+                    Err(why) => {
+                        mere_base::observe!(Warn, "apply: the snapshot {} was not written: {why:?}", f.display());
+                        Snapshot::Failed
+                    }
+                },
+                _ => Snapshot::Absent,
+            };
+            Written { key: s.key.clone(), short: s.short.clone(), kind: s.kind, result, snapshot }
+        })
+        .collect();
     let running = match host.processes() {
-        Ok(p) => running(&p, target.own_server.as_deref()),
+        Ok(p) => running(&p, own_server),
         Err(e) => {
             mere_base::observe!(Warn, "apply: the running programs could not be listed: {e}");
             Vec::new()
         }
     };
-    Outcome::Applied(count, running, snapshot)
+    Report { values: *values, places, running }
 }
 
 /// The real machine.
@@ -376,9 +410,9 @@ mod tests {
     #[test]
     fn a_missing_or_doubled_key_is_refused() {
         let missing = config().replace("\"ore_fix\"", "\"ore_fixx\"");
-        assert_eq!(rewrite(&missing, &pack_values()).unwrap_err(), Fail::Key);
+        assert_eq!(rewrite(&missing, &pack_values()).unwrap_err(), Refusal::Key);
         let twice = config().replace("\"last\": 0", "\"ore_fix\": false");
-        assert_eq!(rewrite(&twice, &pack_values()).unwrap_err(), Fail::Key);
+        assert_eq!(rewrite(&twice, &pack_values()).unwrap_err(), Refusal::Key);
     }
 
     #[test]
@@ -409,14 +443,25 @@ mod tests {
     const CLIENT: &str = r#"C:\prism\java\bin\javaw.exe -Xmx4G -cp lib.jar org.prismlauncher.EntryPoint"#;
     const GRADLE: &str = r#"C:\bin\java.exe --add-opens=java.base/java.lang=ALL-UNNAMED -cp gradle-launcher.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10"#;
 
-    /// A pack folder of its own under the system's temp folder, with the file in it.
-    fn pack(name: &str) -> Target {
+    /// A place of its own under the system's temp folder, with the file in it.
+    fn place(name: &str) -> Spot {
         let dir = std::env::temp_dir().join(format!("mere-apply-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("pack").join("config")).unwrap();
-        let t = Target { pack: dir.join("pack"), snapshot: None, own_server: Some(PathBuf::from(r"C:\preview\server")) };
-        std::fs::write(t.config(), config()).unwrap();
-        t
+        let file = crate::places::config_of(&dir.join("pack"));
+        std::fs::write(&file, config()).unwrap();
+        Spot { key: name.into(), short: name.into(), kind: Kind::Game, file, snapshot: None }
+    }
+
+    fn root_of(s: &Spot) -> PathBuf {
+        s.file.ancestors().nth(3).unwrap().to_path_buf()
+    }
+
+    const OWN: &str = r"C:\preview\server";
+
+    fn one(host: &dyn Host, s: &Spot, values: &[f64; 43]) -> (Result<usize, Refusal>, Vec<Running>) {
+        let mut r = apply(host, std::slice::from_ref(s), Some(Path::new(OWN)), values);
+        (r.places.remove(0).result, r.running)
     }
 
     #[test]
@@ -439,42 +484,98 @@ mod tests {
 
     #[test]
     fn a_running_game_or_server_does_not_stop_the_write_and_is_named_after_it() {
-        let t = pack("busy");
+        let t = place("busy");
         let host = Fake::new(vec![java(CLIENT), java(SERVER)]);
-        let Outcome::Applied(1, running, _) = apply(&host, &t, &with("vertical_scale", 2.0)) else { panic!("written") };
+        let (result, running) = one(&host, &t, &with("vertical_scale", 2.0));
+        assert_eq!(result, Ok(1));
         assert_eq!(running, vec![Running::Game, Running::Server(PathBuf::from(r"C:\server"))]);
-        let written = std::fs::read_to_string(t.config()).unwrap();
+        let written = std::fs::read_to_string(&t.file).unwrap();
         assert!(written.contains("\"vertical_scale\": 2.0,"));
-        assert!(!t.config().with_extension("json.tmp").exists(), "no part file is left");
-        let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
+        assert!(!t.file.with_extension("json.tmp").exists(), "no part file is left");
+        let _ = std::fs::remove_dir_all(root_of(&t));
     }
 
     #[test]
     fn an_unlistable_machine_still_writes() {
-        let t = pack("blind");
+        let t = place("blind");
         let mut host = Fake::new(vec![]);
         host.fail_listing = true;
-        assert!(matches!(apply(&host, &t, &with("ocean_offset", -0.5)), Outcome::Applied(1, r, _) if r.is_empty()));
-        assert!(std::fs::read_to_string(t.config()).unwrap().contains("\"ocean_offset\": -0.5,"));
-        let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
+        assert_eq!(one(&host, &t, &with("ocean_offset", -0.5)), (Ok(1), vec![]));
+        assert!(std::fs::read_to_string(&t.file).unwrap().contains("\"ocean_offset\": -0.5,"));
+        let _ = std::fs::remove_dir_all(root_of(&t));
     }
 
     #[test]
     fn nothing_to_change_writes_nothing() {
-        let t = pack("same");
-        let before = std::fs::metadata(t.config()).unwrap().modified().unwrap();
-        assert!(matches!(apply(&Fake::new(vec![]), &t, &pack_values()), Outcome::Applied(0, ..)));
-        assert_eq!(std::fs::metadata(t.config()).unwrap().modified().unwrap(), before);
-        let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
+        let t = place("same");
+        let before = std::fs::metadata(&t.file).unwrap().modified().unwrap();
+        assert_eq!(one(&Fake::new(vec![]), &t, &pack_values()).0, Ok(0));
+        assert_eq!(std::fs::metadata(&t.file).unwrap().modified().unwrap(), before);
+        let _ = std::fs::remove_dir_all(root_of(&t));
     }
 
     #[test]
     fn a_bad_file_is_refused_and_left_as_it_was() {
-        let t = pack("bad");
-        std::fs::write(t.config(), config().replace("\"ore_fix\"", "\"nope\"")).unwrap();
-        assert!(matches!(apply(&Fake::new(vec![]), &t, &with("vertical_scale", 2.0)), Outcome::Failed(Fail::Key)));
-        assert!(std::fs::read_to_string(t.config()).unwrap().contains("\"nope\""));
-        let _ = std::fs::remove_dir_all(t.pack.parent().unwrap());
+        let t = place("bad");
+        std::fs::write(&t.file, config().replace("\"ore_fix\"", "\"nope\"")).unwrap();
+        assert_eq!(one(&Fake::new(vec![]), &t, &with("vertical_scale", 2.0)).0, Err(Refusal::Key));
+        assert!(std::fs::read_to_string(&t.file).unwrap().contains("\"nope\""));
+        let _ = std::fs::remove_dir_all(root_of(&t));
+    }
+
+    #[test]
+    fn a_missing_file_is_refused_and_not_created() {
+        let t = place("missing");
+        std::fs::remove_file(&t.file).unwrap();
+        assert_eq!(one(&Fake::new(vec![]), &t, &with("vertical_scale", 2.0)).0, Err(Refusal::Missing));
+        assert!(!t.file.exists(), "no file was made");
+        let _ = std::fs::remove_dir_all(root_of(&t));
+    }
+
+    /// A file another program holds without sharing it, as a game can: that place is refused as in use, and the
+    /// place after it is still written.
+    #[test]
+    fn a_locked_file_is_refused_as_in_use_and_the_next_place_is_written() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (locked, free) = (place("locked"), place("free"));
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(&locked.file).unwrap();
+        let r = apply(&Fake::new(vec![]), &[locked.clone(), free.clone()], None, &with("vertical_scale", 2.0));
+        drop(held);
+        let results: Vec<_> = r.places.iter().map(|w| (w.key.as_str(), w.result)).collect();
+        assert_eq!(results, vec![("locked", Err(Refusal::InUse)), ("free", Ok(1))]);
+        assert!(std::fs::read_to_string(&locked.file).unwrap().contains("\"vertical_scale\": 1.5,"), "the locked file is as it was");
+        // Held by a reader that lets others read but not delete: the swap is what fails then, still as in use.
+        let shared = std::fs::OpenOptions::new().read(true).share_mode(1).open(&locked.file).unwrap();
+        let swap = one(&Fake::new(vec![]), &locked, &with("vertical_scale", 2.0)).0;
+        drop(shared);
+        assert_eq!(swap, Err(Refusal::InUse));
+        assert!(!locked.file.with_extension("json.tmp").exists(), "no part file is left");
+        // A read-only file is no game's doing.
+        let mut perms = std::fs::metadata(&locked.file).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&locked.file, perms.clone()).unwrap();
+        let ro = one(&Fake::new(vec![]), &locked, &with("vertical_scale", 2.0)).0;
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&locked.file, perms).unwrap();
+        assert_eq!(ro, Err(Refusal::Write));
+        let _ = std::fs::remove_dir_all(root_of(&locked));
+        let _ = std::fs::remove_dir_all(root_of(&free));
+    }
+
+    /// A prod copy's pack source: the snapshot is written after it, and only when the source was.
+    #[test]
+    fn a_source_s_snapshot_follows_it() {
+        let (mut source, snap) = (place("source"), place("snap"));
+        source.snapshot = Some(snap.file.clone());
+        let r = apply(&Fake::new(vec![]), std::slice::from_ref(&source), None, &with("max_y", 448.0));
+        assert_eq!((r.places[0].result, r.places[0].snapshot), (Ok(1), Snapshot::Written));
+        assert!(std::fs::read_to_string(&snap.file).unwrap().contains("\"max_y\": 448,"));
+        std::fs::remove_file(&snap.file).unwrap();
+        let r = apply(&Fake::new(vec![]), std::slice::from_ref(&source), None, &with("max_y", 384.0));
+        assert_eq!((r.places[0].result, r.places[0].snapshot), (Ok(1), Snapshot::Failed));
+        let _ = std::fs::remove_dir_all(root_of(&source));
+        let _ = std::fs::remove_dir_all(root_of(&snap));
     }
     /// The real file of the pack, when `OUTPOST_REPO` names the pack repository: every key of the panel is found
     /// once, and applying the pack's own values changes nothing in a copy.
