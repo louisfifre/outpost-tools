@@ -39,21 +39,37 @@ impl Api {
         cfg.exists().then_some(cfg)
     }
 
-    pub(super) fn profiles(&self) -> Result<Reply, Failure> {
+    // Each instance in the order of its folder: its id, its settings and its game folder (a link followed).
+    fn instance_list(&self) -> Result<Vec<(String, Cfg, PathBuf)>, Failure> {
         let instances = self.instances()?;
+        let mut dirs: Vec<_> = fs::read_dir(&instances).map_err(|e| e.to_string())?.flatten().collect();
+        dirs.sort_by_key(|d| d.file_name());
+        Ok(dirs
+            .into_iter()
+            .filter_map(|dir| {
+                let id = dir.file_name().to_string_lossy().to_string();
+                let cfg = Cfg::read(&self.instance_cfg(&id)?);
+                let game = dir.path().join("minecraft");
+                let game_dir = fs::read_link(&game).map(plain_path).unwrap_or(game);
+                Some((id, cfg, game_dir))
+            })
+            .collect())
+    }
+
+    /// The game of each Prism instance, by its name in Prism (its id when it has none) and its game folder: where the
+    /// world preview's Apply looks for a Tectonic config. Err says why Prism's instances are not known.
+    pub fn prism_games(&self) -> Result<Vec<(String, PathBuf)>, String> {
+        let list = self.instance_list().map_err(|failure| failure.why().to_string())?;
+        Ok(list.into_iter().map(|(id, cfg, game_dir)| (cfg.get("name").filter(|n| !n.trim().is_empty()).unwrap_or(id), game_dir)).collect())
+    }
+
+    pub(super) fn profiles(&self) -> Result<Reply, Failure> {
         let state = {
             let mut live = self.live();
             prism_state(&system::processes(&mut live.system))
         };
         let mut profiles = Vec::new();
-        let mut dirs: Vec<_> = fs::read_dir(&instances).map_err(|e| e.to_string())?.flatten().collect();
-        dirs.sort_by_key(|d| d.file_name());
-        for dir in dirs {
-            let id = dir.file_name().to_string_lossy().to_string();
-            let Some(cfg) = self.instance_cfg(&id) else { continue };
-            let cfg = Cfg::read(&cfg);
-            let game = dir.path().join("minecraft");
-            let game_dir = fs::read_link(&game).map(plain_path).unwrap_or(game);
+        for (id, cfg, game_dir) in self.instance_list()? {
             // Prism's own setting for what the game opens on: one switch, then a server address or a world.
             let server = cfg.get("JoinServerOnLaunchAddress").unwrap_or_default();
             let world = cfg.get("JoinWorldOnLaunch").unwrap_or_default();
