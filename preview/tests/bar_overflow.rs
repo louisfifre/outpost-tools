@@ -7,7 +7,7 @@
 mod common;
 
 use mere_base::{App, Button, Cmd, Event, Rect, Vec2};
-use mere_ui::{Id, MENU_ROW, Theme, Ui, tool_button_width};
+use mere_ui::{Id, LIST_PAD, LIST_ROW, Theme, Ui, tool_button_width};
 use mere_win32::Renderer;
 use preview::overflow::{self, Form, Inputs};
 use preview::world::World;
@@ -380,7 +380,7 @@ impl Rig {
 
     fn row(&self, i: usize) -> Vec2 {
         let b = self.more();
-        Vec2::new(b.x + 20.0, b.y + b.h + 1.0 + i as f32 * MENU_ROW + 10.0)
+        Vec2::new(b.x + 20.0, b.y + b.h + mere_ui::tokens::GAP_TIGHT + LIST_PAD + (i as f32 + 0.5) * LIST_ROW)
     }
 
     fn words(&mut self) -> Vec<String> {

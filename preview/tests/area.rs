@@ -3,7 +3,7 @@
 //! under the row. Built as `PreviewApp::frame` builds the shell, without a world and without a GPU.
 
 use mere_base::{Button, Cmd, Event, Vec2};
-use mere_ui::{MENU_ROW, Theme, Ui};
+use mere_ui::{LIST_PAD, LIST_ROW, Theme, Ui};
 use preview::run::DETAIL_BLOCKS;
 use preview::{PreviewState, ShellIds, build};
 
@@ -38,6 +38,11 @@ impl Rig {
         self.frame();
         self.ui.event(&Event::PointerUp { pos, button: Button::Left });
         self.frame();
+        // As the window does: one more frame when the last one changed what only the next shows (a pick closes
+        // the list after it was drawn).
+        if self.ui.want_redraw() {
+            self.frame();
+        }
     }
 
     fn says(&self, s: &str) -> bool {
@@ -61,7 +66,7 @@ fn a1_the_area_opens_its_sixteen_widths_and_a_row_sets_it() {
     }
 
     // The ninth row: 2304 points, 36,864 blocks, past the widest fine area.
-    let row = b.y + b.h + 1.0 + 8.0 * MENU_ROW + MENU_ROW / 2.0;
+    let row = b.y + b.h + mere_ui::tokens::GAP_TIGHT + LIST_PAD + (8.0 + 0.5) * LIST_ROW;
     r.click(Vec2::new(b.x + b.w / 2.0, row));
     assert_eq!(r.s.samples, 2304);
     assert!(!r.says("65,536 blocks"), "the menu closes on its choice");
@@ -78,7 +83,7 @@ fn a2_a_fine_area_keeps_the_detail_and_shows_no_hint() {
     let b = r.ui.rect(r.ids.select).unwrap();
     r.click(Vec2::new(b.x + b.w / 2.0, b.y + b.h / 2.0));
     // The eighth row: 2048 points, 32,768 blocks, the widest fine area.
-    r.click(Vec2::new(b.x + b.w / 2.0, b.y + b.h + 1.0 + 7.0 * MENU_ROW + MENU_ROW / 2.0));
+    r.click(Vec2::new(b.x + b.w / 2.0, b.y + b.h + mere_ui::tokens::GAP_TIGHT + LIST_PAD + (7.0 + 0.5) * LIST_ROW));
     assert_eq!(r.s.samples, 2048);
     assert_eq!(DETAIL_BLOCKS[r.s.detail], 16);
     assert_eq!(r.ids.area_hint, mere_ui::Id::ROOT, "no hint");
