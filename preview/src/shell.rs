@@ -15,7 +15,7 @@ use std::sync::Arc;
 use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
 use mere_ui::{
-    ButtonLook, ButtonOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
+    ActionLook, ActionOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
     choice_style, details_style, scroll_style, wrap_lines, GripResp, HelpText, Icon, Part, Rule, StagePlan, ValueRow,
 };
 
@@ -1043,19 +1043,19 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
                 // While a run is under way the button says so; once a setting moved it starts the new run in its
                 // place (lines 789-798). The shell only records the press: the application acts on it.
                 let (word, look, disabled) = match busy {
-                    Some((true, share, stopping)) => (text::GENERATING, ButtonLook::Running { share }, stopping),
-                    Some((false, _, stopping)) => (text::GENERATE, ButtonLook::Primary, stopping),
+                    Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
+                    Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
                     // Disabled: the map already shows these settings (line 467).
-                    None => (text::GENERATE, ButtonLook::Primary, same),
+                    None => (text::GENERATE, ActionLook::Primary, same),
                 };
                 ids.generate_text = word.to_string();
-                let r = ui.button_with("generate", word, look, ButtonOpts { disabled, grow: 1.0 });
+                let r = ui.action_with("generate", word, look, ActionOpts { disabled, grow: 1.0 });
                 ids.generate = r.id;
                 if r.clicked {
                     s.want = Some(Want::Generate);
                 }
                 if let Some((_, _, stopping)) = busy {
-                    let r = ui.stop_button("stopRun", stopping);
+                    let r = ui.stop_action("stopRun", stopping);
                     ids.stop = r.id;
                     ui.title(r.id, text::STOP);
                     if r.clicked {
@@ -1132,7 +1132,7 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                     let probe = Style { grow: 1.0, basis, min_w: Dim::Px(0.0), ..Style::default() };
                     ids.probe = ui.node("probe", probe, |ui| ui.ellipsis(&probe_text, TextLook::body(Tone::Muted)));
                     if cuts > 0 {
-                        let r = ui.button("nextCut", text::NEXT_CUT, ButtonLook::Link);
+                        let r = ui.action("nextCut", text::NEXT_CUT, ActionLook::Link);
                         ids.next_cut = r.id;
                         ui.title(r.id, text::NEXT_CUT_HINT);
                         if r.clicked {
@@ -1156,7 +1156,7 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             }
                         });
                     }
-                    let r = ui.button("export", text::EXPORT, ButtonLook::Link);
+                    let r = ui.action("export", text::EXPORT, ActionLook::Link);
                     ids.export = r.id;
                     ui.title(r.id, text::EXPORT_HINT);
                     if r.clicked {
@@ -1229,12 +1229,12 @@ fn steps_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
             ids.saved = ui.node("saved", notice, |ui| {
                 let path = Style { basis: Dim::Pct(100.0), column: true, min_w: Dim::Px(0.0), ..Style::default() };
                 ui.node("path", path, |ui| ui.flow(text::EXPORTED_TO, Tone::Muted, 6.0, folder, now_look));
-                let r = ui.button("openFolder", text::OPEN_FOLDER, ButtonLook::Link);
+                let r = ui.action("openFolder", text::OPEN_FOLDER, ActionLook::Link);
                 ids.open_folder = r.id;
                 if r.clicked {
                     s.want = Some(Want::OpenFolder);
                 }
-                let r = ui.button("closeNotice", text::CLOSE_NOTICE, ButtonLook::Link);
+                let r = ui.action("closeNotice", text::CLOSE_NOTICE, ActionLook::Link);
                 ids.close_notice = r.id;
                 if r.clicked {
                     s.steps = Steps::Empty;
@@ -1662,7 +1662,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                         ui.text(", ", small);
                         said.push_str(", ");
                     }
-                    let r = ui.button(&format!("pick{i}"), &l.names[i], ButtonLook::Pick);
+                    let r = ui.action(&format!("pick{i}"), &l.names[i], ActionLook::Pick);
                     ui.title(r.id, &text::pick_remove(&l.names[i]));
                     ids.pick_names.push(r.id);
                     said.push_str(&l.names[i]);
@@ -1680,7 +1680,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             // `#pick button.none { margin-left: 8px }`.
             ui.node("gap", Style { w: Dim::Px(8.0), shrink: 0.0, ..Style::default() }, |_| {});
             let none = if counted { text::PICK_NONE_MARKS } else { text::PICK_NONE };
-            let r = ui.button("none", none, ButtonLook::PickNone);
+            let r = ui.action("none", none, ActionLook::PickNone);
             ids.pick_none = r.id;
             said.push_str(none);
             if r.clicked {
@@ -1730,7 +1730,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             let absent: Vec<&String> = world.filter(|_| view == View::Biomes).map_or(Vec::new(), |w| w.absent.iter().filter(|id| visible(id)).collect());
             if !absent.is_empty() {
                 let count = text::num(world.map_or(0, |w| w.absent.len()) as f64);
-                let opts = PartOpts { pressed: false, first: order.is_empty(), button: false };
+                let opts = PartOpts { pressed: false, first: order.is_empty(), action: false };
                 let r = ui.list_part("absentHead", text::ABSENT, &count, opts);
                 ui.title(r.id, text::ABSENT_HINT);
                 ids.list_parts.push(r.id);
@@ -1763,7 +1763,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             let sum: f64 = members.iter().map(|&i| l.cells[i]).sum();
             let (name, count) = (text::PARTS[part as usize], text::num(sum));
             let pressed = chosen.len() == part_ids.len() && part_ids.iter().all(|id| chosen.contains(id));
-            let r = ui.list_part(&format!("part{}", part as u8), name, &count, PartOpts { pressed, first, button: true });
+            let r = ui.list_part(&format!("part{}", part as u8), name, &count, PartOpts { pressed, first, action: true });
             ui.title(r.id, text::PART_HINT);
             ids.list_parts.push(r.id);
             ids.list_part_words.push((name.to_string(), count));

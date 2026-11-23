@@ -20,7 +20,7 @@
 //! The two tools keep their names, always.
 
 use mere_ui::tokens::{GAP, GAP_TIGHT, ICON, ICON_SQUARE};
-use mere_ui::{ADVANCE_EM, TOOL_GAP, TOOL_PAD_L, TOOL_PAD_R, TextLook, Tone, tool_button_width};
+use mere_ui::{ADVANCE_EM, TOOL_GAP, TOOL_PAD_L, TOOL_PAD_R, TextLook, Tone, tool_action_width};
 
 use crate::text;
 
@@ -158,7 +158,7 @@ pub fn more_step() -> f32 {
 /// The strip's width in a form.
 pub fn strip_width(i: &Inputs, form: &Form) -> f32 {
     // The strip's own 1 px of padding, then the tools: each pulled 1 px over what is before it.
-    let mut w = 1.0 + (tool_button_width(text::TOOL_NAMES[0]) - 1.0) + SEP + (tool_button_width(text::TOOL_NAMES[1]) - 1.0);
+    let mut w = 1.0 + (tool_action_width(text::TOOL_NAMES[0]) - 1.0) + SEP + (tool_action_width(text::TOOL_NAMES[1]) - 1.0);
     if i.preview_open {
         // The options' box pads its tabs by 1 px on the left, which the first tab's pull takes back, and by the
         // gap that keeps them off the tool.

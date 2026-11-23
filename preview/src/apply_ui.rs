@@ -7,7 +7,7 @@
 
 use mere_layout::{Edges, Style};
 use mere_ui::tokens::{GAP, GAP_WIDE};
-use mere_ui::{ButtonLook, ButtonOpts, MenuOpts, SelectionRow, Selector, TabLook, TabOpts, TextLook, Tone, Trigger, Ui, choice_style};
+use mere_ui::{ActionLook, ActionOpts, MenuOpts, SelectionRow, Selector, TabLook, TabOpts, TextLook, Tone, Trigger, Ui, choice_style};
 
 use crate::apply::{Notice, Refusal, Report, Running, Snapshot};
 use crate::places::{self, Kind, Place};
@@ -165,7 +165,7 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         }
 
         ui.node("go", Style::default(), |ui| {
-            let r = ui.button_with("apply", text::APPLY, ButtonLook::Primary, ButtonOpts { disabled: !enabled, grow: 1.0 });
+            let r = ui.action_with("apply", text::APPLY, ActionLook::Primary, ActionOpts { disabled: !enabled, grow: 1.0 });
             ids.apply = r.id;
             let hint = if none_ticked { text::APPLY_NO_PLACE } else if behind { text::APPLY_BEHIND_HINT } else if !stale { text::APPLY_SAME } else { text::APPLY_HINT };
             ui.title(r.id, hint);

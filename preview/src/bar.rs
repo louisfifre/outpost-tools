@@ -221,7 +221,7 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                 let (mode, icon) = if which == 0 { (Mode::Home, &icons.home) } else { (Mode::Preview, &icons.preview) };
                 let word = if which == 1 { marker.map(|m| text::PREVIEW_STATE[m]) } else { None };
                 let dot = word.map(|_| if marker == Some(2) { t.warn } else { t.text });
-                let r = ui.tool_button(&format!("tool{which}"), icon, text::TOOL_NAMES[which], IconOpts { pressed: s.mode == mode, disabled: false, joined: false, marker: dot });
+                let r = ui.tool_action(&format!("tool{which}"), icon, text::TOOL_NAMES[which], IconOpts { pressed: s.mode == mode, disabled: false, joined: false, marker: dot });
                 ids.tools[which] = r.id;
                 ids.bar_buttons.push(r.id);
                 let name = text::MODES[which];
@@ -271,20 +271,20 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             }
             let ends = Style { align_items: Align::Center, pad: Edges::new(0.0, overflow::EDGE, 0.0, 0.0), ..Style::default() };
             ui.node("ends", ends, |ui| {
-                let r = ui.icon_button("minimize", &icons.minimize, IconLook::Caption, IconOpts::default());
+                let r = ui.icon_action("minimize", &icons.minimize, IconLook::Caption, IconOpts::default());
                 ids.ends[0] = r.id;
                 ui.title(r.id, text::MINIMIZE);
                 if r.clicked {
                     s.want = Some(Want::Minimize);
                 }
                 let (icon, word) = if s.maximized { (&icons.restore, text::RESTORE) } else { (&icons.maximize, text::MAXIMIZE) };
-                let r = ui.icon_button("maximize", icon, IconLook::Caption, IconOpts::default());
+                let r = ui.icon_action("maximize", icon, IconLook::Caption, IconOpts::default());
                 ids.ends[1] = r.id;
                 ui.title(r.id, word);
                 if r.clicked {
                     s.want = Some(Want::Maximize);
                 }
-                let r = ui.icon_button("close", &icons.close, IconLook::Close, IconOpts::default());
+                let r = ui.icon_action("close", &icons.close, IconLook::Close, IconOpts::default());
                 ids.ends[2] = r.id;
                 ui.title(r.id, text::CLOSE_WINDOW);
                 if r.clicked {
@@ -302,7 +302,7 @@ fn panel_toggle(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, which: us
     let name = if which == 0 { text::SETTINGS_PANEL } else { text::FIGURES_PANEL };
     // The window buttons' look, unframed; the icon, not a reversed box, says whether the panel is shown.
     let icon = &icons().panels[which][s.panel_open[which] as usize];
-    let r = ui.icon_button(&format!("panel{which}"), icon, IconLook::Caption, IconOpts::default());
+    let r = ui.icon_action(&format!("panel{which}"), icon, IconLook::Caption, IconOpts::default());
     ids.toggles[which] = r.id;
     ids.bar_buttons.push(r.id);
     ui.title(r.id, name);

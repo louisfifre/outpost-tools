@@ -7,7 +7,7 @@
 mod common;
 
 use mere_base::{App, Button, Cmd, Event, Rect, Vec2};
-use mere_ui::{Id, LIST_PAD, LIST_ROW, Theme, Ui, tool_button_width};
+use mere_ui::{Id, LIST_PAD, LIST_ROW, Theme, Ui, tool_action_width};
 use mere_win32::Renderer;
 use preview::overflow::{self, Form, Inputs};
 use preview::world::World;
@@ -229,7 +229,7 @@ fn the_bar_fits_at_every_width_with_the_tools_named() {
             for (i, tool) in ids.tools.iter().enumerate() {
                 assert!(words.iter().any(|t| t == text::TOOL_NAMES[i]), "{name} {w}: '{}' is not drawn", text::TOOL_NAMES[i]);
                 let r = rect_of(&ui, *tool);
-                assert!((r.w - tool_button_width(text::TOOL_NAMES[i])).abs() < 0.01, "{name} {w}: tool {i} is {} wide", r.w);
+                assert!((r.w - tool_action_width(text::TOOL_NAMES[i])).abs() < 0.01, "{name} {w}: tool {i} is {} wide", r.w);
             }
             // 2D and 3D are tabs or rows of "More", as the form says.
             assert_eq!(words.iter().any(|t| t == "2D"), !ids.form.shapes_in_more, "{name} {w}: 2D");
