@@ -177,26 +177,26 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mere-base"
-version = "0.14.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.14.0#d777ce1d5fe4d5b846959800f94b72ea2f1738fe"
+version = "0.15.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.15.0#24b04bdb1b262ef43f1ad2339f05b69e4aa19db7"
 
 [[package]]
 name = "mere-layout"
-version = "0.14.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.14.0#d777ce1d5fe4d5b846959800f94b72ea2f1738fe"
+version = "0.15.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.15.0#24b04bdb1b262ef43f1ad2339f05b69e4aa19db7"
 dependencies = [
  "mere-base",
 ]
 
 [[package]]
 name = "mere-png"
-version = "0.14.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.14.0#d777ce1d5fe4d5b846959800f94b72ea2f1738fe"
+version = "0.15.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.15.0#24b04bdb1b262ef43f1ad2339f05b69e4aa19db7"
 
 [[package]]
 name = "mere-ui"
-version = "0.14.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.14.0#d777ce1d5fe4d5b846959800f94b72ea2f1738fe"
+version = "0.15.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.15.0#24b04bdb1b262ef43f1ad2339f05b69e4aa19db7"
 dependencies = [
  "mere-base",
  "mere-layout",
@@ -204,8 +204,8 @@ dependencies = [
 
 [[package]]
 name = "mere-win32"
-version = "0.14.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.14.0#d777ce1d5fe4d5b846959800f94b72ea2f1738fe"
+version = "0.15.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.15.0#24b04bdb1b262ef43f1ad2339f05b69e4aa19db7"
 dependencies = [
  "mere-base",
  "windows",
