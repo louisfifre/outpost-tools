@@ -1,5 +1,5 @@
 //! Where Apply writes: every place found on this machine that holds a Tectonic config (`config/tectonic.json`), and
-//! every game folder the person chose, each a row of the dropdown above Apply. A place's file is only ever
+//! every game folder the person chose, each a row of the menu above Apply. A place's file is only ever
 //! rewritten, never created: a folder found without one is no place, and a place whose file is missing (a chosen game
 //! that has none, a file that went away since) is refused when it is written.
 //!
