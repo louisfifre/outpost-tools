@@ -48,13 +48,13 @@ fn widths(w: f32) -> [f32; 2] {
 #[test]
 fn l1_columns() {
     // What each panel wants on one line: the longest label of the settings, "Lanterns over underground rivers",
-    // 32 cells of 7.2, the gaps and the field (81.2: six cells of 7.2 for "-0.075", and 18 of border and padding) and the scrollbar's gutter (12) make 324; the figures' widest
+    // 32 cells of 7.2, the two gaps of 8 and the field (81.2: six cells of 7.2 for "-0.075", and 18 of border and padding) and the scrollbar's gutter (12) make 320; the figures' widest
     // row, "Sea, deeper than 45" with the width column of "10,000 blocks", the share and the swatch, makes 322.
-    assert_eq!(panels::natural(), [324.0, 322.0]);
+    assert_eq!(panels::natural(), [320.0, 322.0]);
     // Side by side: the panels pinned to the edges at their natural width, the middle what is left.
     for w in [1400.0, 1200.0, 1000.0] {
         let [l, rw] = widths(w);
-        assert_eq!([l, rw], [324.0, 322.0], "natural at {w}");
+        assert_eq!([l, rw], [320.0, 322.0], "natural at {w}");
         let (ui, ids, c) = shell(w, H);
         let y = BAR_H + c.pad.top;
         let h = H - BAR_H - c.pad.top - c.pad.bottom;
@@ -84,7 +84,7 @@ fn l3_sections_in_order() {
 #[test]
 fn l4_frame_and_under() {
     // The side is the middle column's width: what the two panels at their natural width leave of the window.
-    for (w, side) in [(1400.0, 642.0), (1200.0, 442.0), (1000.0, 242.0)] {
+    for (w, side) in [(1400.0, 646.0), (1200.0, 446.0), (1000.0, 246.0)] {
         let (ui, ids, _) = shell(w, H);
         let (m, f) = (r(&ui, ids.middle), r(&ui, ids.frame));
         near(f.w, side, "side");
@@ -99,7 +99,7 @@ fn l4_frame_and_under() {
     let (ui, ids, _) = shell(1400.0, 600.0);
     let f = r(&ui, ids.frame);
     near(f.w, 464.0, "short side");
-    near(f.x, r(&ui, ids.middle).x + (642.0 - 464.0) / 2.0, "short frame x");
+    near(f.x, r(&ui, ids.middle).x + (646.0 - 464.0) / 2.0, "short frame x");
     near(r(&ui, ids.under).y, f.y + 464.0 + 10.0, "short under y");
     near(r(&ui, ids.export).x + r(&ui, ids.export).w, f.x + f.w, "export right edge on the frame");
 }
@@ -110,8 +110,8 @@ fn l5_settings_groups_and_rows() {
     let heads: Vec<Rect> = ids.group_heads.iter().map(|&i| r(&ui, i)).collect();
     assert_eq!(heads.len(), 5);
     for (g, q) in heads.iter().enumerate() {
-        // 4 (14 between groups) + 16.5 + 4 + the 1 px hairline.
-        near(q.h, if g == 0 { 25.5 } else { 35.5 }, "head height");
+        // The title's 16.5, 4 under it and the 1 px separator; the space above is the group's own.
+        near(q.h, 21.5, "head height");
         if g > 0 {
             assert!(q.y > heads[g - 1].y);
         }
@@ -120,7 +120,7 @@ fn l5_settings_groups_and_rows() {
     let groups = grouped();
     // What a label has beside its "?" (16 px, 4 after the label): the row less the two gaps and the field.
     let body = mere_ui::TextLook::body(mere_ui::Tone::Text);
-    let room = r(&ui, ids.rows[0]).w - 2.0 * panels::SETTING_GAP - panels::setting_field() - 4.0 - 16.0;
+    let room = r(&ui, ids.rows[0]).w - 2.0 * mere_ui::tokens::GAP - panels::setting_field() - 4.0 - 16.0;
     for (g, members) in groups.iter().enumerate() {
         for (k, &i) in members.iter().enumerate() {
             // 2 + 24 + 2: the field is 18 + 2 x 3 + 2 x 1 high. A label that wraps beside its "?" is 18 a line.
@@ -134,6 +134,11 @@ fn l5_settings_groups_and_rows() {
         }
         let first = r(&ui, ids.rows[members[0]]);
         near(first.y, heads[g].y + heads[g].h + 4.0, "first row under its head");
+        // A group's title stands gap-wide under the last row of the group before it (4 for the first).
+        if g > 0 {
+            let last = r(&ui, ids.rows[*groups[g - 1].last().unwrap()]);
+            near(heads[g].y - (last.y + last.h), mere_ui::tokens::GAP_WIDE, "space between groups");
+        }
     }
 }
 
@@ -143,7 +148,7 @@ fn l6_gutter_is_reserved() {
     let left = r(&ui, ids.left);
     let first = r(&ui, ids.rows[0]);
     near(first.x + first.w, left.x + left.w - GUTTER, "row right edge");
-    assert_eq!(first.x + first.w, 28.0 + 324.0 - 12.0);
+    assert_eq!(first.x + first.w, 28.0 + 320.0 - 12.0);
     let _ = c;
 }
 

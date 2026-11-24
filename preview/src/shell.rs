@@ -15,10 +15,9 @@ use std::sync::Arc;
 use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
 use mere_ui::{
-    ButtonLook, ButtonOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
-    choice_style, details_style, scroll_style, wrap_lines, HelpText, Icon,
+    ActionLook, ActionOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
+    choice_style, details_style, scroll_style, wrap_lines, GripResp, HelpText, Icon, Part, Rule, StagePlan, ValueRow,
 };
-use mere_ui::tokens::GAP_TIGHT;
 
 use crate::home::Home;
 use crate::cut::{self, CUT_IMAGE, CutLook, NAV_H, NAV_IMAGE};
@@ -476,6 +475,18 @@ pub struct ShellIds {
     pub steps_items: Vec<String>,
 }
 
+impl ShellIds {
+    /// Keeps a side panel's id: the left one or the right one, `Id::ROOT` when it is closed.
+    fn left_right(&mut self, side: usize, id: Option<Id>) {
+        let id = id.unwrap_or(Id::ROOT);
+        if side == 0 {
+            self.left = id;
+        } else {
+            self.right = id;
+        }
+    }
+}
+
 impl Default for ShellIds {
     fn default() -> ShellIds {
         let o = Id::ROOT;
@@ -599,11 +610,6 @@ fn fills() -> Style {
     Style { grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_h: Dim::Px(0.0), ..Style::default() }
 }
 
-/// A horizontal rule of one pixel: the `border-top` or `border-bottom` of a block.
-fn rule() -> Style {
-    Style { h: Dim::Px(1.0), shrink: 0.0, ..Style::default() }
-}
-
 /// `.row` (line 204): a label column of 9em and the control.
 fn world_row() -> Style {
     Style {
@@ -611,18 +617,6 @@ fn world_row() -> Style {
         cols: Tracks::new(&[Track::Px(108.0), Track::MinMaxFr0(1.0)]),
         gap: Vec2::new(10.0, 0.0),
         align_items: Align::Center,
-        ..Style::default()
-    }
-}
-
-/// `.setting` (line 164): the label, the empty output, and the field in 8ch.
-fn setting_row() -> Style {
-    Style {
-        display: Display::Grid,
-        cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::Auto, Track::Px(panels::setting_field())]),
-        gap: Vec2::new(panels::SETTING_GAP, 0.0),
-        align_items: Align::Center,
-        pad: Edges::vh(2.0, 0.0),
         ..Style::default()
     }
 }
@@ -692,61 +686,36 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
             ids.home_body = home_body;
             return;
         }
-        let panel = |w: f32| Style { w: Dim::Px(w), shrink: 0.0, ..column() };
-        if !stacked {
-            // Beside: the settings panel, the stage and the figures panel in a row. A closed panel is not built and
-            // takes no room; the stage grows into it. Each open panel has a grip in the gap between it and the stage.
-            let page = Style { pad: cols.pad, w: Dim::Pct(100.0), ..fills() };
-            let stage_style = Style { grow: 1.0, shrink: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..column() };
-            ids.page = ui.node("page", page, |ui| {
-                if open[0] {
-                    ids.left = ui.node("left", panel(plan.widths[0]), |ui| left_column(ui, s, &mut ids, &t, false));
-                    grip_gap(ui, s, &mut ids, &t, 0);
-                }
-                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, middle_w.max(0.0), stage, shown));
-                if open[1] {
-                    grip_gap(ui, s, &mut ids, &t, 1);
-                    ids.right = ui.node("right", panel(plan.widths[1]), |ui| right_column(ui, s, &mut ids, &t, &cols, world, shown, false));
-                }
-            });
-        } else {
-            // Stacked: the stage on top, the open panels under it in equal columns, no line between any of them.
+        // The stage template: beside, the panels pinned to the edges with a grip in each gap; stacked, the stage on top
+        // and the open panels under it, each one whole that scrolls. A closed panel is not built and takes no room.
+        let widths = [open[0].then_some(plan.widths[0]), open[1].then_some(plan.widths[1])];
+        let layout = if stacked {
             let gap = panels::GAP_STACKED;
-            let page = Style { column: true, pad: Edges::new(cols.pad.top, gap, cols.pad.bottom, gap), gap: Vec2::new(0.0, gap), w: Dim::Pct(100.0), ..fills() };
-            let stage_style = Style { h: Dim::Px(column_h), shrink: 0.0, ..column() };
-            ids.page = ui.node("page", page, |ui| {
-                ids.middle = ui.node("middle", stage_style, |ui| middle_column(ui, s, &mut ids, &t, frame_size, middle_w.max(0.0), stage, shown));
-                ui.node("panels", Style { gap: Vec2::new(gap, 0.0), ..fills() }, |ui| {
-                    if open[0] {
-                        ids.left = ui.node("left", panel(plan.widths[0]), |ui| {
-                            let mut y = s.panel_y[0];
-                            let id = panel_scroll(ui, &mut y, |ui| left_column(ui, s, &mut ids, &t, true));
-                            s.panel_y[0] = y;
-                            ids.panel_scrolls[0] = id;
-                            ids.scroll_areas.push(id);
-                        });
-                    }
-                    if open[1] {
-                        ids.right = ui.node("right", panel(plan.widths[1]), |ui| {
-                            let mut y = s.panel_y[1];
-                            let id = panel_scroll(ui, &mut y, |ui| right_column(ui, s, &mut ids, &t, &cols, world, shown, true));
-                            s.panel_y[1] = y;
-                            ids.panel_scrolls[1] = id;
-                            ids.scroll_areas.push(id);
-                        });
-                    }
-                });
-            });
+            StagePlan { widths, stacked: true, stage_h: column_h, gap, pad: Edges::new(cols.pad.top, gap, cols.pad.bottom, gap) }
+        } else {
+            StagePlan { widths, stacked: false, stage_h: 0.0, gap: panels::GAP, pad: cols.pad }
+        };
+        let mut y = s.panel_y;
+        let r = ui.stage_template("page", layout, &mut y, |ui, part| match part {
+            Part::Side(0) => left_column(ui, s, &mut ids, stacked),
+            Part::Side(_) => right_column(ui, s, &mut ids, &t, &cols, world, shown, stacked),
+            Part::Stage => middle_column(ui, s, &mut ids, &t, frame_size, middle_w.max(0.0), stage, shown),
+        });
+        s.panel_y = y;
+        ids.page = r.page;
+        ids.middle = r.stage;
+        for side in 0..2 {
+            ids.left_right(side, r.sides[side]);
+            if let Some(id) = r.scrolls[side] {
+                ids.panel_scrolls[side] = id;
+                ids.scroll_areas.push(id);
+            }
+            if let Some(g) = r.grips[side] {
+                grip(ui, s, &mut ids, side, g);
+            }
         }
     });
     ids
-}
-
-/// A panel as one whole that scrolls, when the panels are stacked: the kit's scrollbar in a gutter of its own at the
-/// panel's right edge, no fade, and nothing inside it scrolls by itself.
-fn panel_scroll(ui: &mut Ui, y: &mut f32, body: impl FnOnce(&mut Ui)) -> Id {
-    let style = Style { margin: Margin::default(), pad: Edges::new(0.0, 0.0, 12.0, 0.0), ..scroll_style() };
-    ui.scroll("panel", y, style, ScrollOpts { fade: 0.0 }, body).id
 }
 
 /// Moves a panel with the grip being dragged: its width is where the press began plus the pointer's travel, between
@@ -761,44 +730,28 @@ fn drag_panel(ui: &Ui, s: &mut PreviewState, width: f32) {
     s.panel_w[g.side] = Some(panels::clamp_drag(width, s.panel_open, g.other, g.start + travel));
 }
 
-/// The gap between a panel and the stage, with the grip in its middle: `GRIP_W` wide and as tall as the panel. Nothing
-/// is drawn at rest; the pointer over it draws a line of 1 px in the muted colour, and a press held draws it in the
-/// text colour. A double click puts the panel back to its natural width.
-fn grip_gap(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, side: usize) {
+/// What a press on a panel's grip does: it takes hold of the panel's width, which `drag_panel` moves while it is held;
+/// a double click puts the panel back to its natural width.
+fn grip(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, side: usize, g: GripResp) {
     let plan = ids.plan;
-    let gap = Style { w: Dim::Px(panels::GAP), shrink: 0.0, justify: Justify::Center, ..Style::default() };
-    let (muted, text_colour) = (t.muted, t.text);
-    ui.node(&format!("gap{side}"), gap, |ui| {
-        let grip = Style { w: Dim::Px(panels::GRIP_W), shrink: 0.0, ..Style::default() };
-        let resp = ui.canvas(&format!("grip{side}"), grip, |ui, resp| {
-            if resp.pressed {
-                if ui.clicks() >= 2 {
-                    s.panel_w[side] = None;
-                    s.grip = None;
-                } else if let Some(p) = ui.pointer() {
-                    s.grip = Some(Grip { side, from: p.x, start: plan.widths[side], other: plan.widths[1 - side] });
-                }
-            }
-            if !resp.held && s.grip.is_some_and(|g| g.side == side) {
-                s.grip = None;
-            }
-            if resp.hovered || resp.held {
-                ui.want_cursor(Cursor::ResizeEW);
-            }
-            let colour = if resp.held { Some(text_colour) } else if resp.hovered { Some(muted) } else { None };
-            match (colour, resp.rect) {
-                (Some(color), Some(r)) => vec![Cmd::Fill { rect: Rect::new((r.w / 2.0).floor(), 0.0, 1.0, r.h), color }],
-                _ => Vec::new(),
-            }
-        });
-        ui.title(resp.id, text::RESIZE_PANEL);
-        ids.grips[side] = resp.id;
-    });
+    ui.title(g.resp.id, text::RESIZE_PANEL);
+    ids.grips[side] = g.resp.id;
+    if g.resp.pressed {
+        if g.reset {
+            s.panel_w[side] = None;
+            s.grip = None;
+        } else if let Some(p) = ui.pointer() {
+            s.grip = Some(Grip { side, from: p.x, start: plan.widths[side], other: plan.widths[1 - side] });
+        }
+    }
+    if !g.resp.held && s.grip.is_some_and(|g| g.side == side) {
+        s.grip = None;
+    }
 }
 
 /// The left column (lines 370-400): the world, the settings, and the run block under them. `stacked`: the whole
 /// column is one scroll area (the caller's), so the settings list shows its rows in it instead of scrolling by itself.
-fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, stacked: bool) {
+fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, stacked: bool) {
     let muted = TextLook::body(Tone::Muted);
 
     let r = ui.fold_with("world", text::WORLD, &mut s.world_open, mere_ui::FoldOpts { bare: stacked, ..Default::default() }, |ui| {
@@ -834,21 +787,21 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
         // Stacked, the list has no bar of its own: the column's scroll serves the filter and the list alike.
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
-        s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, t, stacked);
+        s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, stacked);
         crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 
-    run_block(ui, s, ids, t);
+    run_block(ui, s, ids);
 }
 
 /// The filter's help in `PreviewState::help`, past the settings' indices.
 pub const FILTER_HELP: usize = SETTINGS.len();
 
-/// What a setting's label has beside its "?": the row (the panel less the scrollbar's gutter), less the gaps, the
-/// field and the mark. Read from the plan, as the layout does not give it before it is laid out.
-fn label_room(ids: &ShellIds) -> f32 {
-    ids.plan.widths[0] - mere_ui::GUTTER - 2.0 * panels::SETTING_GAP - panels::setting_field() - GAP_TIGHT - mere_ui::HELP_MARK_W
+/// A setting's row as wide as the panel less the scrollbar's gutter: what its label's lines are broken at. Read from
+/// the plan, as the layout does not give it before it is laid out.
+fn row_width(ids: &ShellIds) -> f32 {
+    ids.plan.widths[0] - mere_ui::GUTTER
 }
 
 /// The filter, on the grid of the settings' rows so that its toggle sits above their fields: a label that names the
@@ -856,42 +809,27 @@ fn label_room(ids: &ShellIds) -> f32 {
 /// `filter` is the toggle's value and the pressed view; `gutter` the gap the list's scrollbar keeps on the right.
 fn view_only_row(ui: &mut Ui, filter: (&mut bool, usize), gutter: f32, help: &mut Help, ids: &mut ShellIds) {
     let (only, view) = filter;
-    let body = TextLook::body(Tone::Text);
-    let muted = TextLook::body(Tone::Muted);
     let label = text::view_only(view);
     let count = only.then(|| {
         let shown = view_filter::visible(true, view).iter().map(Vec::len).sum();
         text::shown_of(shown, SETTINGS.len())
     });
-    // The count takes its own column, so the label has that much less room.
-    let room = label_room(ids) - count.as_ref().map_or(0.0, |c| muted.width(c) + panels::SETTING_GAP);
+    let open = *help.open == Some(FILTER_HELP);
+    let text = HelpText { title: text::VIEW_ONLY_TITLE, hint: text::VIEW_ONLY_HINT, facts: "" };
     // The rows below sit in a scroll that keeps a gutter for its bar on the right while it shows; the same gap here
     // lines the toggle up with their fields.
-    let mut row = setting_row();
-    row.pad.right = gutter;
-    let open = *help.open == Some(FILTER_HELP);
-    ui.node("view_only_place", mere_ui::help_anchor(), |ui| {
-    let row_id = ui.hover_area("view_only", row, |ui, over| {
-        let name = Style { position: Position::Relative, min_w: Dim::Px(0.0), ..Style::default() };
-        let (place, mark) = mere_ui::help_label(&label, room);
-        ui.node("name", name, |ui| {
-            ids.filter_label = ui.node("label", place, |ui| ui.paragraph(&label, body));
-            let r = ui.help_mark(text::HELP_MARK, mark, over.is_some(), open);
-            ids.filter_mark = r.id;
-            if r.clicked {
-                *help.open = if open { None } else { Some(FILTER_HELP) };
-            }
-        });
-        // Off, the column keeps an empty text, as a setting's row does.
-        let r = ui.node("count", Style::default(), |ui| ui.text(count.as_deref().unwrap_or(""), muted));
-        ids.filter_count = if count.is_some() { r } else { Id::ROOT };
+    let row = ValueRow { label: &label, note: count.as_deref().unwrap_or(""), mark: text::HELP_MARK, width: row_width(ids) + gutter, control_w: panels::setting_field(), gutter };
+    let r = ui.value_row("view_only", row, open.then_some(text), |ui| {
         ui.toggle("field", only, text::ON, text::OFF);
     });
-    ids.view_only = row_id;
-    if *help.open == Some(FILTER_HELP) {
-        help_panel(ui, ids, row_id, ("view_only", text::VIEW_ONLY_TITLE, text::VIEW_ONLY_HINT, ""), help.open);
+    ids.view_only = r.row;
+    ids.filter_label = r.label;
+    ids.filter_mark = r.mark.id;
+    ids.filter_count = r.note.unwrap_or(Id::ROOT);
+    if r.mark.clicked {
+        *help.open = if open { None } else { Some(FILTER_HELP) };
     }
-    });
+    keep_help(ids, r.help, help.open);
 }
 
 /// A value as its field shows it: a number as the number field writes it, a switch as on or off.
@@ -916,7 +854,7 @@ fn setting_facts(i: usize, baseline: &[f64; 43]) -> String {
 /// cut is the filter and the pressed view; list what the list was cut to last frame. True when the list shows its
 /// scrollbar.
 #[allow(clippy::too_many_arguments)]
-fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y: &mut f32, held: (&mut [f64; 43], &[f64; 43]), help: &mut Help, ids: &mut ShellIds, t: &Theme, stacked: bool) -> bool {
+fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y: &mut f32, held: (&mut [f64; 43], &[f64; 43]), help: &mut Help, ids: &mut ShellIds, stacked: bool) -> bool {
     let (values, baseline) = held;
     // The list is cut to the pressed view when the filter is on; a new cut starts at the top, where the first group is.
     let key = view_filter::list_key(cut.0, cut.1);
@@ -925,95 +863,71 @@ fn settings_scroll(ui: &mut Ui, cut: (bool, usize), list: &mut Option<usize>, y:
         *y = 0.0;
     }
     let groups = view_filter::visible(cut.0, cut.1);
-    let body = TextLook::body(Tone::Text);
-    let label_room = label_room(ids);
+    let width = row_width(ids);
     let mut rows = |ui: &mut Ui, ids: &mut ShellIds| {
-        // The first group on show gets the short top pad, not the one that separates two groups.
-        let first = groups.iter().position(|m| !m.is_empty());
+        // A group filtered out is left out; the groups part themselves from the one before.
         for (g, members) in groups.iter().enumerate().filter(|(_, m)| !m.is_empty()) {
-            ui.node(&format!("g{g}"), Style { column: true, shrink: 0.0, ..Style::default() }, |ui| {
-                // The group title (lines 105, 157): 4 px above (14 px between groups), 4 px under, then the
-                // hairline of `--line`.
-                let head = Style { column: true, ..Style::default() };
-                // The whole group, shown or filtered out: the arrow puts back what the title names.
-                let whole: Vec<usize> = (0..SETTINGS.len()).filter(|&i| SETTINGS[i].group == g).collect();
-                let moved = whole.iter().any(|&i| !same_value(values[i], baseline[i]));
-                ids.group_resets[g] = Id::ROOT;
-                let head_id = ui.node("head", head, |ui| {
-                    let row = Style {
-                        // Centred: the arrow is as tall as the title's line, so it adds no height.
-                        align_items: Align::Center,
-                        gap: Vec2::new(10.0, 0.0),
-                        pad: Edges::new(if Some(g) == first { 4.0 } else { 14.0 }, 0.0, 4.0, 0.0),
-                        ..Style::default()
-                    };
-                    ui.node("title", row, |ui| {
-                        ui.text(&text::GROUPS[g].to_uppercase(), TextLook::label());
-                        if moved {
-                            let r = ui.small_icon("reset", back_icon(), TextLook::label().line, Margin { left: Side::Auto, ..Margin::default() });
-                            ui.title(r.id, text::GROUP_RESET_HINT);
-                            ids.group_resets[g] = r.id;
-                            if r.clicked {
-                                for &i in &whole {
-                                    values[i] = baseline[i];
-                                }
+            // The whole group, shown or filtered out: the arrow at the end of its title puts back what the title names.
+            let whole: Vec<usize> = (0..SETTINGS.len()).filter(|&i| SETTINGS[i].group == g).collect();
+            let moved = whole.iter().any(|&i| !same_value(values[i], baseline[i]));
+            // The arrow only says it was pressed: the rows hold the values while it is built.
+            let mut arrow = None;
+            let reset = |ui: &mut Ui| {
+                if moved {
+                    let r = ui.small_icon("reset", back_icon(), TextLook::label().line, Margin::default());
+                    ui.title(r.id, text::GROUP_RESET_HINT);
+                    arrow = Some(r);
+                }
+            };
+            let mut built = Vec::new();
+            let r = ui.titled_group(&format!("g{g}"), text::GROUPS[g], reset, |ui| {
+                for &i in members {
+                    let set = &SETTINGS[i];
+                    // The pack's value, said beside a field that differs from it.
+                    let pack = (!same_value(values[i], baseline[i])).then(|| value_words(set.kind, baseline[i]));
+                    let open = *help.open == Some(i);
+                    // The facts are written only for the row whose help is open.
+                    let facts = open.then(|| setting_facts(i, baseline));
+                    let about = facts.as_deref().map(|facts| HelpText { title: set.label, hint: text::setting_hint(set.key), facts });
+                    let row = ValueRow { label: set.label, note: pack.as_deref().unwrap_or(""), mark: text::HELP_MARK, width, control_w: panels::setting_field(), gutter: 0.0 };
+                    let v = &mut values[i];
+                    let r = ui.value_row(set.key, row, about, |ui| match set.kind {
+                        Kind::Number(spec) => {
+                            ui.number("field", v, spec);
+                        }
+                        Kind::Switch => {
+                            let mut on = *v != 0.0;
+                            if ui.toggle("field", &mut on, text::ON, text::OFF).clicked {
+                                *v = if on { 1.0 } else { 0.0 };
                             }
                         }
                     });
-                    ui.fill(rule(), t.line);
-                });
-                ids.group_heads.push(head_id);
-                ui.node("body", Style { column: true, pad: Edges::new(4.0, 0.0, 0.0, 0.0), ..Style::default() }, |ui| {
-                    for &i in members {
-                        let set = &SETTINGS[i];
-                        // The pack's value, said beside a field that differs from it; the label has that much less room.
-                        let muted = TextLook::body(Tone::Muted);
-                        let pack = (!same_value(values[i], baseline[i])).then(|| value_words(set.kind, baseline[i]));
-                        let label_room = label_room - pack.as_ref().map_or(0.0, |p| muted.width(p));
-                        ui.node(&format!("{}Place", set.key), mere_ui::help_anchor(), |ui| {
-                        ids.rows[i] = ui.hover_area(set.key, setting_row(), |ui, over| {
-                            // The label, then the mark that opens its help, shown while the pointer is on the row.
-                            // A label wider than its cell wraps onto more lines instead of being cut, and the mark
-                            // follows its last word.
-                            let name = Style { position: Position::Relative, min_w: Dim::Px(0.0), ..Style::default() };
-                            let (label, mark) = mere_ui::help_label(set.label, label_room);
-                            ui.node("name", name, |ui| {
-                                ui.node("label", label, |ui| ui.paragraph(set.label, body));
-                                let r = ui.help_mark(text::HELP_MARK, mark, over.is_some(), *help.open == Some(i));
-                                ids.help_marks[i] = r.id;
-                                if r.clicked {
-                                    // The same mark again closes it; another one moves it to its own setting.
-                                    *help.open = if *help.open == Some(i) { None } else { Some(i) };
-                                }
-                            });
-                            // The output: empty until the value differs from the pack's, then the pack's.
-                            let out = ui.node("pack", Style::default(), |ui| ui.text(pack.as_deref().unwrap_or(""), muted));
-                            ids.pack_marks[i] = if pack.is_some() { out } else { Id::ROOT };
-                            if pack.is_some() {
-                                ui.title(out, text::PACK_VALUE_HINT);
-                            }
-                            match set.kind {
-                                Kind::Number(spec) => {
-                                    ui.number("field", &mut values[i], spec);
-                                }
-                                Kind::Switch => {
-                                    let mut on = values[i] != 0.0;
-                                    if ui.toggle("field", &mut on, text::ON, text::OFF).clicked {
-                                        values[i] = if on { 1.0 } else { 0.0 };
-                                    }
-                                }
-                            }
-                        });
-                        if *help.open == Some(i) {
-                            help_panel(ui, ids, ids.rows[i], (set.key, set.label, text::setting_hint(set.key), &setting_facts(i, baseline)), help.open);
-                        }
-                        });
+                    if let Some(note) = r.note {
+                        ui.title(note, text::PACK_VALUE_HINT);
                     }
-                });
+                    if r.mark.clicked {
+                        // The same mark again closes it; another one moves it to its own setting.
+                        *help.open = if open { None } else { Some(i) };
+                    }
+                    built.push((i, r));
+                }
             });
+            ids.group_resets[g] = arrow.map_or(Id::ROOT, |r| r.id);
+            if arrow.is_some_and(|r| r.clicked) {
+                for &i in &whole {
+                    values[i] = baseline[i];
+                }
+            }
+            for (i, r) in built {
+                ids.rows[i] = r.row;
+                ids.help_marks[i] = r.mark.id;
+                ids.pack_marks[i] = r.note.unwrap_or(Id::ROOT);
+                keep_help(ids, r.help, help.open);
+            }
+            ids.group_heads.push(r.head);
         }
         // Line 161.
-        ids.reset = ui.node("reset", Style { column: true, shrink: 0.0, pad: Edges::new(12.0, 0.0, 0.0, 0.0), ..Style::default() }, |ui| {
+        ids.reset = ui.node("reset", Style { column: true, shrink: 0.0, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), ..Style::default() }, |ui| {
             ui.paragraph(text::PACK_NOTE, TextLook::small(Tone::Muted));
         });
     };
@@ -1047,10 +961,9 @@ fn back_icon() -> &'static Icon {
     })
 }
 
-/// Opens the help of a row over it and keeps the ids the tests read; the cross closes it.
-fn help_panel(ui: &mut Ui, ids: &mut ShellIds, row: Id, about: (&str, &str, &str, &str), open: &mut Option<usize>) {
-    let (key, title, hint, facts) = about;
-    let r = ui.help_panel(&format!("{key}Help"), row, HelpText { title, hint, facts });
+/// Keeps the ids of an open help panel that the tests read; the cross closes it.
+fn keep_help(ids: &mut ShellIds, help: Option<mere_ui::HelpResp>, open: &mut Option<usize>) {
+    let Some(r) = help else { return };
     ids.help = r.panel;
     ids.help_title = r.title;
     ids.help_close = r.close;
@@ -1099,11 +1012,11 @@ fn made_shows_form(s: &PreviewState) -> bool {
 }
 
 /// `#run` (line 192): a hairline, the status, the details and the generate button with the stop square beside it.
-fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme) {
+fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
     let style = Style { column: true, margin: Margin { top: Side::Auto, ..Margin::default() }, shrink: 0.0, ..Style::default() };
     ids.run = ui.node("run", style, |ui| {
-        ui.fill(rule(), t.edge);
-        let inner = Style { column: true, pad: Edges::new(12.0, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, 8.0), ..Style::default() };
+        ui.rule(Rule::Section, Edges::default());
+        let inner = Style { column: true, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() };
         ui.node("runBody", inner, |ui| {
             // `#status:empty { display: none }`: nothing to say, no box.
             ids.status_text = status_words(s);
@@ -1131,19 +1044,19 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme) {
                 // While a run is under way the button says so; once a setting moved it starts the new run in its
                 // place (lines 789-798). The shell only records the press: the application acts on it.
                 let (word, look, disabled) = match busy {
-                    Some((true, share, stopping)) => (text::GENERATING, ButtonLook::Running { share }, stopping),
-                    Some((false, _, stopping)) => (text::GENERATE, ButtonLook::Primary, stopping),
+                    Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
+                    Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
                     // Disabled: the map already shows these settings (line 467).
-                    None => (text::GENERATE, ButtonLook::Primary, same),
+                    None => (text::GENERATE, ActionLook::Primary, same),
                 };
                 ids.generate_text = word.to_string();
-                let r = ui.button_with("generate", word, look, ButtonOpts { disabled, grow: 1.0 });
+                let r = ui.action_with("generate", word, look, ActionOpts { disabled, grow: 1.0 });
                 ids.generate = r.id;
                 if r.clicked {
                     s.want = Some(Want::Generate);
                 }
                 if let Some((_, _, stopping)) = busy {
-                    let r = ui.stop_button("stopRun", stopping);
+                    let r = ui.stop_action("stopRun", stopping);
                     ids.stop = r.id;
                     ui.title(r.id, text::STOP);
                     if r.clicked {
@@ -1220,7 +1133,7 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                     let probe = Style { grow: 1.0, basis, min_w: Dim::Px(0.0), ..Style::default() };
                     ids.probe = ui.node("probe", probe, |ui| ui.ellipsis(&probe_text, TextLook::body(Tone::Muted)));
                     if cuts > 0 {
-                        let r = ui.button("nextCut", text::NEXT_CUT, ButtonLook::Link);
+                        let r = ui.action("nextCut", text::NEXT_CUT, ActionLook::Link);
                         ids.next_cut = r.id;
                         ui.title(r.id, text::NEXT_CUT_HINT);
                         if r.clicked {
@@ -1244,7 +1157,7 @@ fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             }
                         });
                     }
-                    let r = ui.button("export", text::EXPORT, ButtonLook::Link);
+                    let r = ui.action("export", text::EXPORT, ActionLook::Link);
                     ids.export = r.id;
                     ui.title(r.id, text::EXPORT_HINT);
                     if r.clicked {
@@ -1273,7 +1186,7 @@ fn steps_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
     };
     let muted = TextLook::body(Tone::Muted);
     let now_look = TextLook::body(Tone::Text);
-    let column = Style { column: true, gap: Vec2::new(0.0, 4.0), ..Style::default() };
+    let column = Style { column: true, gap: Vec2::new(0.0, mere_ui::tokens::GAP_TIGHT), ..Style::default() };
     ids.steps = ui.node("steps", column, |ui| match &shown {
         Steps::Empty => {}
         Steps::Run { done, now, share } => {
@@ -1317,12 +1230,12 @@ fn steps_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme,
             ids.saved = ui.node("saved", notice, |ui| {
                 let path = Style { basis: Dim::Pct(100.0), column: true, min_w: Dim::Px(0.0), ..Style::default() };
                 ui.node("path", path, |ui| ui.flow(text::EXPORTED_TO, Tone::Muted, 6.0, folder, now_look));
-                let r = ui.button("openFolder", text::OPEN_FOLDER, ButtonLook::Link);
+                let r = ui.action("openFolder", text::OPEN_FOLDER, ActionLook::Link);
                 ids.open_folder = r.id;
                 if r.clicked {
                     s.want = Some(Want::OpenFolder);
                 }
-                let r = ui.button("closeNotice", text::CLOSE_NOTICE, ButtonLook::Link);
+                let r = ui.action("closeNotice", text::CLOSE_NOTICE, ActionLook::Link);
                 ids.close_notice = r.id;
                 if r.clicked {
                     s.steps = Steps::Empty;
@@ -1606,7 +1519,7 @@ fn right_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme
     let block = if stacked { Style { column: true, shrink: 0.0, ..Style::default() } } else { Style { column: true, ..fills() } };
     ids.list_block = ui.node("listBlock", block, |ui| {
         if !cut {
-            ui.fill(rule(), t.edge);
+            ui.rule(Rule::Section, Edges::default());
         }
         let pad = Edges::new(if cut { 0.0 } else { 9.0 }, 0.0, 0.0, 0.0);
         let inner = if stacked { Style { column: true, pad, gap: Vec2::new(0.0, 6.0), shrink: 0.0, ..Style::default() } } else { Style { column: true, pad, gap: Vec2::new(0.0, 6.0), ..fills() } };
@@ -1750,7 +1663,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                         ui.text(", ", small);
                         said.push_str(", ");
                     }
-                    let r = ui.button(&format!("pick{i}"), &l.names[i], ButtonLook::Pick);
+                    let r = ui.action(&format!("pick{i}"), &l.names[i], ActionLook::Pick);
                     ui.title(r.id, &text::pick_remove(&l.names[i]));
                     ids.pick_names.push(r.id);
                     said.push_str(&l.names[i]);
@@ -1766,9 +1679,9 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             ui.text(&tail, small);
             said.push_str(&tail);
             // `#pick button.none { margin-left: 8px }`.
-            ui.node("gap", Style { w: Dim::Px(8.0), shrink: 0.0, ..Style::default() }, |_| {});
+            ui.node("gap", Style { w: Dim::Px(mere_ui::tokens::GAP), shrink: 0.0, ..Style::default() }, |_| {});
             let none = if counted { text::PICK_NONE_MARKS } else { text::PICK_NONE };
-            let r = ui.button("none", none, ButtonLook::PickNone);
+            let r = ui.action("none", none, ActionLook::PickNone);
             ids.pick_none = r.id;
             said.push_str(none);
             if r.clicked {
@@ -1818,7 +1731,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             let absent: Vec<&String> = world.filter(|_| view == View::Biomes).map_or(Vec::new(), |w| w.absent.iter().filter(|id| visible(id)).collect());
             if !absent.is_empty() {
                 let count = text::num(world.map_or(0, |w| w.absent.len()) as f64);
-                let opts = PartOpts { pressed: false, first: order.is_empty(), button: false };
+                let opts = PartOpts { pressed: false, first: order.is_empty(), action: false };
                 let r = ui.list_part("absentHead", text::ABSENT, &count, opts);
                 ui.title(r.id, text::ABSENT_HINT);
                 ids.list_parts.push(r.id);
@@ -1851,7 +1764,7 @@ fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             let sum: f64 = members.iter().map(|&i| l.cells[i]).sum();
             let (name, count) = (text::PARTS[part as usize], text::num(sum));
             let pressed = chosen.len() == part_ids.len() && part_ids.iter().all(|id| chosen.contains(id));
-            let r = ui.list_part(&format!("part{}", part as u8), name, &count, PartOpts { pressed, first, button: true });
+            let r = ui.list_part(&format!("part{}", part as u8), name, &count, PartOpts { pressed, first, action: true });
             ui.title(r.id, text::PART_HINT);
             ids.list_parts.push(r.id);
             ids.list_part_words.push((name.to_string(), count));
@@ -1919,8 +1832,8 @@ fn figures_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Them
                             ui.node(&key, Style { justify: Justify::End, ..Style::default() }, |ui| ui.text(&cell.text, TextLook::small(Tone::Muted)));
                         }
                         CellKind::Rule => {
-                            let span = Style { col_span_all: true, pad: Edges::vh(4.0, 0.0), ..Style::default() };
-                            ui.node(&key, span, |ui| ui.fill(Style { h: Dim::Px(1.0), grow: 1.0, shrink: 0.0, ..Style::default() }, t.line));
+                            let span = Style { col_span_all: true, column: true, pad: Edges::vh(mere_ui::tokens::GAP_TIGHT, 0.0), ..Style::default() };
+                            ui.node(&key, span, |ui| ui.rule(Rule::Separator, Edges::default()));
                         }
                         // Line 299: a name is read whole, so it may take a second line.
                         CellKind::Name => {
@@ -1972,7 +1885,7 @@ fn history_body(ui: &mut Ui, history: &[Entry], ids: &mut ShellIds, t: &Theme, p
     let f = &world.measured.figures;
     let runs = here(history, &made.seed, f.span, f.step);
     let len = runs.len();
-    ids.history_body = ui.hover_area("history", Style { column: true, gap: Vec2::new(0.0, 8.0), ..Style::default() }, |ui, at| {
+    ids.history_body = ui.hover_area("history", Style { column: true, gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() }, |ui, at| {
         // The pointer picks the nearest run, across every line at once (line 1630).
         // `#history { cursor: crosshair }` (line 310).
         if at.is_some() {

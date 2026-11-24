@@ -28,12 +28,8 @@ pub const GAP: f32 = 28.0;
 pub const GAP_STACKED: f32 = 16.0;
 /// The window's least height.
 pub const MIN_HEIGHT: f32 = 600.0;
-/// The hit zone of the grip between a panel and the stage, centred in the gap.
-pub const GRIP_W: f32 = 8.0;
 
 // The content's own measures: the rows are built with these same names (shell.rs, mere-ui's list), so the natural widths follow them.
-/// `.setting`: the gap between its three columns. The field's width is `setting_field()`.
-pub const SETTING_GAP: f32 = 10.0;
 /// The gap between the columns of the figures grid, and the least widths of its value and change columns (the
 /// list rows' own, so that a figures row and a list row of one panel read alike).
 pub const FIG_GAP: f32 = 14.0;
@@ -102,7 +98,8 @@ pub fn natural() -> [f32; 2] {
     static NATURAL: OnceLock<[f32; 2]> = OnceLock::new();
     *NATURAL.get_or_init(|| {
         let b = body();
-        let settings = SETTINGS.iter().map(|s| b.width(s.label) + 2.0 * SETTING_GAP + setting_field());
+        // A setting is the kit's value row: its three columns are the kit's `gap` apart.
+        let settings = SETTINGS.iter().map(|s| b.width(s.label) + 2.0 * mere_ui::tokens::GAP + setting_field());
         let figures = text::FIGURE_NAMES.iter().map(|n| b.width(n) + 2.0 * FIG_GAP + FIG_CELLS);
         let bands = band_names(SEA, &HEIGHT_STEPS, &SEA_DEPTHS).into_iter().map(|n| b.width(&n) + b.width(LIST_WIDTH) + LIST_CHROME);
         [natural_of(settings), natural_of(figures.chain(bands))]

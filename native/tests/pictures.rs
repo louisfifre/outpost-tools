@@ -88,7 +88,7 @@ fn the_settings_with_the_menu_open() {
     let b = rig.rect(rig.home().ids().open_on);
     rig.click_at(centre(b));
     // "a server", the third row, under the pointer.
-    rig.hover_at(Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + 2.0 * mere_ui::MENU_ROW + 10.0));
+    rig.hover_at(Vec2::new(b.x + 30.0, b.y + b.h + mere_ui::tokens::GAP_TIGHT + mere_ui::LIST_PAD + (2.0 + 0.5) * mere_ui::LIST_ROW));
     assert!(rig.says("a server") && rig.says("the game menu"));
     rig.write("home_settings_1400.png");
 }

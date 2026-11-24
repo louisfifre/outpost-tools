@@ -7,9 +7,9 @@ publish = false
 license = "GPL-3.0-only"
 
 [dependencies]
-mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
-mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
-mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.15.0" }
+mere-base = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.16.0" }
+mere-png = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.16.0" }
+mere-win32 = { git = "https://github.com/louisfifre/mere-ui", tag = "v0.16.0" }
 preview = { path = "../preview" }
 
 [profile.release]

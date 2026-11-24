@@ -6,7 +6,8 @@
 //! writes (`apply.rs`).
 
 use mere_layout::{Edges, Style};
-use mere_ui::{ButtonLook, ButtonOpts, MenuOpts, SelectRow, Selector, TabLook, TabOpts, TextLook, Tone, Ui, choice_style};
+use mere_ui::tokens::{GAP, GAP_WIDE};
+use mere_ui::{ActionLook, ActionOpts, MenuOpts, SelectionRow, Selector, TabLook, TabOpts, TextLook, Tone, Trigger, Ui, choice_style};
 
 use crate::apply::{Notice, Refusal, Report, Running, Snapshot};
 use crate::places::{self, Kind, Place};
@@ -88,7 +89,7 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     ids.place_action = mere_ui::Id::ROOT;
     ids.place_note = "";
     ids.place_text.clear();
-    let style = Style { column: true, shrink: 0.0, pad: Edges::new(10.0, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, 6.0), ..Style::default() };
+    let style = Style { column: true, shrink: 0.0, pad: Edges::new(GAP_WIDE, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, GAP), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
         ids.profiles = ui.node("profiles", choice_style(), |ui| {
             ui.text(text::BACK_TO, TextLook::body(Tone::Muted));
@@ -121,31 +122,34 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         // with no place found, for its last row: "Choose a folder…".
         let line = places::line(s.places);
         ids.place_text = line.clone();
-        let opts = MenuOpts { up: true, disabled: false };
+        let opts = MenuOpts { up: true, ..MenuOpts::default() };
         let mut rows = Vec::new();
         let (mut action, mut choose) = (mere_ui::Id::ROOT, false);
         let places = &mut *s.places;
-        let r = ui.menu("place", &line, s.open, opts, |ui| {
-            let mut before = None;
-            for (i, p) in places.iter_mut().enumerate() {
-                // The repository's places come after the games, under a separator.
-                if before == Some(Kind::Game) && p.kind != Kind::Game {
-                    ui.menu_separator();
+        let r = ui.menu("place", Trigger::Line(&line), s.open, opts, |ui| {
+            // The games, then the repository's places, then the action: three groups, each parted from the one before
+            // by its own separator. A group with no place is left out.
+            let (games, others): (Vec<_>, Vec<_>) = places.iter_mut().enumerate().partition(|(_, p)| p.kind == Kind::Game);
+            for (key, group) in [("games", games), ("repository", others)] {
+                if group.is_empty() {
+                    continue;
                 }
-                before = Some(p.kind);
-                // Several places at once: each row has its multiple selector, and a press flips that place alone.
-                let row = SelectRow { label: &p.name, detail: &p.how, detail_tail: &p.path, selector: Selector::Multiple, selected: p.ticked, disabled: false };
-                let o = ui.menu_select(&format!("p{i}"), row);
-                if o.clicked {
-                    p.ticked = !p.ticked;
-                }
-                rows.push(o.id);
+                ui.group(key, |ui| {
+                    for (i, p) in group {
+                        // Several places at once: each row has its multiple selector, and a press flips that place alone.
+                        let row = SelectionRow { label: &p.name, detail: &p.how, detail_tail: &p.path, selector: Selector::Multiple, selected: p.ticked, disabled: false };
+                        let o = ui.selection_row(&format!("p{i}"), row);
+                        if o.clicked {
+                            p.ticked = !p.ticked;
+                        }
+                        rows.push(o.id);
+                    }
+                });
             }
-            if !places.is_empty() {
-                ui.menu_separator();
-            }
-            let a = ui.menu_action("choose", text::CHOOSE_FOLDER);
-            (action, choose) = (a.id, a.clicked);
+            ui.group("choose", |ui| {
+                let a = ui.action_row("choose", text::CHOOSE_FOLDER);
+                (action, choose) = (a.id, a.clicked);
+            });
         });
         ids.place_line = r.line.id;
         ids.place_list = r.list.unwrap_or(mere_ui::Id::ROOT);
@@ -161,7 +165,7 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         }
 
         ui.node("go", Style::default(), |ui| {
-            let r = ui.button_with("apply", text::APPLY, ButtonLook::Primary, ButtonOpts { disabled: !enabled, grow: 1.0 });
+            let r = ui.action_with("apply", text::APPLY, ActionLook::Primary, ActionOpts { disabled: !enabled, grow: 1.0 });
             ids.apply = r.id;
             let hint = if none_ticked { text::APPLY_NO_PLACE } else if behind { text::APPLY_BEHIND_HINT } else if !stale { text::APPLY_SAME } else { text::APPLY_HINT };
             ui.title(r.id, hint);
@@ -180,7 +184,7 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
         if said {
             let all: Vec<&str> = std::iter::once(quiet.as_str()).filter(|q| !q.is_empty()).chain(warn.iter().map(String::as_str)).collect();
             ids.apply_text = all.join("\n");
-            ids.apply_note = ui.node("applyNote", Style { column: true, gap: mere_base::Vec2::new(0.0, 6.0), ..Style::default() }, |ui| {
+            ids.apply_note = ui.node("applyNote", Style { column: true, gap: mere_base::Vec2::new(0.0, GAP), ..Style::default() }, |ui| {
                 if !quiet.is_empty() {
                     ui.paragraph(&quiet, TextLook::small(Tone::Muted));
                 }

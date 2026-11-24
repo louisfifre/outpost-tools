@@ -13,7 +13,7 @@ const EULA: &str = "The Minecraft EULA is not accepted yet: set eula=true in the
 fn open_menu_row(rig: &mut Rig, row: usize) {
     let b = rig.rect(rig.home().ids().open_on);
     rig.click_at(centre(b));
-    let p = Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + row as f32 * mere_ui::MENU_ROW + 10.0);
+    let p = Vec2::new(b.x + 30.0, b.y + b.h + mere_ui::tokens::GAP_TIGHT + mere_ui::LIST_PAD + (row as f32 + 0.5) * mere_ui::LIST_ROW);
     rig.click_at(p);
 }
 

@@ -12,8 +12,8 @@ use std::any::Any;
 
 use mere_base::Vec2;
 use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
-use mere_ui::tokens::{CONTROL, FADE_TINT, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
-use mere_ui::{ButtonLook, ButtonOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui, mix};
+use mere_ui::tokens::{CONTROL, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
+use mere_ui::{ActionLook, ActionOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui};
 
 /// The widest the two columns grow together, the page's cap (index.html's `.page`).
 pub const COLUMNS_MAX: f32 = 1120.0;
@@ -652,11 +652,10 @@ impl LauncherHome {
     /// `.col header`: a row as tall as the back button's square, so that the header keeps its height
     /// with or without it, and a hairline.
     fn header(&mut self, ui: &mut Ui, key: &str, back: bool, title: &str) -> Id {
-        let t = *ui.theme();
         ui.node(key, Style { column: true, ..Style::default() }, |ui| {
             ui.node("bar", Style { min_h: Dim::Px(ICON_SQUARE), align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
                 if back {
-                    let r = ui.icon_button("back", own_icons::back(), IconLook::Bare, IconOpts::default());
+                    let r = ui.icon_action("back", own_icons::back(), IconLook::Bare, IconOpts::default());
                     ui.title(r.id, text::BACK);
                     self.ids.back = r.id;
                     if r.clicked {
@@ -665,7 +664,7 @@ impl LauncherHome {
                 }
                 ui.text(&title.to_uppercase(), TextLook::heading());
             });
-            ui.fill(Style { h: Dim::Px(FRAME), shrink: 0.0, ..Style::default() }, t.edge);
+            ui.rule(mere_ui::Rule::Section, Edges::default());
         })
     }
 
@@ -678,12 +677,6 @@ impl LauncherHome {
             margin: Margin { left: Side::Px(-INSET), right: Side::Px(-INSET), ..Margin::default() },
             ..Style::default()
         }
-    }
-
-    /// The lit box of a row under the pointer.
-    fn row_lit(ui: &Ui) -> mere_base::Color {
-        let t = *ui.theme();
-        mix(t.text, FADE_TINT, t.ground)
     }
 
     fn who(ui: &mut Ui, name: &str, line: &str, now: bool) {
@@ -707,7 +700,7 @@ impl LauncherHome {
 
     fn profiles_part(&mut self, ui: &mut Ui) {
         let clock = ui.clock();
-        let lit = Self::row_lit(ui);
+        let lit = ui.theme().tint();
         match self.current.clone() {
             None => {
                 self.ids.profiles_header = self.header(ui, "header", false, text::PROFILES_GROUP);
@@ -717,13 +710,13 @@ impl LauncherHome {
                     let mut row_ids = RowIds { profile: p.id.clone(), row: Id::ROOT, play: Id::ROOT, settings: Id::ROOT };
                     row_ids.row = ui.hover_box(&format!("row-{}", p.id), Self::row_style(), lit, |ui| {
                         Self::who(ui, &p.name, &line, now);
-                        let play = ui.icon_button("play", &icons().play, IconLook::Filled, IconOpts { disabled: p.running || busy, ..IconOpts::default() });
+                        let play = ui.icon_action("play", &icons().play, IconLook::Filled, IconOpts { disabled: p.running || busy, ..IconOpts::default() });
                         ui.title(play.id, &text::play(&p.name));
                         row_ids.play = play.id;
                         if play.clicked {
                             self.wants.push(Want::Play(p.id.clone()));
                         }
-                        let set = ui.icon_button("settings", &icons().settings, IconLook::Square, IconOpts { joined: true, ..IconOpts::default() });
+                        let set = ui.icon_action("settings", &icons().settings, IconLook::Square, IconOpts { joined: true, ..IconOpts::default() });
                         ui.title(set.id, &text::settings(&p.name));
                         row_ids.settings = set.id;
                         if set.clicked {
@@ -816,14 +809,14 @@ impl LauncherHome {
         let mut resp = None;
         ui.node("folder", Style { align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
             ui.node("path", Style { grow: 1.0, min_w: Dim::Px(0.0), ..Style::default() }, |ui| ui.ellipsis(path, TextLook::body(Tone::Text)));
-            resp = Some(ui.button_with("open", text::OPEN, ButtonLook::Underlined, ButtonOpts::default()));
+            resp = Some(ui.action_with("open", text::OPEN, ActionLook::Underlined, ActionOpts::default()));
         });
         resp.expect("the row was built")
     }
 
     /// The server's part (the second `section.col`).
     fn server_part(&mut self, ui: &mut Ui) {
-        let lit = Self::row_lit(ui);
+        let lit = ui.theme().tint();
         self.ids.server_header = self.header(ui, "header", false, text::SERVER_GROUP);
         let line = self.server_line();
         let (running, busy) = self.server.as_ref().map_or((false, false), |s| (s.state == "running", s.busy()));
@@ -836,14 +829,14 @@ impl LauncherHome {
                 // Start once at a time; stop only a server that is ready to hear it (`renderServer`).
                 let off = stopping || (!running && busy);
                 let r = if running {
-                    let r = ui.icon_button("stop", &icons().stop, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
+                    let r = ui.icon_action("stop", &icons().stop, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
                     ui.title(r.id, text::STOP_SERVER);
                     if r.clicked {
                         self.wants.push(Want::ServerStop);
                     }
                     r
                 } else {
-                    let r = ui.icon_button("start", &icons().play, IconLook::Filled, IconOpts { disabled: off, ..IconOpts::default() });
+                    let r = ui.icon_action("start", &icons().play, IconLook::Filled, IconOpts { disabled: off, ..IconOpts::default() });
                     ui.title(r.id, text::START_SERVER);
                     if r.clicked {
                         self.wants.push(Want::ServerStart);
@@ -851,7 +844,7 @@ impl LauncherHome {
                     r
                 };
                 self.ids.server_play = r.id;
-                let s = ui.icon_button("settings", &icons().settings, IconLook::Square, IconOpts { pressed: open, joined: true, ..IconOpts::default() });
+                let s = ui.icon_action("settings", &icons().settings, IconLook::Square, IconOpts { pressed: open, joined: true, ..IconOpts::default() });
                 ui.title(s.id, text::SERVER_SETTINGS);
                 self.ids.server_settings = s.id;
                 if s.clicked {
