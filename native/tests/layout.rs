@@ -137,25 +137,29 @@ fn l6_a_short_window_scrolls_to_its_end() {
     rig.write("home_1400x600_scrolled.png");
 }
 
-/// L7: the account in the bar, whole in Home from 1000 to 1920 (a window raised to 1000 at the least).
+/// L7: the account in the bar, whole in Home from 1000 to 1920 (a window raised to 1000 at the least), at the right, its
+/// button ending `GAP` before the window's buttons; and in the preview tool once its views leave it the room.
 #[test]
-fn l7_the_account_after_the_name() {
+fn l7_the_account_before_the_window_buttons() {
+    use mere_ui::tokens::GAP;
     for w in [1000, 1200, 1400, 1920] {
         let rig = Rig::new(w, 940, true);
         let at = rig.texts().into_iter().find(|(_, t, _)| t == "PlayerOne").unwrap_or_else(|| panic!("no account at {w}"));
-        // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says, then the
-        // account button's padding (8), its face (16) and the gap after it (8).
-        let after_name = 48.0 + 32.0 + preview::overflow::brand_look().width(&preview::text::BAR_TITLE.to_uppercase());
-        assert!((at.0.x - after_name).abs() < 0.5, "{w}: {} for {after_name}", at.0.x);
+        let (button, ends, strip) = (rig.rect(rig.app.ids().account), rig.rect(rig.app.ids().ends[0]), rig.rect(rig.app.ids().strip));
+        assert!((button.x + button.w + GAP - ends.x).abs() < 0.5, "{w}: the button {button:?} and the window's buttons at {}", ends.x);
+        assert!(button.x >= strip.x + strip.w, "{w}: after the tools");
+        // The button's padding (8), its face (16) and the gap after it (8), then the name.
+        assert!((at.0.x - (button.x + 32.0)).abs() < 0.5, "{w}: {} for {}", at.0.x, button.x + 32.0);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
+        let brand = rig.rect(rig.app.ids().brand);
+        assert!(brand.x + brand.w <= strip.x, "{w}: the brand holds the cube and the name only");
     }
-    // The preview tool's bar holds the panels' buttons where Home has the brand and the account (the preview's
-    // overflow.rs holds the rule), so the account is Home's only, at any width.
-    for w in [1000, 1920] {
+    // The preview tool gives the account up before any of its views: gone at 1000, whole at 1920.
+    for (w, shown) in [(1000, false), (1920, true)] {
         let mut rig = Rig::new(w, 940, true);
         rig.app.state_mut().mode = Mode::Preview;
         rig.frame();
-        assert!(rig.texts().into_iter().all(|(_, t, _)| !t.starts_with("Player")), "the account is shown in the preview tool at {w}");
+        assert_eq!(rig.texts().into_iter().any(|(_, t, _)| t.starts_with("Player")), shown, "the account in the preview tool at {w}");
     }
 }
 
@@ -200,7 +204,5 @@ fn l8_the_preview_tool_keeps_its_panels() {
         let middle = w as f32 - preview::panels::gaps(2) as f32 * gap - plan.widths[0] - plan.widths[1];
         let side = middle.min(h as f32 - 136.0);
         assert!((stage.w - side).abs() < 0.01 || (stage.h - side).abs() < 0.01, "the map's square at {w}: {stage:?} against {side}");
-        let account = app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Text { text, .. } if text.starts_with("Player")));
-        assert!(!account, "the account is Home's only, at {w}");
     }
 }

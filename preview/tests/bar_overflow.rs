@@ -57,7 +57,13 @@ fn forms_while_narrowing(account: Option<&str>, pressed: usize, disabled: [bool;
     seen
 }
 
-/// A form of the preview tool's bar: the brand is not in it, so its parts are off.
+/// The same form with the account shown: the account gives way before any view does.
+fn with_account(f: Form) -> Form {
+    Form { account: true, ..f }
+}
+
+/// A form of the preview tool's bar: the brand is not in it, so its word is off, and the account is given up (see
+/// `with_account`).
 fn form(more: &[usize], centred: bool, shapes_in_more: bool) -> Form {
     Form { account: false, word: false, more: more.to_vec(), centred, shapes_in_more }
 }
@@ -89,7 +95,7 @@ fn the_measured_strip_is_the_laid_out_strip() {
     assert!(checked > 100, "{checked}");
 }
 
-/// The order of giving way in the preview tool: the greyed views, then the others from the strip's end (the pressed
+/// The order of giving way in the preview tool: the account first, then the greyed views, then the others from the strip's end (the pressed
 /// view, Relief here, never among them), then the tools stop being centred, then 2D and 3D join the views in "More".
 #[test]
 fn the_bar_gives_way_in_its_order() {
@@ -97,6 +103,7 @@ fn the_bar_gives_way_in_its_order() {
     assert_eq!(
         forms_while_narrowing(Some("Louis"), RELIEF, coarse),
         vec![
+            with_account(form(&[], true, false)),
             form(&[], true, false),
             form(&[1, 2, 3, 7, 8], true, false),
             form(&[1, 2, 3, 6, 7, 8], true, false),
@@ -110,6 +117,7 @@ fn the_bar_gives_way_in_its_order() {
     // With every view on there is nothing greyed to move: the views go from the end.
     let all_on = forms_while_narrowing(Some("Louis"), RELIEF, [false; 9]);
     let expected = vec![
+        with_account(form(&[], true, false)),
         form(&[], true, false),
         form(&[8], true, false),
         form(&[7, 8], true, false),
@@ -268,7 +276,7 @@ fn at_1000_the_greyed_views_are_in_more() {
     for kept in ["Biomes", "Vegetation", "Relief", "Temperature", "More", "Home", "Preview", "2D", "3D"] {
         assert!(words.iter().any(|t| t == kept), "{kept} is drawn: {words:?}");
     }
-    // The preview tool has no brand, so no account either.
+    // The account is given up before the views are, so it is gone here too.
     for gone in ["Flat", "Steepness", "Cliffs", "Structures", "Section", "Louis"] {
         assert!(!words.iter().any(|t| t == gone), "{gone} is not drawn");
     }
@@ -280,14 +288,15 @@ fn at_1000_the_greyed_views_are_in_more() {
 /// Wide enough, nothing is given up.
 #[test]
 fn a_wide_window_keeps_everything() {
-    let (_, _, ids) = built(1920.0, state(Some("Louis"), RELIEF), None);
-    assert_eq!(ids.form, form(&[], true, false));
+    let (list, _, ids) = built(1920.0, state(Some("Louis"), RELIEF), None);
+    assert_eq!(ids.form, with_account(form(&[], true, false)));
+    assert!(drawn(&list).iter().any(|t| t == "Louis"), "the account is drawn in the preview tool too");
     assert_eq!(ids.more, Id::ROOT);
     assert_eq!(ids.tabs.len(), VIEW_COUNT + 2);
 }
 
 /// Home has the brand: it keeps the account and the word at the window's least width, and the preview tool has the
-/// panels' buttons in their place.
+/// panels' buttons in their place, and gives its account up at that width.
 #[test]
 fn home_keeps_its_brand_and_the_preview_tool_has_the_panels_buttons() {
     let w = preview::MIN_SIZE.0;
