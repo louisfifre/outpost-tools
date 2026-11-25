@@ -12,6 +12,12 @@
 // sha1 of each file as written. An update compares the disk with that record: a file still as the pack wrote it is
 // replaced or removed; a file the user changed, and every file the pack does not know (added mods, worlds), stays.
 //
+// An update stages every download and every override before it touches the game folder, then renames the staged files
+// in and removes the ones the new version drops. A failure while staging leaves the instance exactly as it was. A
+// failure while replacing (a file locked by a running game, a full disk) leaves the files already replaced in place:
+// the record is then rewritten to list the pack's files as they are on disk now, under the old version number, so
+// running the update again finishes the work and never takes a half-replaced file for the user's.
+//
 // Format: https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack (read 2026-11-25).
 
 use std::{
@@ -34,6 +40,12 @@ const STAGING: &str = "outpost-staging";
 // Where the format lets a file come from (Modrinth's own list for packs it hosts).
 const HOSTS: &[&str] = &["cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "gitlab.com"];
 const MAX_ENTRY: u64 = 2 << 30;
+// All the overrides together, as unpacked: a settings pack is far below it, and a zip bomb is far above.
+#[cfg(not(test))]
+const MAX_OVERRIDES: u64 = 1 << 30;
+// Small in tests, so the one that checks the cap does not write a gigabyte.
+#[cfg(test)]
+const MAX_OVERRIDES: u64 = 1 << 20;
 
 /// Why a profile file could not be read, installed or updated, each one a thing the page can say in a sentence.
 #[derive(Debug)]
@@ -185,14 +197,26 @@ struct Pack {
     files: Vec<PackFile>,
 }
 
-/// A path as the format wants it: relative, `/`-separated, nothing that climbs out or names a drive.
+/// A path as the format wants it: relative, `/`-separated, nothing that climbs out, names a drive, or that Windows
+/// would read as a device (con, nul, com1 ...) or write under another name (a trailing dot or space).
 fn safe_path(path: &str) -> Result<String, MrpackError> {
     let bad = || MrpackError::UnsafePath(path.to_string());
-    if path.is_empty() || path.contains(['\\', ':']) || path.starts_with('/') {
+    if path.is_empty() || path.contains(['\\', ':', '<', '>', '"', '|', '?', '*']) || path.starts_with('/') {
         return Err(bad());
     }
-    if path.split('/').any(|s| s.is_empty() || s == "." || s == "..") {
+    if path.chars().any(char::is_control) {
         return Err(bad());
+    }
+    for segment in path.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." || segment.ends_with(['.', ' ']) {
+            return Err(bad());
+        }
+        // The device name counts with any extension: con.txt is still the console.
+        let stem = segment.split('.').next().unwrap_or_default().trim_end().to_ascii_lowercase();
+        let numbered = stem.len() == 4 && (stem.starts_with("com") || stem.starts_with("lpt")) && matches!(stem.as_bytes()[3], b'1'..=b'9');
+        if matches!(stem.as_str(), "con" | "prn" | "aux" | "nul" | "conin$" | "conout$") || numbered {
+            return Err(bad());
+        }
     }
     Ok(path.to_string())
 }
@@ -209,7 +233,11 @@ fn read_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, index: usize) -> Resu
         return Err(MrpackError::Unreadable(format!("{} is too large", entry.name())));
     }
     let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).map_err(|e| MrpackError::Unreadable(e.to_string()))?;
+    // The declared size can lie: the read itself is capped.
+    (&mut entry).take(MAX_ENTRY + 1).read_to_end(&mut bytes).map_err(|e| MrpackError::Unreadable(e.to_string()))?;
+    if bytes.len() as u64 > MAX_ENTRY {
+        return Err(MrpackError::Unreadable(format!("{} is too large", entry.name())));
+    }
     Ok(bytes)
 }
 
@@ -218,16 +246,27 @@ fn read_entry<R: Read + Seek>(archive: &mut ZipArchive<R>, index: usize) -> Resu
 fn override_entries<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<BTreeMap<String, usize>, MrpackError> {
     let mut common = BTreeMap::new();
     let mut client = BTreeMap::new();
+    let mut total = 0u64;
     for i in 0..archive.len() {
         let entry = archive.by_index_raw(i)?;
         let name = entry.name().to_string();
         if entry.is_dir() || name.ends_with('/') {
             continue;
         }
-        if let Some(rest) = name.strip_prefix("overrides/") {
+        let kept = if let Some(rest) = name.strip_prefix("overrides/") {
             common.insert(safe_path(rest)?, i);
+            true
         } else if let Some(rest) = name.strip_prefix("client-overrides/") {
             client.insert(safe_path(rest)?, i);
+            true
+        } else {
+            false
+        };
+        if kept {
+            total = total.saturating_add(entry.size());
+            if total > MAX_OVERRIDES {
+                return Err(MrpackError::Unreadable("its settings and other files unpack to more than 1 GB".into()));
+            }
         }
     }
     common.extend(client);
@@ -340,7 +379,7 @@ enum Action {
     Write,
     /// Already as the pack wants it.
     Same,
-    /// The user changed it, or it is theirs: left alone.
+    /// The user changed it and the pack wants to change it too: left alone, and reported.
     KeepUser,
     /// The user removed it and the pack has not changed it: not brought back.
     StayRemoved,
@@ -352,6 +391,8 @@ fn decide(path: &str, disk: Option<&str>, old: Option<&str>, new: &str) -> Actio
         None if old == Some(new) => Action::StayRemoved,
         None => Action::Write,
         Some(d) if d == new => Action::Same,
+        // The pack did not change it: whatever the user made of it is theirs, and not worth a word.
+        Some(_) if old == Some(new) => Action::Same,
         Some(_) if protected(path) => Action::KeepUser,
         Some(d) if Some(d) == old => Action::Write,
         Some(_) => Action::KeepUser,
@@ -384,8 +425,17 @@ fn prune_empty(game_dir: &Path, mut dir: &Path) {
     }
 }
 
-// Brings the game folder to what the pack says, given what the pack wrote last time. Nothing is touched before every
-// download has arrived and matched its hash.
+/// What `apply` did. `failed` is set when the replacing stopped midway: `owned` is then what the pack meant to own,
+/// and the game folder holds some of it.
+struct Applied {
+    owned: Vec<Owned>,
+    report: UpdateReport,
+    failed: Option<MrpackError>,
+}
+
+// Brings the game folder to what the pack says, given what the pack wrote last time. Every download and override is
+// staged first and checked; only then are files renamed in and dropped ones removed. An Err means nothing was
+// touched; `Applied::failed` means the replacing started and stopped.
 fn apply<R: Read + Seek>(
     dir: &Path,
     game_dir: &Path,
@@ -394,7 +444,7 @@ fn apply<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     fetch: &dyn Fetch,
     progress: &mut dyn FnMut(&Progress),
-) -> Result<(Vec<Owned>, UpdateReport), MrpackError> {
+) -> Result<Applied, MrpackError> {
     let old: BTreeMap<&str, &str> = old.iter().map(|o| (o.path.as_str(), o.sha1.as_str())).collect();
     let overrides = override_entries(archive)?;
     let mut report = UpdateReport::default();
@@ -411,36 +461,44 @@ fn apply<R: Read + Seek>(
             Action::Same | Action::StayRemoved => {}
         }
     }
-    // What the overrides change.
-    let mut to_write = Vec::new();
-    for (path, &index) in &overrides {
-        let new = sha1_hex(&read_entry(archive, index)?);
-        owned.insert(path.clone(), new.clone());
-        let disk = sha1_of_file(&game_dir.join(path))?;
-        match decide(path, disk.as_deref(), old.get(path.as_str()).copied(), &new) {
-            Action::Write => to_write.push((path.clone(), index)),
-            Action::KeepUser => report.kept.push(path.clone()),
-            Action::Same | Action::StayRemoved => {}
-        }
-    }
 
-    // Downloads, into a staging folder: a failure here leaves the game folder as it was.
     let staging = dir.join(STAGING);
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging)?;
-    let downloaded = (|| -> Result<Vec<(&PackFile, PathBuf)>, MrpackError> {
+    // Everything the new version brings goes into the staging folder, downloads and overrides alike.
+    let staged = (|| -> Result<Vec<(String, PathBuf)>, MrpackError> {
         let mut staged = Vec::new();
         for (n, f) in to_fetch.iter().enumerate() {
             progress(&Progress { done: n, total: to_fetch.len(), file: f.path.clone() });
             let bytes = fetch_checked(fetch, f)?;
             let part = staging.join(n.to_string());
             fs::write(&part, bytes)?;
-            staged.push((*f, part));
+            staged.push((f.path.clone(), part));
         }
         progress(&Progress { done: to_fetch.len(), total: to_fetch.len(), file: String::new() });
+        let mut unpacked = 0u64;
+        for (path, &index) in &overrides {
+            let bytes = read_entry(archive, index)?;
+            unpacked += bytes.len() as u64;
+            if unpacked > MAX_OVERRIDES {
+                return Err(MrpackError::Unreadable("its settings and other files unpack to more than 1 GB".into()));
+            }
+            let new = sha1_hex(&bytes);
+            owned.insert(path.clone(), new.clone());
+            let disk = sha1_of_file(&game_dir.join(path))?;
+            match decide(path, disk.as_deref(), old.get(path.as_str()).copied(), &new) {
+                Action::Write => {
+                    let part = staging.join(format!("o{}", staged.len()));
+                    fs::write(&part, bytes)?;
+                    staged.push((path.clone(), part));
+                }
+                Action::KeepUser => report.kept.push(path.clone()),
+                Action::Same | Action::StayRemoved => {}
+            }
+        }
         Ok(staged)
     })();
-    let staged = match downloaded {
+    let staged = match staged {
         Ok(s) => s,
         Err(e) => {
             let _ = fs::remove_dir_all(&staging);
@@ -449,56 +507,84 @@ fn apply<R: Read + Seek>(
     };
 
     // The pack's own files that the new version drops: removed when still as it wrote them.
+    let mut to_remove = Vec::new();
     for (path, recorded) in &old {
         if owned.contains_key(*path) || protected(path) {
             continue;
         }
-        let file = game_dir.join(path);
-        match sha1_of_file(&file)? {
-            Some(d) if d == *recorded => {
-                fs::remove_file(&file)?;
-                report.removed.push(path.to_string());
-                if let Some(parent) = file.parent() {
-                    prune_empty(game_dir, parent);
-                }
+        match sha1_of_file(&game_dir.join(path)) {
+            Ok(Some(d)) if d == *recorded => to_remove.push(path.to_string()),
+            Ok(Some(_)) => report.kept.push(path.to_string()),
+            Ok(None) => {}
+            Err(e) => {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(e.into());
             }
-            Some(_) => report.kept.push(path.to_string()),
-            None => {}
         }
     }
-    for (f, part) in staged {
-        let file = game_dir.join(&f.path);
-        if let Some(parent) = file.parent() {
-            fs::create_dir_all(parent)?;
+
+    // The replacing: only renames and removals now.
+    let replaced = (|| -> Result<(), MrpackError> {
+        for (path, part) in &staged {
+            let file = game_dir.join(path);
+            if let Some(parent) = file.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(part, &file)?;
+            report.written.push(path.clone());
         }
-        let _ = fs::remove_file(&file);
-        fs::rename(&part, &file)?;
-        report.written.push(f.path.clone());
-    }
-    for (path, index) in to_write {
-        let file = game_dir.join(&path);
-        if let Some(parent) = file.parent() {
-            fs::create_dir_all(parent)?;
+        for path in &to_remove {
+            let file = game_dir.join(path);
+            fs::remove_file(&file)?;
+            report.removed.push(path.clone());
+            if let Some(parent) = file.parent() {
+                prune_empty(game_dir, parent);
+            }
         }
-        fs::write(&file, read_entry(archive, index)?)?;
-        report.written.push(path);
-    }
+        Ok(())
+    })();
     let _ = fs::remove_dir_all(&staging);
     let owned = owned.into_iter().map(|(path, sha1)| Owned { path, sha1 }).collect();
-    Ok((owned, report))
+    Ok(Applied { owned, report, failed: replaced.err() })
+}
+
+// The pack's files as they are on disk now: each recorded path whose content is one of the hashes the pack wrote
+// (the old version's or the new one's). Anything else on disk is the user's, and is not listed.
+fn owned_on_disk(game_dir: &Path, records: &[Owned]) -> Vec<Owned> {
+    let mut found = BTreeMap::new();
+    for record in records {
+        if let Ok(Some(d)) = sha1_of_file(&game_dir.join(&record.path)) {
+            if d == record.sha1 {
+                found.insert(record.path.clone(), d);
+            }
+        }
+    }
+    found.into_iter().map(|(path, sha1)| Owned { path, sha1 }).collect()
 }
 
 fn write_manifest(dir: &Path, info: &PackInfo, files: Vec<Owned>) -> Result<(), MrpackError> {
-    let manifest = Manifest {
-        format_version: 1,
-        pack_name: info.name.clone(),
-        version_id: info.version.clone(),
-        game_version: info.game_version.clone(),
-        fabric_loader: info.fabric_loader.clone(),
-        files,
-    };
-    let text = serde_json::to_string_pretty(&manifest).expect("a manifest always serializes");
-    fs::write(dir.join(MANIFEST), text)?;
+    save_manifest(
+        dir,
+        &Manifest {
+            format_version: 1,
+            pack_name: info.name.clone(),
+            version_id: info.version.clone(),
+            game_version: info.game_version.clone(),
+            fabric_loader: info.fabric_loader.clone(),
+            files,
+        },
+    )
+}
+
+// Written beside and renamed in, so a crash leaves the whole old record or the whole new one.
+fn save_manifest(dir: &Path, manifest: &Manifest) -> Result<(), MrpackError> {
+    let text = serde_json::to_string_pretty(manifest).expect("a manifest always serializes");
+    let part = dir.join(format!("{MANIFEST}.tmp"));
+    fs::write(&part, text)?;
+    if let Err(e) = fs::rename(&part, dir.join(MANIFEST)) {
+        let _ = fs::remove_file(&part);
+        return Err(e.into());
+    }
     Ok(())
 }
 
@@ -510,8 +596,10 @@ pub fn install(instances: &Path, file: &Path, fetch: &dyn Fetch, progress: &mut 
     let pack = read_pack(&mut archive)?;
     let info = &pack.info;
     let written = write_instance(instances, &NewInstance::new(&info.name, &info.game_version, info.fabric_loader.as_deref()))?;
-    let done = apply(&written.dir, &written.game_dir, &[], &pack, &mut archive, fetch, progress)
-        .and_then(|(owned, _)| write_manifest(&written.dir, info, owned));
+    let done = apply(&written.dir, &written.game_dir, &[], &pack, &mut archive, fetch, progress).and_then(|applied| match applied.failed {
+        Some(e) => Err(e),
+        None => write_manifest(&written.dir, info, applied.owned),
+    });
     if let Err(e) = done {
         // The folder was made a moment ago by us: nothing of the user's is in it.
         let _ = fs::remove_dir_all(&written.dir);
@@ -535,13 +623,26 @@ pub fn update(instances: &Path, id: &str, file: &Path, fetch: &dyn Fetch, progre
     let mut archive = ZipArchive::new(fs::File::open(file)?)?;
     let pack = read_pack(&mut archive)?;
     let info = &pack.info;
-    let (owned, report) = apply(&dir, &dir.join("minecraft"), &manifest.files, &pack, &mut archive, fetch, progress)?;
-    if info.game_version != manifest.game_version || info.fabric_loader != manifest.fabric_loader {
-        let new = NewInstance::new(&info.name, &info.game_version, info.fabric_loader.as_deref());
-        fs::write(dir.join("mmc-pack.json"), new.mmc_pack_json())?;
+    let game_dir = dir.join("minecraft");
+    let applied = apply(&dir, &game_dir, &manifest.files, &pack, &mut archive, fetch, progress)?;
+    let finished = match applied.failed {
+        Some(e) => Err(e),
+        None => (|| {
+            if info.game_version != manifest.game_version || info.fabric_loader != manifest.fabric_loader {
+                let new = NewInstance::new(&info.name, &info.game_version, info.fabric_loader.as_deref());
+                fs::write(dir.join("mmc-pack.json"), new.mmc_pack_json())?;
+            }
+            write_manifest(&dir, info, applied.owned.clone())
+        })(),
+    };
+    if let Err(e) = finished {
+        // Files may have changed: the record says what the pack owns on disk now, under the old version.
+        let both: Vec<Owned> = manifest.files.iter().chain(applied.owned.iter()).cloned().collect();
+        let files = owned_on_disk(&game_dir, &both);
+        let _ = save_manifest(&dir, &Manifest { files, ..manifest });
+        return Err(e);
     }
-    write_manifest(&dir, info, owned)?;
-    Ok(report)
+    Ok(applied.report)
 }
 
 #[cfg(test)]
@@ -777,6 +878,94 @@ mod tests {
     }
 
     #[test]
+    fn a_file_the_user_changed_is_not_reported_when_the_pack_did_not_change_it() {
+        let dir = temp("unchanged_by_pack");
+        let (v1, net1) = pack_v1(&dir);
+        let instances = dir.join("instances");
+        let w = install(&instances, &v1, &net1, &mut quiet()).unwrap();
+        fs::write(w.game_dir.join("options.txt"), "fov:110\n").unwrap();
+        fs::write(w.game_dir.join("mods/lithium-1.jar"), "hacked").unwrap();
+        // Version 2 changes only sodium's config.
+        let (v2, net2) = build(
+            &dir,
+            "v2.mrpack",
+            "2.0.0",
+            DEPS,
+            &[M("mods/sodium-1.jar", b"sodium one", None), M("mods/lithium-1.jar", b"lithium one", Some(("required", "required")))],
+            &[("overrides/config/sodium.json", "{\"a\":2}"), ("overrides/options.txt", "fov:70\n"), ("client-overrides/config/client.txt", "c1")],
+        );
+        let report = update(&instances, &w.id, &v2, &net2, &mut quiet()).unwrap();
+        assert!(report.kept.is_empty(), "{:?}", report.kept);
+        assert_eq!(report.written, ["config/sodium.json"]);
+        assert_eq!(fs::read_to_string(w.game_dir.join("options.txt")).unwrap(), "fov:110\n");
+        assert_eq!(fs::read(w.game_dir.join("mods/lithium-1.jar")).unwrap(), b"hacked");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_replacement_that_fails_midway_leaves_a_record_that_matches_the_disk() {
+        let dir = temp("midway");
+        let (v1, net1) = pack_v1(&dir);
+        let instances = dir.join("instances");
+        let w = install(&instances, &v1, &net1, &mut quiet()).unwrap();
+        // A file where a folder must be made: the second new file fails after the first was put in place.
+        fs::write(w.game_dir.join("m"), "in the way").unwrap();
+        let (v2, net2) = build(
+            &dir,
+            "v2.mrpack",
+            "2.0.0",
+            DEPS,
+            &[M("mods/sodium-1.jar", b"sodium one", None), M("mods/lithium-1.jar", b"lithium one", Some(("required", "required")))],
+            &[("overrides/a.txt", "new a"), ("overrides/config/sodium.json", "{\"a\":2}"), ("overrides/m/b.txt", "b")],
+        );
+        assert!(update(&instances, &w.id, &v2, &net2, &mut quiet()).is_err());
+        assert_eq!(fs::read_to_string(w.game_dir.join("a.txt")).unwrap(), "new a");
+        // The old version number stays, so the update can run again; the record lists what is on disk.
+        let manifest: Manifest = serde_json::from_slice(&fs::read(w.dir.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(manifest.version_id, "1.0.0");
+        let record: BTreeMap<_, _> = manifest.files.iter().map(|o| (o.path.as_str(), o.sha1.as_str())).collect();
+        assert_eq!(record["a.txt"], sha1_hex(b"new a"));
+        assert_eq!(record["mods/sodium-1.jar"], sha1_hex(b"sodium one"));
+        assert!(!record.contains_key("m/b.txt"));
+        assert!(!w.dir.join(STAGING).exists() && !w.dir.join(format!("{MANIFEST}.tmp")).exists());
+        // With the obstacle gone, the same update finishes the job and reports nothing as kept.
+        fs::remove_file(w.game_dir.join("m")).unwrap();
+        let report = update(&instances, &w.id, &v2, &net2, &mut quiet()).unwrap();
+        assert!(report.kept.is_empty(), "{:?}", report.kept);
+        assert_eq!(fs::read_to_string(w.game_dir.join("m/b.txt")).unwrap(), "b");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn windows_device_names_and_trailing_dots_are_unsafe_paths() {
+        for bad in ["mods/con.jar", "NUL", "config/aux.txt", "a/com1", "x/LPT9.cfg", "mods/a.jar.", "mods/a.jar ", "mods/a<b.jar", "mods/x?.jar"] {
+            assert!(safe_path(bad).is_err(), "{bad}");
+        }
+        for good in ["mods/sodium.jar", "config/console.txt", "config/com10.txt", "a/b.c.d"] {
+            assert!(safe_path(good).is_ok(), "{good}");
+        }
+    }
+
+    #[test]
+    fn overrides_that_unpack_to_too_much_are_refused() {
+        let dir = temp("bomb");
+        let path = dir.join("big.mrpack");
+        let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file(INDEX, opts).unwrap();
+        zip.write_all(format!(r#"{{"formatVersion":1,"game":"minecraft","versionId":"1","name":"Big","files":[],"dependencies":{DEPS}}}"#).as_bytes()).unwrap();
+        // Zeros compress to almost nothing: more than the cap declared, a few kilobytes on disk.
+        let zeros = vec![0u8; 1 << 19];
+        for n in 0..3 {
+            zip.start_file(format!("overrides/big{n}.bin"), opts).unwrap();
+            zip.write_all(&zeros).unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(matches!(read_info(&path), Err(MrpackError::Unreadable(why)) if why.contains("1 GB")));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn update_needs_an_instance_the_pack_made() {
         let dir = temp("unmanaged");
         let (v1, net) = pack_v1(&dir);
@@ -796,5 +985,8 @@ mod tests {
         assert_eq!(decide("a", Some("u"), Some("o"), "n"), Action::KeepUser);
         assert_eq!(decide("a", Some("u"), None, "n"), Action::KeepUser);
         assert_eq!(decide("saves/w/level.dat", Some("o"), Some("o"), "n"), Action::KeepUser);
+        // The user changed it and the pack did not: nothing to do, nothing to report.
+        assert_eq!(decide("a", Some("u"), Some("n"), "n"), Action::Same);
+        assert_eq!(decide("saves/w/level.dat", Some("u"), Some("n"), "n"), Action::Same);
     }
 }
