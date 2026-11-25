@@ -273,6 +273,79 @@ pub fn png_size(png: &[u8]) -> Result<(u32, u32), SkinError> {
     }
 }
 
+/// A skin's pixels, as 8-bit RGBA rows. The picture mere-png reads in `native/` holds stored and fixed-Huffman blocks
+/// only, and the PNGs Mojang serves are compressed with dynamic ones, so the face of a real account was never drawn:
+/// the pixels are read here, where `miniz_oxide` (already the zip's inflate) reads every kind of block.
+/// Not interlaced, 8 bits a channel: RGBA, RGB or a palette (with its transparency), which is what skins are.
+pub fn rgba(png: &[u8]) -> Result<(u32, u32, Vec<u8>), SkinError> {
+    let bad = |why: &str| SkinError::BadData(format!("the skin's picture: {why}"));
+    let (w, h) = png_size(png)?;
+    let (mut header, mut palette, mut alpha, mut data) = (None, Vec::new(), Vec::new(), Vec::new());
+    let mut at = 8;
+    while at + 8 <= png.len() {
+        let len = u32::from_be_bytes(png[at..at + 4].try_into().unwrap()) as usize;
+        let kind = &png[at + 4..at + 8];
+        let body = png.get(at + 8..at + 8 + len).ok_or_else(|| bad("a chunk is cut short"))?;
+        match kind {
+            b"IHDR" => header = Some((body.get(8).copied(), body.get(9).copied(), body.get(12).copied())),
+            b"PLTE" => palette = body.to_vec(),
+            b"tRNS" => alpha = body.to_vec(),
+            b"IDAT" => data.extend_from_slice(body),
+            b"IEND" => break,
+            _ => {}
+        }
+        at += 12 + len;
+    }
+    let Some((Some(8), Some(kind), Some(0))) = header else { return Err(bad("only 8 bits a channel, not interlaced")) };
+    let channels = match kind {
+        6 => 4,
+        2 => 3,
+        3 => 1,
+        _ => return Err(bad("a colour type skins do not use")),
+    };
+    let rows = miniz_oxide::inflate::decompress_to_vec_zlib(&data).map_err(|e| bad(&format!("{e:?}")))?;
+    let stride = w as usize * channels;
+    if rows.len() != (stride + 1) * h as usize {
+        return Err(bad("the pixels are not the picture's size"));
+    }
+    // The five row filters, each reading the pixel before, the row above and the one above that.
+    let mut raw = vec![0u8; stride * h as usize];
+    for y in 0..h as usize {
+        let (filter, line) = (rows[y * (stride + 1)], &rows[y * (stride + 1) + 1..(y + 1) * (stride + 1)]);
+        for x in 0..stride {
+            let left = if x >= channels { raw[y * stride + x - channels] as i32 } else { 0 };
+            let up = if y > 0 { raw[(y - 1) * stride + x] as i32 } else { 0 };
+            let corner = if x >= channels && y > 0 { raw[(y - 1) * stride + x - channels] as i32 } else { 0 };
+            let guess = match filter {
+                0 => 0,
+                1 => left,
+                2 => up,
+                3 => (left + up) / 2,
+                4 => {
+                    let p = left + up - corner;
+                    let (a, b, c) = ((p - left).abs(), (p - up).abs(), (p - corner).abs());
+                    if a <= b && a <= c { left } else if b <= c { up } else { corner }
+                }
+                _ => return Err(bad("an unknown row filter")),
+            };
+            raw[y * stride + x] = line[x].wrapping_add(guess as u8);
+        }
+    }
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for px in raw.chunks(channels) {
+        match kind {
+            6 => out.extend_from_slice(px),
+            2 => out.extend_from_slice(&[px[0], px[1], px[2], 255]),
+            _ => {
+                let i = px[0] as usize;
+                let colour = palette.get(i * 3..i * 3 + 3).ok_or_else(|| bad("a pixel names a colour the palette lacks"))?;
+                out.extend_from_slice(&[colour[0], colour[1], colour[2], alpha.get(i).copied().unwrap_or(255)]);
+            }
+        }
+    }
+    Ok((w, h, out))
+}
+
 // ---- default skins ----
 
 /// The nine default skins' file names, alphabetical.

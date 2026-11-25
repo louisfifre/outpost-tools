@@ -232,3 +232,64 @@ fn live_jeb() {
     assert_eq!(skin.uuid, JEB_ID);
     assert!(png_size(&skin.png).is_ok());
 }
+
+/// A 64 x 64 RGBA PNG whose rows use the five filters in turn, compressed by miniz_oxide (the CRCs are not read).
+fn compressed_png(pixels: &[u8]) -> Vec<u8> {
+    let stride = 64 * 4;
+    let mut rows = Vec::new();
+    for y in 0..64usize {
+        let filter = (y % 5) as u8;
+        rows.push(filter);
+        for x in 0..stride {
+            let at = |y: usize, x: usize| pixels[y * stride + x] as i32;
+            let left = if x >= 4 { at(y, x - 4) } else { 0 };
+            let up = if y > 0 { at(y - 1, x) } else { 0 };
+            let corner = if x >= 4 && y > 0 { at(y - 1, x - 4) } else { 0 };
+            let guess = match filter {
+                0 => 0,
+                1 => left,
+                2 => up,
+                3 => (left + up) / 2,
+                _ => {
+                    let p = left + up - corner;
+                    let (a, b, c) = ((p - left).abs(), (p - up).abs(), (p - corner).abs());
+                    if a <= b && a <= c { left } else if b <= c { up } else { corner }
+                }
+            };
+            rows.push((at(y, x) as u8).wrapping_sub(guess as u8));
+        }
+    }
+    let idat = miniz_oxide::deflate::compress_to_vec_zlib(&rows, 9);
+    // The first block's type, in the two bits after its final flag: 2 is a dynamic Huffman block.
+    assert_eq!((idat[2] >> 1) & 3, 2, "the test picture needs the kind of block real skins have");
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut chunk = |kind: &[u8; 4], body: &[u8]| {
+        png.extend((body.len() as u32).to_be_bytes());
+        png.extend(kind);
+        png.extend(body);
+        png.extend([0; 4]);
+    };
+    let mut header = Vec::new();
+    header.extend(64u32.to_be_bytes());
+    header.extend(64u32.to_be_bytes());
+    header.extend([8, 6, 0, 0, 0]);
+    chunk(b"IHDR", &header);
+    chunk(b"IDAT", &idat);
+    chunk(b"IEND", &[]);
+    png
+}
+
+#[test]
+fn a_skin_compressed_with_dynamic_blocks_gives_its_pixels() {
+    // Colours that repeat unevenly, as a skin's do, so that the compressor picks dynamic codes.
+    let pixels: Vec<u8> = (0..64 * 64 * 4).map(|i: usize| ((i / 4) % 7 * 31 + i % 4 * 13 + (i / 256) % 3 * 50) as u8).collect();
+    let (w, h, rgba) = rgba(&compressed_png(&pixels)).unwrap();
+    assert_eq!((w, h), (64, 64));
+    assert!(rgba == pixels, "every pixel comes back, through the five row filters");
+}
+
+#[test]
+fn a_picture_that_is_not_a_readable_skin_is_refused() {
+    assert!(matches!(rgba(&fake_png(64, 64, 1)), Err(SkinError::BadData(_))), "a header alone has no pixels");
+    assert!(matches!(rgba(b"not a png"), Err(SkinError::BadData(_))));
+}
