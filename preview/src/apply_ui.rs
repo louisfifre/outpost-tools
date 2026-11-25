@@ -1,11 +1,11 @@
-//! The Apply block under the settings: the two choices that put every value back (to the pack's, to Tectonic's own;
-//! each is pressed while the form is there, both when the pack is Tectonic's own), the place line that opens the
+//! The Apply block under the settings, and the line that opens them: the two choices that put every value back (to the
+//! pack's, to Tectonic's own; each is pressed while the form is there, both when the pack is Tectonic's own). Then the place line that opens the
 //! list of places above itself (`places.rs`, the kit's menu with multiple selectors, ending on "Choose a folder…"),
 //! Apply (the only control that writes), what the last apply said, what to do when no game was found or a folder was
 //! refused, and the warning about seams. The shell only records the press (`Want::Apply`); the application
 //! writes (`apply.rs`).
 
-use mere_layout::{Edges, Style};
+use mere_layout::{Edges, Margin, Side, Style};
 use mere_ui::tokens::{GAP, GAP_WIDE};
 use mere_ui::{ActionLook, ActionOpts, MenuOpts, SelectionRow, Selector, TabLook, TabOpts, TextLook, Tone, Trigger, Ui, choice_style};
 
@@ -66,10 +66,33 @@ pub fn report_words(r: &Report) -> (String, Vec<String>) {
     (quiet.join(" "), warn)
 }
 
+/// The first line of the settings: "Back to" as plain text, and the two choices at the far right, which read as actions.
+pub fn back_line(ui: &mut Ui, values: &mut [f64; 43], baseline: &[f64; 43], ids: &mut ShellIds) {
+    ids.profiles = ui.node("profiles", Style::default(), |ui| {
+        ui.text(text::BACK_TO, TextLook::body(Tone::Muted));
+        let choices = Style { margin: Margin { left: Side::Auto, ..Margin::default() }, ..choice_style() };
+        ui.node("backChoices", choices, |ui| {
+            let original = original_values();
+            for (key, name, hint, to) in [("pack", text::PACK, text::PROFILE_PACK_HINT, *baseline), ("original", text::ORIGINAL, text::ORIGINAL_HINT, original)] {
+                let r = ui.tab(key, name, TabLook::Choice, TabOpts { pressed: same_values(values, &to), disabled: false });
+                ui.title(r.id, hint);
+                if r.clicked {
+                    *values = to;
+                }
+                if key == "original" {
+                    ids.original = r.id;
+                } else {
+                    ids.back_pack = r.id;
+                }
+            }
+        });
+    });
+}
+
 /// The fields of the state it reads and writes, one by one: it is built inside the settings fold, which holds another
 /// of the state's fields.
 pub struct Apply<'a> {
-    pub values: &'a mut [f64; 43],
+    pub values: &'a [f64; 43],
     pub baseline: &'a [f64; 43],
     pub places: &'a mut Vec<Place>,
     pub open: &'a mut bool,
@@ -91,23 +114,6 @@ pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     ids.place_text.clear();
     let style = Style { column: true, shrink: 0.0, pad: Edges::new(GAP_WIDE, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, GAP), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
-        ids.profiles = ui.node("profiles", choice_style(), |ui| {
-            ui.text(text::BACK_TO, TextLook::body(Tone::Muted));
-            let original = original_values();
-            for (key, name, hint, to) in [("pack", text::PACK, text::PROFILE_PACK_HINT, *s.baseline), ("original", text::ORIGINAL, text::ORIGINAL_HINT, original)] {
-                let r = ui.tab(key, name, TabLook::Choice, TabOpts { pressed: same_values(s.values, &to), disabled: false });
-                ui.title(r.id, hint);
-                if r.clicked {
-                    *s.values = to;
-                }
-                if key == "original" {
-                    ids.original = r.id;
-                } else {
-                    ids.back_pack = r.id;
-                }
-            }
-        });
-
         let working = *s.notice == Notice::Working;
         let ticked: Vec<&Place> = s.places.iter().filter(|p| p.ticked).collect();
         let none_ticked = ticked.is_empty();

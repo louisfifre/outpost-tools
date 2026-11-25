@@ -801,11 +801,12 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, stacked: b
 
     let r = ui.fold_with("settings", text::PROFILES, &mut s.settings_open, mere_ui::FoldOpts { grow: !stacked, ..Default::default() }, |ui| {
         let mut help = Help { open: &mut s.help };
+        crate::apply_ui::back_line(ui, &mut s.values, &s.baseline, ids);
         // Stacked, the list has no bar of its own: the column's scroll serves the filter and the list alike.
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
         s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, stacked);
-        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
+        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 
