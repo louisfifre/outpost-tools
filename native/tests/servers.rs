@@ -109,6 +109,53 @@ fn a1_a_stop_is_said_on_the_line_that_was_stopped_only() {
 }
 
 #[test]
+fn a1_choose_folder_is_an_action_of_the_head_that_asks_the_api_and_reads_the_list_again() {
+    let mut rig = board_rig(1400, 940);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    assert!(rig.says("Choose folder") && rig.says("New server"), "both actions are in the head of SERVERS");
+    let (choose, new) = (rig.rect(rig.home().ids().choose_folder), rig.rect(rig.home().ids().new_server));
+    assert!(choose.x + choose.w < new.x && (choose.y - new.y).abs() < 0.01, "{choose:?} then {new:?}");
+    let asked = rig.api.count("GET", "/api/servers");
+    let button = rig.home().ids().choose_folder;
+    rig.click(button);
+    assert_eq!(rig.api.count("POST", "/api/servers/folder"), 1);
+    assert_eq!(rig.api.last_body("POST", "/api/servers/folder"), Some(serde_json::Value::Null), "one folder for all the servers: no id");
+    rig.frame();
+    assert!(rig.api.count("GET", "/api/servers") > asked, "the list is read again from the folder now chosen");
+    assert_eq!(rig.home().notes().1, "");
+}
+
+#[test]
+fn a1_a_folder_that_cannot_be_chosen_says_why_under_the_servers() {
+    let api = board_api();
+    board_servers(&api);
+    let why = "A server is running: stop it before choosing another servers folder.";
+    api.set_post("/api/servers/folder", 409, json!({"error": why}));
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    let button = rig.home().ids().choose_folder;
+    rig.click(button);
+    rig.frame();
+    assert_eq!(rig.home().notes().1, why);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    rig.write("home_a1_servers_folder_refused_1400.png");
+}
+
+#[test]
+fn a1_a_server_that_fails_to_start_says_why_and_stays_stopped() {
+    let api = board_api();
+    board_servers(&api);
+    let why = "Java is missing, so the server cannot start.";
+    api.set_post("/api/server/start", 412, json!({"error": why}));
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    let start = row_of(&rig, "Test server").play;
+    rig.click(start);
+    rig.frame();
+    assert_eq!(rig.home().notes().1, why);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    assert!(rig.says("stopped \u{b7} made from Exploration"));
+}
+
+#[test]
 fn a1_an_api_that_lists_no_servers_leaves_the_one_server() {
     let mut rig = Rig::new(1400, 940, true);
     assert_eq!(rig.api.count("GET", "/api/servers"), 1);

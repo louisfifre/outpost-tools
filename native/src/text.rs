@@ -8,6 +8,8 @@ pub const PROFILES_GROUP: &str = "Profiles";
 /// The action at the head of the profiles, and of the servers (board A1).
 pub const NEW_PROFILE: &str = "New profile";
 pub const NEW_SERVER: &str = "New server";
+/// The action at the head of the servers that chooses the folder they live in.
+pub const CHOOSE_FOLDER: &str = "Choose folder";
 /// The title of the page that adds a mod to a profile (board B4).
 pub fn add_mod_title(profile: &str) -> String {
     format!("Add a mod to {profile}")

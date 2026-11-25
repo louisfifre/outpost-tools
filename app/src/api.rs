@@ -19,6 +19,7 @@ mod preview;
 mod prism_portable;
 mod profiles;
 mod screens;
+mod server_run;
 pub mod servers;
 pub mod skin;
 
@@ -37,6 +38,8 @@ use crate::system;
 use dev_server::ServerLaunch;
 use preview::PREVIEW_URL;
 use profiles::Launch;
+use server_run::Run;
+pub use server_run::Runner;
 
 pub struct Reply {
     pub status: u16,
@@ -103,6 +106,8 @@ struct Config {
 struct Live {
     launch: Option<Launch>,
     server: Option<ServerLaunch>,
+    // The servers of the servers folder this program started (api/server_run.rs).
+    runs: Vec<Run>,
     preview: Option<Child>,
     system: System,
 }
@@ -113,6 +118,7 @@ pub struct Api {
     origin: String,
     config: OnceLock<Config>,
     live: Mutex<Live>,
+    runner: Runner,
     machine_mb: u64,
     log: PathBuf,
     // How many mods have a newer version, per profile, as the last look at Modrinth found them (mods.rs). Home reads
@@ -132,12 +138,19 @@ impl Api {
             repo,
             origin,
             config: OnceLock::new(),
-            live: Mutex::new(Live { launch: None, server: None, preview: None, system }),
+            live: Mutex::new(Live { launch: None, server: None, runs: Vec::new(), preview: None, system }),
+            runner: Runner::real(),
             machine_mb,
             log,
             updates_seen: Mutex::new(HashMap::new()),
             searches: mods::Searches::default(),
         }
+    }
+
+    /// The same api with what starts a server and its Java put in place of the real ones: for tests and pictures.
+    pub fn with_runner(mut self, runner: Runner) -> Api {
+        self.runner = runner;
+        self
     }
 
     // Why something failed, kept in run\launcher.log: the only trace once the window is gone.

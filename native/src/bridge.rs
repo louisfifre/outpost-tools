@@ -48,6 +48,8 @@ pub enum Tag {
     /// A link opened in the browser.
     OpenUrl,
     ServerFolder,
+    /// The servers folder, chosen in a dialog the api opens.
+    ServersFolder,
     /// A request of the page that adds a mod.
     Mods(crate::pages::add_mod::Ask),
     /// Accept the Minecraft EULA for the server (the api writes the line; nothing here does).

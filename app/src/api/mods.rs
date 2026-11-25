@@ -48,6 +48,10 @@ pub trait Outside: Http + Send + Sync {
     fn open(&self, url: &str) -> Result<(), String>;
     /// Asks the person for a jar; None when they chose none.
     fn pick_file(&self) -> Option<PathBuf>;
+    /// Asks the person for a folder; None when they chose none. The servers folder is chosen through the same door.
+    fn pick_folder(&self) -> Option<PathBuf> {
+        None
+    }
     /// Whether Minecraft's files are held; None to look at the processes.
     fn locked(&self) -> Option<bool> {
         None
@@ -107,6 +111,13 @@ impl Outside for Real {
         let chosen = String::from_utf8_lossy(&out.stdout).trim().to_string();
         (!chosen.is_empty()).then(|| PathBuf::from(chosen))
     }
+
+    fn pick_folder(&self) -> Option<PathBuf> {
+        let script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms;             $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true };             $dialog = New-Object System.Windows.Forms.FolderBrowserDialog;             $dialog.Description = 'Choose the servers folder'; $dialog.ShowNewFolderButton = $true;             if ($dialog.ShowDialog($owner) -eq 'OK') { [Console]::Out.Write($dialog.SelectedPath) }";
+        let out = system::hidden("pwsh").args(["-NoProfile", "-STA", "-Command", script]).output().ok()?;
+        let chosen = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (!chosen.is_empty()).then(|| PathBuf::from(chosen))
+    }
 }
 
 // What a test or a picture put in place of the real world, by the pack repository an `Api` was made for.
@@ -120,7 +131,7 @@ pub fn install(repo: &Path, outside: Arc<dyn Outside>) {
     all.push((repo.to_path_buf(), outside));
 }
 
-fn outside_of(repo: &Path) -> Arc<dyn Outside> {
+pub(super) fn outside_of(repo: &Path) -> Arc<dyn Outside> {
     let all = INSTALLED.lock().unwrap_or_else(PoisonError::into_inner);
     all.iter().find(|(r, _)| r == repo).map(|(_, o)| o.clone()).unwrap_or_else(|| Arc::new(Real(modrinth::UreqHttp::new())))
 }
@@ -552,6 +563,7 @@ pub mod canned {
         pub asked: Mutex<Vec<String>>,
         pub opened: Mutex<Vec<String>>,
         pub file: Mutex<Option<PathBuf>>,
+        pub folder: Mutex<Option<PathBuf>>,
         pub locked: Mutex<Option<bool>>,
     }
 
@@ -594,6 +606,9 @@ pub mod canned {
         }
         fn pick_file(&self) -> Option<PathBuf> {
             self.file.lock().unwrap().clone()
+        }
+        fn pick_folder(&self) -> Option<PathBuf> {
+            self.folder.lock().unwrap().clone()
         }
         fn locked(&self) -> Option<bool> {
             // Tests never look at the processes of the machine they run on.
