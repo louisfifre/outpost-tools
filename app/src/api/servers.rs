@@ -762,6 +762,34 @@ mod tests {
     }
 
     #[test]
+    fn the_players_in_the_game_are_counted_from_this_runs_log() {
+        let log = "[10:00:09] [Server thread/INFO]: Done (4.2s)!\n[10:01:00] [Server thread/INFO]: Ana joined the game\n[10:02:00] [Server thread/INFO]: Bo joined the game\n[10:03:00] [Server thread/INFO]: Ana left the game\n[10:04:00] [Server thread/INFO]: <Bo> Ana left the game\n";
+        assert_eq!(players_online(log), 1);
+        assert_eq!(players_online(""), 0);
+        // A log cut after a leave that was not seen joining never counts below none.
+        assert_eq!(players_online("[1] [Server thread/INFO]: Cy left the game\n"), 0);
+    }
+
+    #[test]
+    fn accepting_writes_only_the_eula_line_and_keeps_the_rest() {
+        let dir = temp_dir("accept");
+        accept_eula(&dir).unwrap();
+        assert!(eula_accepted(&dir));
+        fs::write(eula_file(&dir), "#comment\neula=false\nother=1\n").unwrap();
+        accept_eula(&dir).unwrap();
+        assert_eq!(fs::read_to_string(eula_file(&dir)).unwrap(), "#comment\r\neula=true\r\nother=1\r\n");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_servers_java_command_line_holds_its_own_jar_path() {
+        let dir = Path::new("C:\\Code\\servers\\One");
+        let c = launch_command(Path::new("java.exe"), dir, 4096, &[]);
+        assert!(c.args.join(" ").to_lowercase().contains(&process_marker(dir)));
+        assert!(!c.args.join(" ").contains("fabric-server-"));
+    }
+
+    #[test]
     fn the_launch_command_is_java_with_the_launcher_jar() {
         let c = launch_command(Path::new("java.exe"), Path::new("srv"), 4096, &["-XX:+UseZGC".to_string()]);
         assert_eq!(c.args, ["-Xmx4096M", "-XX:+UseZGC", "-jar", &Path::new("srv").join(LAUNCHER_JAR).to_string_lossy(), "nogui"]);
