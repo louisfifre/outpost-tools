@@ -16,8 +16,11 @@ use serde_json::{Value, json};
 use super::key_value::Props;
 
 pub const META_FILE: &str = "outpost-server.json";
-// The name the Fabric server launcher is saved under in a server's folder.
-pub const LAUNCHER_JAR: &str = "fabric-server-launcher.jar";
+// The name the Fabric server launcher is saved under in a server's folder. It must not start with "fabric-server-":
+// dev_server.rs takes a java process whose command line holds that prefix after its own folder for the test server.
+pub const LAUNCHER_JAR: &str = "outpost-fabric-launcher.jar";
+// A server being made lives under this prefix until it is whole; list_servers ignores such folders.
+const STAGING_PREFIX: &str = ".creating-";
 pub const DEFAULT_PORT: u16 = 25565;
 
 // ---- A server on disk ----
@@ -35,15 +38,17 @@ impl Server {
         json!({ "name": self.name, "profile": self.profile, "worldProject": self.world_project })
     }
 
-    pub fn read(dir: &Path) -> Option<Server> {
-        let bytes = fs::read(dir.join(META_FILE)).ok()?;
-        let meta: Value = serde_json::from_slice(super::key_value::strip_bom(&bytes)).ok()?;
-        Some(Server {
-            dir: dir.to_path_buf(),
-            name: meta["name"].as_str()?.to_string(),
-            profile: meta["profile"].as_str()?.to_string(),
-            world_project: meta["worldProject"].as_str().map(String::from),
-        })
+    /// Ok(None) when the folder has no Outpost Tools file (not a server); Err when it has one that cannot be read.
+    pub fn read(dir: &Path) -> Result<Option<Server>, String> {
+        let bytes = match fs::read(dir.join(META_FILE)) {
+            Ok(b) => b,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("{META_FILE} cannot be read: {e}")),
+        };
+        let meta: Value =
+            serde_json::from_slice(super::key_value::strip_bom(&bytes)).map_err(|e| format!("{META_FILE} is not valid: {e}"))?;
+        let field = |key: &str| meta[key].as_str().map(String::from).ok_or_else(|| format!("{META_FILE} has no {key}"));
+        Ok(Some(Server { dir: dir.to_path_buf(), name: field("name")?, profile: field("profile")?, world_project: field("worldProject").ok() }))
     }
 
     pub fn write(&self) -> io::Result<()> {
@@ -51,17 +56,39 @@ impl Server {
     }
 }
 
-// The servers of a servers folder: every sub-folder with a readable Outpost Tools file, by folder name.
-pub fn list_servers(servers_dir: &Path) -> Vec<Server> {
-    let mut found: Vec<Server> = fs::read_dir(servers_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .filter_map(|e| Server::read(&e.path()))
-        .collect();
-    found.sort_by(|a, b| a.dir.cmp(&b.dir));
-    found
+/// The servers of a servers folder, and the folders that look like one but cannot be read, each with its reason.
+#[derive(Debug, Default, PartialEq)]
+pub struct ServerList {
+    pub servers: Vec<Server>,
+    pub errors: Vec<(PathBuf, String)>,
+}
+
+// Every sub-folder with an Outpost Tools file, by folder name. A folder with no such file is not a server and is not
+// an error; one whose file is broken is reported in `errors`, so the page can say so instead of hiding the server.
+pub fn list_servers(servers_dir: &Path) -> ServerList {
+    let mut list = ServerList::default();
+    let entries = match fs::read_dir(servers_dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return list,
+        Err(e) => {
+            list.errors.push((servers_dir.to_path_buf(), format!("the servers folder cannot be read: {e}")));
+            return list;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() || entry.file_name().to_string_lossy().starts_with(STAGING_PREFIX) {
+            continue;
+        }
+        match Server::read(&path) {
+            Ok(Some(server)) => list.servers.push(server),
+            Ok(None) => {}
+            Err(why) => list.errors.push((path, why)),
+        }
+    }
+    list.servers.sort_by(|a, b| a.dir.cmp(&b.dir));
+    list.errors.sort();
+    list
 }
 
 // A folder name Windows accepts, made from what the user typed.
@@ -162,38 +189,56 @@ pub struct Created {
 }
 
 // Makes the server's folder, its Outpost Tools file and its mods folder. The launcher jar is fetched by the caller
-// (see fabric_server_url) and saved as LAUNCHER_JAR.
+// (see fabric_server_url) and saved as LAUNCHER_JAR. Everything is built in a staging folder of the servers folder and
+// renamed to the server's name at the end, so a failure leaves no half-made server (a crash may leave the staging
+// folder, which is not listed).
 pub fn create_server(servers_dir: &Path, new: &NewServer, mods: &[ProfileMod], sides: &dyn ModSides) -> io::Result<Created> {
     let name = new.name.trim();
     if name.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "A server needs a name."));
     }
     fs::create_dir_all(servers_dir)?;
-    let base = folder_name(name);
-    let mut dir = servers_dir.join(&base);
-    let mut n = 2;
-    // create_dir fails when the folder exists: no server is overwritten, even under a race.
-    while let Err(e) = fs::create_dir(&dir) {
-        if e.kind() != io::ErrorKind::AlreadyExists {
-            return Err(e);
-        }
-        dir = servers_dir.join(format!("{base}-{n}"));
-        n += 1;
+    let stamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let staging = servers_dir.join(format!("{STAGING_PREFIX}{}-{stamp}", std::process::id()));
+    fs::create_dir(&staging)?;
+    let made = build_in(&staging, servers_dir, name, new, mods, sides);
+    if made.is_err() {
+        let _ = fs::remove_dir_all(&staging);
     }
+    made
+}
+
+fn build_in(staging: &Path, servers_dir: &Path, name: &str, new: &NewServer, mods: &[ProfileMod], sides: &dyn ModSides) -> io::Result<Created> {
     let selection = select_mods(mods, sides);
-    let mods_dir = dir.join("mods");
+    let mods_dir = staging.join("mods");
     fs::create_dir(&mods_dir)?;
     for m in &selection.kept {
         let file_name = m.file.file_name().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "A mod has no file name."))?;
         fs::copy(&m.file, mods_dir.join(file_name))?;
     }
-    let server = Server {
-        dir,
+    let mut server = Server {
+        dir: staging.to_path_buf(),
         name: name.to_string(),
         profile: new.profile.to_string(),
         world_project: new.world_project.map(String::from),
     };
     server.write()?;
+    let base = folder_name(name);
+    let mut dir = servers_dir.join(&base);
+    let mut n = 2;
+    // A rename onto a folder that exists fails on Windows, so no server is overwritten, even under a race.
+    loop {
+        if !dir.exists() {
+            match fs::rename(staging, &dir) {
+                Ok(()) => break,
+                Err(e) if e.kind() != io::ErrorKind::AlreadyExists && !dir.exists() => return Err(e),
+                Err(_) => {}
+            }
+        }
+        dir = servers_dir.join(format!("{base}-{n}"));
+        n += 1;
+    }
+    server.dir = dir;
     Ok(Created { server, mods: selection })
 }
 
@@ -424,6 +469,8 @@ fn start_checked(
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum StopOutcome {
+    // It had already ended when asked: nothing was saved by this stop, and nothing is known of how it ended.
+    AlreadyExited,
     // It ended on its own after "stop", having saved.
     Saved,
     // It did not end in time and was killed: the last minutes may be lost.
@@ -433,7 +480,7 @@ pub enum StopOutcome {
 // Sends "stop" and waits for the server to save and end; kills it when `timeout` passes.
 pub fn stop_server(process: &mut dyn ServerProcess, timeout: Duration, poll: Duration) -> io::Result<StopOutcome> {
     if process.has_exited()? {
-        return Ok(StopOutcome::Saved);
+        return Ok(StopOutcome::AlreadyExited);
     }
     // A failed write means the pipe is gone, so the server is ending anyway: the wait below decides.
     let _ = process.send_line("stop");
@@ -544,7 +591,9 @@ mod tests {
         assert_eq!(again.server.dir, servers.join("Friends- Fall-2"));
         // A folder with no Outpost Tools file is not a server.
         fs::create_dir(servers.join("stray")).unwrap();
-        let listed = list_servers(&servers);
+        let listing = list_servers(&servers);
+        assert!(listing.errors.is_empty(), "{:?}", listing.errors);
+        let listed = listing.servers;
         assert_eq!(listed, vec![made.server.clone(), again.server.clone()]);
         assert_eq!(listed[0].name, "Friends: Fall");
         assert_eq!(listed[0].world_project.as_deref(), Some("island"));
@@ -554,6 +603,46 @@ mod tests {
         assert!(!eula_file(&made.server.dir).exists());
         let _ = fs::remove_dir_all(profile);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_failed_creation_leaves_nothing_behind() {
+        let root = temp_dir("failed");
+        let servers = root.join("servers");
+        let table = Table(vec![]);
+        // A mod whose file is not there: the copy fails after the folders were made.
+        let missing = ProfileMod { name: "gone".into(), file: root.join("gone.jar") };
+        let new = NewServer { name: "Doomed", profile: "Pack", world_project: None };
+        assert!(create_server(&servers, &new, &[missing], &table).is_err());
+        assert_eq!(fs::read_dir(&servers).unwrap().count(), 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_broken_server_file_is_reported_not_dropped() {
+        let root = temp_dir("broken");
+        let servers = root.join("servers");
+        let table = Table(vec![]);
+        let good = create_server(&servers, &NewServer { name: "Good", profile: "Pack", world_project: None }, &[], &table).unwrap();
+        fs::create_dir_all(servers.join("Bad")).unwrap();
+        fs::write(servers.join("Bad").join(META_FILE), "{ not json").unwrap();
+        fs::create_dir_all(servers.join("NoName")).unwrap();
+        fs::write(servers.join("NoName").join(META_FILE), r#"{"profile":"p"}"#).unwrap();
+        // A staging folder left by a crash is not a server and not an error.
+        fs::create_dir_all(servers.join(format!("{STAGING_PREFIX}1-1"))).unwrap();
+        let listing = list_servers(&servers);
+        assert_eq!(listing.servers, vec![good.server]);
+        let names: Vec<_> = listing.errors.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["Bad", "NoName"]);
+        assert!(listing.errors[1].1.contains("name"), "{:?}", listing.errors[1]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_launcher_jar_does_not_match_the_dev_servers_process_pattern() {
+        // dev_server.rs looks for "<folder>\fabric-server-" in a java command line.
+        assert!(!LAUNCHER_JAR.starts_with("fabric-server-"));
+        assert!(!format!("java -jar {LAUNCHER_JAR} nogui").contains("fabric-server-"));
     }
 
     const LOADERS: &str = r#"[
@@ -620,7 +709,7 @@ mod tests {
     #[test]
     fn the_launch_command_is_java_with_the_launcher_jar() {
         let c = launch_command(Path::new("java.exe"), Path::new("srv"), 4096, &["-XX:+UseZGC".to_string()]);
-        assert_eq!(c.args, ["-Xmx4096M", "-XX:+UseZGC", "-jar", "fabric-server-launcher.jar", "nogui"]);
+        assert_eq!(c.args, ["-Xmx4096M", "-XX:+UseZGC", "-jar", LAUNCHER_JAR, "nogui"]);
     }
 
     // A process that ends `after` polls after "stop" (never when None).
@@ -661,6 +750,15 @@ mod tests {
         assert_eq!(out, StopOutcome::Saved);
         assert_eq!(*lines.borrow(), ["stop"]);
         assert!(!*killed.borrow());
+    }
+
+    #[test]
+    fn stopping_a_server_that_had_already_exited_says_so() {
+        let (mut p, lines, _) = fake(Some(0));
+        p.stopped_at = Some(0);
+        let out = stop_server(&mut p, Duration::from_secs(1), Duration::from_millis(1)).unwrap();
+        assert_eq!(out, StopOutcome::AlreadyExited);
+        assert!(lines.borrow().is_empty(), "no stop is sent to a process that is gone");
     }
 
     #[test]
