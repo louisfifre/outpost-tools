@@ -603,7 +603,7 @@ fn a4_the_account_follows_the_name() {
         assert_eq!(shown.len(), 1, "Home {w}");
         let (text, at) = &shown[0];
         // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says.
-        let after_name = 48.0 + mere_ui::TextLook::heading().width(&preview::text::BAR_TITLE.to_uppercase());
+        let after_name = 48.0 + preview::overflow::brand_look().width(&preview::text::BAR_TITLE.to_uppercase());
         assert!((at.x - after_name).abs() < 0.5, "Home {w}: {} for {after_name}", at.x);
         let brand = rig.rect(rig.app.ids().brand);
         assert!((at.y + 9.0 - (brand.y + brand.h / 2.0)).abs() < 3.0, "on the bar's centre line");

@@ -174,6 +174,11 @@ pub fn strip_width(i: &Inputs, form: &Form) -> f32 {
     w
 }
 
+/// The brand's name: the heading without its letter spacing, which a monospaced word in capitals does not need.
+pub fn brand_look() -> TextLook {
+    TextLook { tracking: 0.0, ..TextLook::heading() }
+}
+
 /// The account's narrowest showing: a stub and the ellipsis, or the whole name when that is shorter.
 pub fn account_stub_width(account: &str) -> f32 {
     let look = TextLook::body(Tone::Muted);
@@ -184,7 +189,7 @@ pub fn account_stub_width(account: &str) -> f32 {
 pub fn brand_need(i: &Inputs, form: &Form) -> f32 {
     let mut w = BRAND_PAD + CUBE;
     if form.word {
-        w += BRAND_GAP + TextLook::heading().width(&text::BAR_TITLE.to_uppercase());
+        w += BRAND_GAP + brand_look().width(&text::BAR_TITLE.to_uppercase());
     }
     if let (true, Some(a)) = (form.account, i.account) {
         w += BRAND_GAP + account_stub_width(a);
