@@ -143,8 +143,9 @@ fn l7_the_account_after_the_name() {
     for w in [1000, 1200, 1400, 1920] {
         let rig = Rig::new(w, 940, true);
         let at = rig.texts().into_iter().find(|(_, t, _)| t == "PlayerOne").unwrap_or_else(|| panic!("no account at {w}"));
-        // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says.
-        let after_name = 48.0 + preview::overflow::brand_look().width(&preview::text::BAR_TITLE.to_uppercase());
+        // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says, then the
+        // account button's padding (8), its face (16) and the gap after it (8).
+        let after_name = 48.0 + 32.0 + preview::overflow::brand_look().width(&preview::text::BAR_TITLE.to_uppercase());
         assert!((at.0.x - after_name).abs() < 0.5, "{w}: {} for {after_name}", at.0.x);
         assert_eq!(rig.colour_of("PlayerOne"), Some(rig.theme.muted));
     }
