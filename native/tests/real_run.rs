@@ -1,5 +1,5 @@
 //! A real run of the world preview from the native launcher, as its window makes one: the runs `main` gives the
-//! preview tool (`launcher_native::runs`), the engine in this process (world_preview::run), Generate pressed on the
+//! preview tool (`outpost_tools::runs`), the engine in this process (world_preview::run), Generate pressed on the
 //! form. Seed cap-1 over 65 536 blocks with a point every 64 blocks, the widest run the pack needs.
 //!
 //! Ignored by default: it starts a game server, takes minutes and writes into the preview folders of the launcher's
@@ -11,10 +11,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use launcher::api::Api;
-use launcher_native::bridge::Bridge;
-use launcher_native::fake::fixture;
-use launcher_native::home::{Calendar, LauncherHome};
-use launcher_native::{ORIGIN, app};
+use outpost_tools::bridge::Bridge;
+use outpost_tools::fake::fixture;
+use outpost_tools::home::{Calendar, LauncherHome};
+use outpost_tools::{ORIGIN, app};
 use mere_base::{App, Button, Event, Vec2};
 use mere_ui::{Slide, Theme};
 use preview::Mode;
@@ -27,7 +27,7 @@ fn a_real_run_cap_1_over_65536_blocks_every_64() {
         return;
     };
     let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
-    let runs = launcher_native::runs(&api, &repo);
+    let runs = outpost_tools::runs(&api, &repo);
     assert!(runs.engine_dir.is_some(), "the world-preview repository is found beside the pack or at WORLD_PREVIEW_DIR");
     let (w, h) = (1400u32, 940u32);
     let home = LauncherHome::new(Bridge::inline(Arc::new(fixture())), Calendar::fixed());

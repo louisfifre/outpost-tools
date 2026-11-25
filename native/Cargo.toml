@@ -1,16 +1,16 @@
 [package]
-name = "launcher-native"
+name = "outpost-tools"
 version = "0.1.0"
 edition = "2024"
-description = "The native launcher: the world preview's window with the launcher's Home, drawn with mere-ui, answering through app's own api."
+description = "Outpost Tools: the world preview's window with the Home of its tools, drawn with mere-ui, answering through app's own api."
 publish = false
 
 [lib]
-name = "launcher_native"
+name = "outpost_tools"
 path = "src/lib.rs"
 
 [[bin]]
-name = "launcher-native"
+name = "outpost-tools"
 path = "src/main.rs"
 
 [dependencies]

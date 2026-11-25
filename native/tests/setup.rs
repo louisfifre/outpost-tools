@@ -5,8 +5,8 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::{FakeApi, fixture, java_downloading, java_missing};
-use launcher_native::pages::Page;
+use outpost_tools::fake::{FakeApi, fixture, java_downloading, java_missing};
+use outpost_tools::pages::Page;
 use mere_base::{App, Event, Vec2};
 use mere_ui::Theme;
 use mere_win32::Renderer;
@@ -22,7 +22,7 @@ fn setup_rig(api: Arc<FakeApi>, w: u32, h: u32) -> Rig {
     home.poll(0.0, true);
     home.open(Page::Setup);
     let mut r = Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
-    let mut app = launcher_native::app(theme, true, Vec2::new(w as f32, h as f32), None::<World>, None, home, true);
+    let mut app = outpost_tools::app(theme, true, Vec2::new(w as f32, h as f32), None::<World>, None, home, true);
     app.start(&mut r);
     app.event(Event::Resized { width_px: w, height_px: h, scale: 1.0 });
     app.set_clock(Some(1.0));

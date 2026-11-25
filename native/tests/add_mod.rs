@@ -6,8 +6,8 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::{FakeApi, fixture, found, mod_menu_added, mods_fixture};
-use launcher_native::pages::Page;
+use outpost_tools::fake::{FakeApi, fixture, found, mod_menu_added, mods_fixture};
+use outpost_tools::pages::Page;
 use mere_base::{App, Event, Vec2};
 use mere_ui::Theme;
 use mere_win32::Renderer;
@@ -24,7 +24,7 @@ fn on_the_page(api: Arc<FakeApi>, w: u32, h: u32) -> Rig {
     preview::Home::poll(&mut home, 0.0, true);
     home.open(Page::Profile("exploration".into()));
     home.open(Page::AddMod("exploration".into()));
-    let mut app = launcher_native::app(theme, true, Vec2::new(pw as f32, ph as f32), None::<World>, None, home, true);
+    let mut app = outpost_tools::app(theme, true, Vec2::new(pw as f32, ph as f32), None::<World>, None, home, true);
     app.start(&mut r);
     app.event(Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
     app.event(Event::Window { maximized: false });

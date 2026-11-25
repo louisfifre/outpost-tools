@@ -4,8 +4,8 @@
 mod common;
 
 use common::*;
-use launcher_native::fake::{board_server, board_servers, with_accounts};
-use launcher_native::pages::Page;
+use outpost_tools::fake::{board_server, board_servers, with_accounts};
+use outpost_tools::pages::Page;
 use mere_base::{Cmd, Key, Vec2};
 use mere_ui::Id;
 use serde_json::json;
@@ -104,8 +104,8 @@ fn c1_the_section_opens_the_profile_and_the_folder_and_folds() {
 
 #[test]
 fn c1_one_mod_and_none_are_said_each_its_way() {
-    assert_eq!(launcher_native::text::left_out(1).as_deref(), Some("1 mod not needed on a server"));
-    assert_eq!(launcher_native::text::left_out(0), None);
+    assert_eq!(outpost_tools::text::left_out(1).as_deref(), Some("1 mod not needed on a server"));
+    assert_eq!(outpost_tools::text::left_out(0), None);
 }
 
 #[test]

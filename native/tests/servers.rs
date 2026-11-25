@@ -4,10 +4,10 @@
 mod common;
 
 use common::*;
-use launcher_native::fake::{board_servers, with_accounts};
-use launcher_native::model::{ServerLine, parse_servers};
-use launcher_native::pages::Page;
-use launcher_native::text;
+use outpost_tools::fake::{board_servers, with_accounts};
+use outpost_tools::model::{ServerLine, parse_servers};
+use outpost_tools::pages::Page;
+use outpost_tools::text;
 use mere_base::Vec2;
 use serde_json::json;
 
@@ -19,7 +19,7 @@ fn board_rig(w: u32, h: u32) -> Rig {
     Rig::with_api(api, w, h, true, true)
 }
 
-fn row_of(rig: &Rig, id: &str) -> launcher_native::home::RowIds {
+fn row_of(rig: &Rig, id: &str) -> outpost_tools::home::RowIds {
     rig.home().ids().server_rows.iter().find(|r| r.profile == id).expect("the server is listed").clone()
 }
 

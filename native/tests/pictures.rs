@@ -7,7 +7,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::fixture;
+use outpost_tools::fake::fixture;
 use mere_base::{App, DrawList, Gfx, Vec2};
 use mere_ui::Theme;
 use mere_win32::Renderer;
@@ -118,7 +118,7 @@ fn preview_rig(w: u32, h: u32, dark: bool) -> Option<Rig> {
     let (pw, ph) = preview::min_size_px((w, h));
     let api = Arc::new(fixture());
     let mut r = Renderer::offscreen(pw, ph, 1.0).unwrap();
-    let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), Some(world), None, home_over(api.clone()), true);
+    let mut app = outpost_tools::app(theme, dark, Vec2::new(pw as f32, ph as f32), Some(world), None, home_over(api.clone()), true);
     app.start(&mut r);
     app.event(mere_base::Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
     app.set_clock(Some(1.0));
@@ -144,7 +144,7 @@ fn the_preview_tool_in_the_launcher() {
 fn a1_home_full() {
     // The bar at rest shows the account's face before its name (A1): its skin is read with the first answer.
     let api = board_api();
-    launcher_native::fake::with_accounts(&api);
+    outpost_tools::fake::with_accounts(&api);
     let mut rig = Rig::with_api(api, 1400, 940, true, true);
     rig.hover_at(Vec2::new(5.0, 930.0));
     assert!(rig.says("stopped \u{b7} joins at localhost:25565"));

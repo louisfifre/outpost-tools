@@ -6,13 +6,13 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::fixture;
+use outpost_tools::fake::fixture;
 use mere_base::{App, Rect, Vec2};
 use mere_ui::Theme;
 use preview::{BAR_H, Mode, PreviewState, picture_with_home};
 
 /// Home alone in its pane (no raise to the window's least), `w` x `h` as the window.
-fn home_at(w: f32, h: f32) -> (mere_ui::Ui, launcher_native::HomeIds, mere_base::DrawList) {
+fn home_at(w: f32, h: f32) -> (mere_ui::Ui, outpost_tools::HomeIds, mere_base::DrawList) {
     let mut home = loaded_home(Arc::new(fixture()));
     let state = PreviewState { mode: Mode::Home, reduce_motion: true, ..PreviewState::default() };
     let (list, ui, _) = picture_with_home(Theme::dark(), Vec2::new(w, h), None, state, &mut home);
@@ -27,12 +27,12 @@ fn l1_side_by_side_up_to_the_cap() {
     for w in 860..=2560 {
         let (ui, ids, _) = home_at(w as f32, 940.0);
         let inner = w as f32 - 56.0;
-        let used = inner.min(launcher_native::home::COLUMNS_MAX);
+        let used = inner.min(outpost_tools::home::COLUMNS_MAX);
         let left = 28.0 + (inner - used) / 2.0;
-        let half = (used - launcher_native::home::COLUMNS_GAP) / 2.0;
+        let half = (used - outpost_tools::home::COLUMNS_GAP) / 2.0;
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
         assert!((a.x - left).abs() < 0.01 && (a.y - 50.0).abs() < 0.01 && (a.w - half).abs() < 0.01, "profiles at {w}: {a:?}");
-        assert!((b.x - (left + half + launcher_native::home::COLUMNS_GAP)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
+        assert!((b.x - (left + half + outpost_tools::home::COLUMNS_GAP)).abs() < 0.01 && (b.w - half).abs() < 0.01, "server at {w}: {b:?}");
     }
 }
 
@@ -55,7 +55,7 @@ fn l1b_stacked_in_a_narrow_window() {
 /// two lines (the name's 19.5 and the small line's 16.5) taller than its square button, which ends at the part's edge.
 #[test]
 fn l4_the_numbers_at_1400() {
-    use launcher_native::home::COLUMNS_GAP;
+    use outpost_tools::home::COLUMNS_GAP;
     use mere_ui::tokens::{FRAME, GAP, ICON_SQUARE, INSET, INSET_HAIR};
     let (ui, ids, _) = home_at(1400.0, 940.0);
     let (left, part, top) = (260.0, (880.0 - COLUMNS_GAP) / 2.0, 50.0);
@@ -183,7 +183,7 @@ fn l8_the_preview_tool_keeps_its_panels() {
         let theme = Theme::dark();
         let h = 940u32;
         let mut r = mere_win32::Renderer::offscreen(w, h, 1.0).unwrap();
-        let mut app = launcher_native::app(theme, true, Vec2::new(w as f32, h as f32), Some(world.clone()), None, home_over(Arc::new(fixture())), true);
+        let mut app = outpost_tools::app(theme, true, Vec2::new(w as f32, h as f32), Some(world.clone()), None, home_over(Arc::new(fixture())), true);
         app.start(&mut r);
         app.set_clock(Some(1.0));
         app.state_mut().mode = Mode::Preview;
