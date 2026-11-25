@@ -186,6 +186,9 @@ fn a2_the_menu_lists_the_accounts_the_player_and_the_sign_out() {
         assert!(rig.says(words), "the menu says {words:?}");
     }
     assert_ne!(rig.app.ids().account_list, Id::ROOT);
+    // The menu opens under the button, on its right edge.
+    let (button, list) = (rig.rect(rig.app.ids().account), rig.rect(rig.app.ids().account_list));
+    assert!((list.x + list.w - (button.x + button.w)).abs() < 0.5 && list.y >= button.y + button.h, "{list:?} under {button:?}");
     rig.write("account_a2_1400.png");
 }
 

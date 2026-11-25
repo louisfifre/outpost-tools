@@ -600,7 +600,7 @@ fn a4_the_account_sits_before_the_window_buttons() {
     for mode in [Mode::Home, Mode::Preview] {
         // The preview tool's views take the room first, so its account is whole from a wider window.
         for w in if mode == Mode::Home { [1000, 1400, 1920] } else { [1500, 1700, 1920] } {
-            let rig = slide_rig(mode, true, Some("PlayerOne"), w, 1.0);
+            let mut rig = slide_rig(mode, true, Some("PlayerOne"), w, 1.0);
             let shown: Vec<(String, Vec2)> = rig.app.list().cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { text, at, .. } = c { text.starts_with("Player").then(|| (text.clone(), *at)) } else { None }).collect();
             assert_eq!(shown.len(), 1, "{mode:?} {w}");
             let (text, at) = &shown[0];
@@ -616,6 +616,9 @@ fn a4_the_account_sits_before_the_window_buttons() {
                 assert!((at.y + 9.0 - (brand.y + brand.h / 2.0)).abs() < 3.0, "on the bar's centre line");
             } else {
                 assert_eq!(rig.app.ids().brand, Id::ROOT);
+            }
+            if w == 1920 {
+                rig.write(&format!("bar_account_{}_{w}.png", if mode == Mode::Home { "home" } else { "preview" }));
             }
         }
     }
