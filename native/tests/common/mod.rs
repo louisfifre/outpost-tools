@@ -162,6 +162,24 @@ impl Rig {
     }
 }
 
+/// A press on a line of Home, on its name's side: away from its button, which has a press of its own.
+pub fn click_line(rig: &mut Rig, line: Id) {
+    let r = rig.rect(line);
+    rig.click_at(Vec2::new(r.x + 24.0, r.y + r.h / 2.0));
+}
+
+/// Opens the page of the profile `id` by a press on its line.
+pub fn open_profile(rig: &mut Rig, id: &str) {
+    let row = rig.home().ids().rows.iter().find(|r| r.profile == id).expect("the profile is listed").row;
+    click_line(rig, row);
+}
+
+/// Opens the server's page by a press on its line.
+pub fn open_server(rig: &mut Rig) {
+    let row = rig.home().ids().server_row;
+    click_line(rig, row);
+}
+
 pub fn centre(r: Rect) -> Vec2 {
     Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
 }
@@ -172,4 +190,21 @@ pub fn near(a: f32, b: f32, what: &str) {
 
 pub fn rect_is(r: Rect, x: f32, y: f32, w: f32, h: f32, what: &str) {
     assert!((r.x - x).abs() < 0.01 && (r.y - y).abs() < 0.01 && (r.w - w).abs() < 0.01 && (r.h - h).abs() < 0.01, "{what}: {r:?} != ({x}, {y}, {w}, {h})");
+}
+
+/// The fixture with the board's other two profiles (A1): one a fortnight ago with no mods, and one with a name too long
+/// for its line, played last month.
+pub fn board_api() -> Arc<FakeApi> {
+    let api = Arc::new(fixture());
+    let mut v = api_get(&api, "/api/profiles");
+    let day = 86_400_000i64;
+    for (id, name, days) in [("plain", "Plain 26.3", 14), ("friday", "Friday server pack from L\u{e9}a, with shaders and a minimap", 31)] {
+        v["profiles"].as_array_mut().unwrap().push(json!({
+            "id": id, "name": name, "memoryMb": 4096, "javaArgs": "", "gameDir": format!("C:/Code/{id}"),
+            "lastPlayed": launcher_native::fake::FIXED_NOW_MS - days * day, "playedSeconds": 0, "running": false, "worlds": [],
+            "open": {"kind": "menu", "target": ""}
+        }));
+    }
+    api.set_get("/api/profiles", v);
+    api
 }
