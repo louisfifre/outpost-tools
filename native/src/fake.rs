@@ -82,5 +82,34 @@ pub fn fixture() -> FakeApi {
         }),
     );
     api.set_get("/api/launch", json!({"id": null, "state": "none"}));
+    api.set_get("/api/mods/exploration", exploration_mods());
+    api.set_get("/api/mods/atelier", json!({"gameVersion": "26.3", "gameVersions": ["26.3", "26.2", "26.1"], "fabric": null, "mods": []}));
     api
+}
+
+/// The profile page's board (B1): Exploration's game version, Fabric with a newer one, and its fourteen mods, three of
+/// them with a newer version and the last a file dropped in by hand (no page, no update).
+pub fn exploration_mods() -> Value {
+    let list = [
+        ("sodium", "Sodium", "0.7.1", Some("0.7.3")),
+        ("lithium", "Lithium", "0.16.0", Some("0.16.2")),
+        ("distanthorizons", "Distant Horizons", "2.4.0", Some("2.4.1")),
+        ("tectonic", "Tectonic", "3.1.0", None),
+        ("fabric-api", "Fabric API", "0.140.0", None),
+        ("iris", "Iris Shaders", "1.9.6", None),
+        ("modmenu", "Mod Menu", "15.0.0", None),
+        ("xaeros-minimap", "Xaero's Minimap", "25.2.0", None),
+        ("xaeros-world-map", "Xaero's World Map", "1.39.2", None),
+        ("entityculling", "Entity Culling", "1.7.4", None),
+        ("ferrite-core", "FerriteCore", "8.0.0", None),
+        ("modernfix", "ModernFix", "5.21.0", None),
+        ("sodium-extra", "Sodium Extra", "0.6.4", None),
+    ];
+    let mut mods: Vec<Value> = list.iter().map(|(id, name, version, latest)| json!({"id": id, "slug": id, "name": name, "version": version, "latest": latest})).collect();
+    mods.push(json!({"id": "my-local-mod", "name": "my-local-mod.jar", "version": ""}));
+    json!({
+        "gameVersion": "26.3", "gameVersions": ["26.3", "26.2", "26.1"],
+        "fabric": {"version": "0.18.2", "latest": "0.18.4"},
+        "mods": mods
+    })
 }
