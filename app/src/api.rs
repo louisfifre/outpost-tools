@@ -11,6 +11,7 @@ mod key_value;
 mod memory;
 mod preview;
 mod profiles;
+pub mod servers;
 
 use std::{
     fs,
