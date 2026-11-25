@@ -7,7 +7,7 @@ use std::sync::Arc;
 use common::*;
 use launcher_native::fake::{FakeApi, fixture};
 use launcher_native::pages::Page;
-use mere_base::{App, Button, Event, Vec2};
+use mere_base::{App, Button, Cmd, Event, Vec2};
 use serde_json::{Value, json};
 
 /// The board's PC: 16 GB with a third used, and Exploration at 2 to 6 GB.
@@ -18,6 +18,8 @@ fn board_pc() -> Arc<FakeApi> {
     v["usedMb"] = json!(5222);
     v["profiles"][1]["minMemoryMb"] = json!(2048);
     api.set_get("/api/profiles", v);
+    // The bar shows the account's face before its name (the boards).
+    launcher_native::fake::with_accounts(&api);
     api
 }
 
@@ -164,6 +166,11 @@ fn b5_update_all_waits_for_several() {
 fn b6_play() {
     let mut rig = page(1400, 940);
     let play = ids(&rig).play;
+    // B1: the icon, then the word, inside the one filled box.
+    let (r, word) = (rig.rect(play), rig.texts().into_iter().find(|t| t.1 == "Play").expect("the word is drawn").0);
+    let icon = rig.app.list().cmds.iter().find_map(|c| if let Cmd::Shape { rect, .. } = c { Some(*rect).filter(|s| r.contains(Vec2::new(s.x + 1.0, s.y + 1.0))) } else { None }).expect("the play icon is in the action");
+    assert!(icon.x + icon.w < word.x && word.x + 20.0 < r.x + r.w, "the icon stands before the word, both inside the box");
+    assert!((r.h - 36.0).abs() < 0.01 && (r.w - 79.0).abs() < 3.0, "the board's Play is 36 tall and about 79 wide: {r:?}");
     rig.click(play);
     assert_eq!(rig.api.count("POST", "/api/launch/exploration"), 1);
 }

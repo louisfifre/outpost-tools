@@ -6,7 +6,7 @@ mod common;
 use common::*;
 use launcher_native::fake::{board_server, with_accounts};
 use launcher_native::pages::Page;
-use mere_base::{Key, Vec2};
+use mere_base::{Cmd, Key, Vec2};
 use mere_ui::Id;
 use serde_json::json;
 
@@ -14,6 +14,7 @@ use serde_json::json;
 fn server_page(w: u32, h: u32) -> Rig {
     let api = board_api();
     board_server(&api);
+    with_accounts(&api);
     let mut rig = Rig::with_api(api, w, h, true, true);
     open_server(&mut rig);
     rig
@@ -45,6 +46,10 @@ fn c1_the_page_asks_for_the_eula_before_anything() {
 fn c1_start_waits_for_the_eula() {
     let mut rig = server_page(1400, 940);
     let start = rig.home().pages.server.start;
+    // C1: the play icon before "Start", framed (disabled) until the EULA is accepted.
+    let (r, word) = (rig.rect(start), rig.texts().into_iter().find(|t| t.1 == "Start").expect("the word is drawn").0);
+    let icon = rig.app.list().cmds.iter().find_map(|c| if let Cmd::Shape { rect, .. } = c { Some(*rect).filter(|s| r.contains(Vec2::new(s.x + 1.0, s.y + 1.0))) } else { None }).expect("the play icon is in the action");
+    assert!(icon.x + icon.w < word.x, "the icon stands before the word");
     rig.click(start);
     assert_eq!(rig.api.count("POST", "/api/server/start"), 0, "a disabled Start asks nothing");
     // The head's end: Start is at the right edge of the page's column, Accept after the sentence.
@@ -123,6 +128,26 @@ fn with_menu(w: u32, h: u32) -> Rig {
 fn open_menu(rig: &mut Rig) {
     let button = rig.app.ids().account;
     rig.click(button);
+}
+
+/// A1: the bar at rest shows the account in use as its face, its name and a chevron, with the menu shut: the face is read
+/// once with the first answer that names the account, and stands in the 16 px before the name.
+#[test]
+fn a1_the_bar_shows_the_face_before_the_name_at_rest() {
+    let mut rig = with_menu(1400, 940);
+    assert_eq!(rig.app.ids().account_list, Id::ROOT, "the menu is shut");
+    assert_eq!(rig.api.count("GET", "/api/skin?name=PlayerOne"), 1, "the face was read without opening the menu");
+    let name = rig.texts().into_iter().find(|t| t.1 == "PlayerOne").expect("the name is drawn").0;
+    let button = rig.rect(rig.app.ids().account);
+    let (w, h) = (rig.w as usize, rig.h as usize);
+    let rgba = rig.r.read_rgba().unwrap();
+    let at = |x: usize, y: usize| &rgba[(y * w + x) * 4..(y * w + x) * 4 + 3];
+    // The sample skin's face is the skin tone 0xc69a73, filled over the 16 px square that ends GAP before the name.
+    let (x0, x1) = ((name.x - 8.0 - 16.0) as usize, (name.x - 8.0) as usize);
+    let faced = (0..h.min(40)).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| at(x, y) == [0xc6, 0x9a, 0x73]).count();
+    assert!(faced >= 16 * 16 / 4, "the face stands before the name: {faced} pixels of its skin tone");
+    assert!(x0 as f32 >= button.x && (x1 as f32) < name.x, "the face is inside the account's button, before the name");
+    rig.write("account_a1_rest_1400.png");
 }
 
 #[test]
