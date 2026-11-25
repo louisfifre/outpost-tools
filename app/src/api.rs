@@ -8,6 +8,7 @@
 
 mod dev_server;
 mod key_value;
+mod memory;
 mod preview;
 mod profiles;
 
