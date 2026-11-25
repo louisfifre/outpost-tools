@@ -46,7 +46,7 @@ fn check(theme: Theme, w: u32, name: &str) {
     same(at(f.x + 5.0, f.y + 5.0), theme.ground, "empty frame");
 
     // P3: the pressed Relief tab is filled with --fill (inside its 1 px frame).
-    let relief = rect(ids.tabs[5]);
+    let relief = rect(ids.tabs[0]);
     same(at(relief.x + 3.0, relief.y + 3.0), theme.fill, "pressed tab");
 
     // P5: with no map the page decides Generate (nothing shows these settings): it is enabled, filled with --text

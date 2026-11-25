@@ -8,31 +8,29 @@ use mere_base::{Cmd, Color, Vec2};
 
 use crate::bands::{HEIGHT_STEPS, SEA_DEPTHS};
 use crate::ground;
-use crate::colour::{SEA_VEIL, climate, flat_colour, flat_sea_colour, height_colour, steep_colour, temperature_colour};
+use crate::colour::{SEA_VEIL, climate, height_colour, temperature_colour};
 use crate::map::Look;
 use crate::world::World;
 
-/// What the map shows: the strip's first eight tabs, in order.
+/// What the map shows: the strip's first six tabs, in order.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum View {
-    Biomes,
-    Flat,
-    Slope,
-    Cliffs,
-    Vegetation,
     Height,
+    Slope,
+    Biomes,
+    Vegetation,
     Temperature,
     Structures,
 }
 
 /// How many map views there are. The strip's pressed index goes from 0 to `MAP_VIEWS - 1` for them, and
 /// `SECTION` is the one after: the section is a view of the strip but not of the map.
-pub const MAP_VIEWS: usize = 8;
+pub const MAP_VIEWS: usize = 6;
 pub const SECTION: usize = MAP_VIEWS;
 
 impl View {
     pub const ALL: [View; MAP_VIEWS] =
-        [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature, View::Structures];
+        [View::Height, View::Slope, View::Biomes, View::Vegetation, View::Temperature, View::Structures];
 
     pub fn from_index(i: usize) -> Option<View> {
         View::ALL.get(i).copied()
@@ -44,21 +42,21 @@ impl View {
 
     /// The page's key for the view (`data-view`, `?view=`).
     pub fn key(self) -> &'static str {
-        ["biomes", "flat", "slope", "cliffs", "vegetation", "height", "temperature", "structures"][self as usize]
+        ["height", "slope", "biomes", "vegetation", "temperature", "structures"][self as usize]
     }
 
     pub fn from_key(key: &str) -> Option<View> {
         View::ALL.into_iter().find(|v| v.key() == key)
     }
 
-    /// The views that tell level land from one point to the next, 16 blocks away: a coarser map cannot give them.
+    /// The view that tells the height gap from one point to the next, 16 blocks away: a coarser map cannot give it.
     pub fn needs_full(self) -> bool {
-        matches!(self, View::Flat | View::Slope | View::Cliffs)
+        self == View::Slope
     }
 }
 
 /// Whether the strip's tab `i` needs the map at the full 16-block detail (the page's `needsFull`): the views that
-/// tell level land, the structures, and the section.
+/// tell the steepness, the structures, and the section.
 pub fn needs_full(i: usize) -> bool {
     i == SECTION || View::from_index(i).is_some_and(|v| v.needs_full() || v == View::Structures)
 }
@@ -85,8 +83,7 @@ pub fn rows(world: &World, view: View) -> Option<(Vec<u16>, Vec<String>)> {
             let band: Vec<u16> = world.biomes.iter().map(temperature_row).collect();
             world.biome_at.iter().map(|&b| band[b as usize]).collect()
         }
-        View::Flat => (0..world.heights.len()).map(|i| flat_row(world, i)).collect(),
-        View::Slope | View::Cliffs | View::Vegetation => ground::rows(world, view)?,
+        View::Slope | View::Vegetation => ground::rows(world, view)?,
         View::Structures => return None,
     };
     Some((at, ids))
@@ -100,8 +97,7 @@ pub fn row_at(world: &World, view: View, i: usize) -> Option<(u16, Vec<String>)>
         View::Biomes => world.biome_at[i],
         View::Height => height_row(world.heights[i], world.sea_level),
         View::Temperature => temperature_row(&world.biomes[world.biome_at[i] as usize]),
-        View::Flat => flat_row(world, i),
-        View::Slope | View::Cliffs | View::Vegetation => ground::row_at(world, view, i)?,
+        View::Slope | View::Vegetation => ground::row_at(world, view, i)?,
         View::Structures => return None,
     };
     Some((at, ids))
@@ -113,8 +109,7 @@ fn row_ids(world: &World, view: View) -> Option<Vec<String>> {
         View::Biomes => world.biomes.iter().map(|b| b.id.clone()).collect(),
         View::Height => ids(SEA_DEPTHS.len() + 1 + HEIGHT_STEPS.len() + 1),
         View::Temperature => ids(5),
-        View::Flat => ids(3),
-        View::Slope | View::Cliffs | View::Vegetation => ids(ground::colours(view).len()),
+        View::Slope | View::Vegetation => ids(ground::colours(view).len()),
         View::Structures => return None,
     })
 }
@@ -139,16 +134,6 @@ fn height_row(y: i16, sea: f64) -> u16 {
 /// Five classes over the game's range, from -0.7 to 2, the sea in them like the land.
 fn temperature_row(b: &crate::world::Biome) -> u16 {
     (clamp((climate(b) + 0.7) / 2.7, 0.0, 1.0) * 4.0 + 0.5).floor() as u16
-}
-
-fn flat_row(world: &World, i: usize) -> u16 {
-    if (world.heights[i] as f64) < world.sea_level {
-        2
-    } else if world.flat_at[i] == 1 {
-        0
-    } else {
-        1
-    }
 }
 
 fn ids(n: usize) -> Vec<String> {
@@ -264,20 +249,12 @@ impl Point<'_> {
             let t = as_f64(temperature_colour(climate(&world.biomes[biome])));
             c = if water { [0, 1, 2].map(|k| (t[k] + SEA_VEIL[k] as f64) / 2.0) } else { t };
             shade = clamp(1.0 + slope * 0.006, 0.85, 1.15);
-        } else if matches!(view, View::Slope | View::Cliffs | View::Vegetation) {
+        } else if matches!(view, View::Slope | View::Vegetation) {
             c = as_f64(ground_colours[row_at.expect("a view with rows")[i] as usize]);
-            // Vegetation keeps a trace of the relief; the other two are flat colours, like Flat.
+            // Vegetation keeps a trace of the relief; Steepness is a flat colour.
             if view == View::Vegetation && !water {
                 shade = clamp(1.0 + slope * 0.006, 0.85, 1.15);
             }
-        } else if view == View::Flat {
-            c = as_f64(if water {
-                flat_sea_colour()
-            } else if world.flat_at[i] == 1 {
-                flat_colour()
-            } else {
-                steep_colour()
-            });
         } else {
             c = as_f64(world.colours[biome]);
             // Here the lightness says which biome it is, so the relief may only touch it lightly.

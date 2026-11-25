@@ -104,7 +104,7 @@ fn tab_pixel(a: &[u8], app: &PreviewApp, index: usize) -> [u8; 3] {
 #[test]
 fn s1_stage_3d_relief_is_drawn_inside_the_frame_only() {
     let Some(world) = load() else { return };
-    let (a, b, app, rect, _r) = take(&world, false, state_3d(5), "relief3d_1400.png");
+    let (a, b, app, rect, _r) = take(&world, false, state_3d(View::Height.index()), "relief3d_1400.png");
     // The square is what the panels leave at their natural widths: the gap, the settings panel and the gap from the
     // left, under the bar and its gap. At 1400 the middle column's width, not its height, sets the side.
     let [left, right] = panels::natural();
@@ -114,9 +114,9 @@ fn s1_stage_3d_relief_is_drawn_inside_the_frame_only() {
     assert_eq!(leaks(&a, &b, rect), 0, "the scene stays inside the square");
     let share = share_not(&a, rect, DARK_GROUND);
     assert!(share >= 0.30, "the land fills {share} of the square");
-    assert_eq!(tab_pixel(&a, &app, 5), DARK_TEXT, "Relief is pressed");
-    assert_eq!(tab_pixel(&a, &app, 10), DARK_TEXT, "3D is pressed");
-    assert_ne!(tab_pixel(&a, &app, 9), DARK_TEXT, "2D is not");
+    assert_eq!(tab_pixel(&a, &app, 0), DARK_TEXT, "Relief is pressed");
+    assert_eq!(tab_pixel(&a, &app, 8), DARK_TEXT, "3D is pressed");
+    assert_ne!(tab_pixel(&a, &app, 7), DARK_TEXT, "2D is not");
     assert_eq!(px(&a, rect.x as usize + 2, rect.y as usize + 2), DARK_GROUND, "the scene's background is --ground");
     assert_eq!(app.ids().probe_text, text::area_probe("4,096", "512", false), "no Ticks in 3D");
     assert_eq!(app.painted_view(), Some(View::Height));
@@ -135,7 +135,7 @@ fn s2_zoomed_terrain_is_cut_at_the_frame_edges() {
         frames += 1;
         assert!(frames < 600, "never came to rest");
     }
-    let state = PreviewState { orbit: Some(orbit), ..state_3d(5) };
+    let state = PreviewState { orbit: Some(orbit), ..state_3d(View::Height.index()) };
     let (a, b, _app, rect, _r) = take(&world, false, state, "relief3d_zoom.png");
     let leaked = leaks(&a, &b, rect);
     assert_eq!(leaked, 0, "{leaked} pixels outside the square differ: a scissor rect would be needed");
@@ -157,7 +157,7 @@ fn s2_zoomed_terrain_is_cut_at_the_frame_edges() {
 #[test]
 fn s3_light_theme_ground_and_drape() {
     let Some(world) = load() else { return };
-    let (a, b, _app, rect, _r) = take(&world, true, state_3d(5), "relief3d_light.png");
+    let (a, b, _app, rect, _r) = take(&world, true, state_3d(View::Height.index()), "relief3d_light.png");
     assert_eq!(px(&a, rect.x as usize + 2, rect.y as usize + 2), LIGHT_GROUND);
     assert_eq!(leaks(&a, &b, rect), 0);
     assert!(share_not(&a, rect, LIGHT_GROUND) >= 0.30);
@@ -177,8 +177,8 @@ fn click(app: &mut PreviewApp, r: &mut Renderer, tab: usize) {
 #[test]
 fn s4_a_view_tab_repaints_the_drape_and_2d_comes_back() {
     let Some(world) = load() else { return };
-    let (a, _b, mut app, rect, mut r) = take(&world, false, state_3d(5), "relief3d_s4_start.png");
-    click(&mut app, &mut r, 0);
+    let (a, _b, mut app, rect, mut r) = take(&world, false, state_3d(View::Height.index()), "relief3d_s4_start.png");
+    click(&mut app, &mut r, View::Biomes.index());
     assert_eq!(app.painted_view(), Some(View::Biomes));
     let c = r.read_rgba().unwrap();
     write(&c, "relief3d_biomes.png");
@@ -197,13 +197,13 @@ fn s4_a_view_tab_repaints_the_drape_and_2d_comes_back() {
 
     let kept = app.state().orbit.clone();
     assert!(kept.is_some());
-    click(&mut app, &mut r, 9);
+    click(&mut app, &mut r, 7);
     assert_ne!(app.ids().map, mere_ui::Id::ROOT);
     assert_eq!(app.ids().relief, mere_ui::Id::ROOT);
-    click(&mut app, &mut r, 10);
+    click(&mut app, &mut r, 8);
     assert_ne!(app.ids().relief, mere_ui::Id::ROOT);
     assert_eq!(app.state().orbit, kept, "the camera is kept across 2D and 3D");
-    click(&mut app, &mut r, 8);
-    assert_eq!(app.ids().tabs.len(), 9, "the section has no 2D and 3D tabs");
+    click(&mut app, &mut r, 6);
+    assert_eq!(app.ids().tabs.len(), 9, "the section keeps its 2D and 3D tabs, disabled");
     assert_eq!(app.ids().relief, mere_ui::Id::ROOT);
 }

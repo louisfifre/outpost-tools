@@ -848,7 +848,7 @@ impl PreviewApp {
         let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let folder = runs.exports().join(run::folder_name(self.state.made.as_ref().map(|m| m.seed.as_str()), secs));
         // A preview stopped at a coarser detail has no level land to give; structures need the marks' rasteriser.
-        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature]
+        let kinds: Vec<View> = [View::Height, View::Slope, View::Biomes, View::Vegetation, View::Temperature]
             .into_iter()
             .filter(|k| !(k.needs_full() && world.coarse()))
             .collect();

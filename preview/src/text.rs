@@ -19,7 +19,7 @@ pub const PROFILES: &str = "Settings";
 /// Line 582.
 pub const PACK: &str = "Pack";
 /// The filter at the top of the settings panel: only the groups that relate to the pressed map. Not the page's.
-/// It names the map, `view` as `PreviewState::view` (0 to 4 the strip's maps, 5 the section).
+/// It names the map, `view` as `PreviewState::view` (0 to 5 the strip's maps, 6 the section).
 pub fn view_only(view: usize) -> String {
     match VIEWS.get(view) {
         Some(name) => format!("Only for the {name} map"),
@@ -46,7 +46,7 @@ pub const FIGURES: &str = "In figures";
 /// Line 492.
 pub const HISTORY: &str = "History";
 /// Line 588.
-pub const VIEWS: [&str; 8] = ["Biomes", "Flat", "Steepness", "Cliffs", "Vegetation", "Relief", "Temperature", "Structures"];
+pub const VIEWS: [&str; 6] = ["Relief", "Steepness", "Biomes", "Vegetation", "Temperature", "Structures"];
 /// Line 619.
 pub const SECTION: &str = "Section";
 /// Line 589.
@@ -236,13 +236,11 @@ pub fn pretty(id: &str) -> String {
 
 /// Line 508: what the list beside the map holds in each view, by `View::index`: its title and the name of its
 /// first column.
-pub const LISTS: [[&str; 2]; 8] = [
-    ["Biomes", "biome"],
-    ["Ground", "ground"],
-    ["Steepness", "ground"],
-    ["Cliffs", "ground"],
-    ["Vegetation", "cover"],
+pub const LISTS: [[&str; 2]; 6] = [
     ["Heights", "height"],
+    ["Steepness", "ground"],
+    ["Biomes", "biome"],
+    ["Vegetation", "cover"],
     ["Temperatures", "climate"],
     ["Structures", "structure"],
 ];
@@ -274,29 +272,24 @@ pub const FILTER: &str = "Filter by name\u{2026}";
 pub const ABSENT: &str = "Not in this area";
 /// Line 600: the structures' two parts, surface first.
 pub const PARTS: [&str; 2] = ["On the surface", "Under the ground"];
-/// Line 648.
-pub const LEGEND_FLAT: [&str; 3] = ["Flat", "Slopes", "Water"];
 /// Line 649.
 pub const LEGEND_TEMPERATURE: [&str; 5] = ["Frozen", "Cold", "Temperate", "Warm", "Scorching"];
-/// The rows of the Steepness, Cliffs and Vegetation lists (the page's `legend`), by `View::index`; the other views
+/// The rows of the Steepness and Vegetation lists (the page's `legend`), by `View::index`; the other views
 /// have none here.
 pub fn legend(view: usize) -> &'static [&'static str] {
     match view {
-        2 => &["Level", "Gentle", "Sloping", "Steep", "Wall", "Water"],
-        3 => &["Flat at the foot of a wall", "Wall", "Flat on top of a wall", "Other land", "Water"],
-        4 => &["Bare", "Open", "Forest", "Dense", "Water"],
+        1 => &["Level", "Gentle", "Sloping", "Steep", "Wall", "Water"],
+        3 => &["Bare", "Open", "Forest", "Dense", "Water"],
         _ => &[],
     }
 }
 /// What each map shows, said on its tab (the page's `viewHints`), by `View::index`; empty for the views the page
 /// gives no hint.
-pub const VIEW_HINTS: [&str; 8] = [
+pub const VIEW_HINTS: [&str; 6] = [
     "",
-    "Where a village could stand on level ground: land whose neighbours are within 2 blocks of height.",
     "How steep the ground is: the biggest height gap to a neighbour point 16 blocks away. Green is level, red is nearly a wall.",
-    "Where a flat area sits beside a steep wall: at its foot, for houses dug into the rock, or on top, for a village looking down. Walls are read on a 16-block grid: a real face may be sheerer.",
-    "How green the land is, read from the biome\u{2019}s name: bare rock, sand or snow; open grass; forest; dense jungle, dark forest or swamp. A modded biome with an unusual name counts as open.",
     "",
+    "How green the land is, read from the biome\u{2019}s name: bare rock, sand or snow; open grass; forest; dense jungle, dark forest or swamp. A modded biome with an unusual name counts as open.",
     "",
     "",
 ];

@@ -38,10 +38,9 @@ pub const MAXIMIZE: &str = "M4 4h16v2H4zm0 14h16v2H4zM4 6h2v12H4zm14 0h2v12h-2z"
 pub const RESTORE: &str = "M8 4h12v2H8zm10 2h2v8h-2zm-2 6h2v2h-2zM8 6h2v2H8zM4 8h12v2H4zm0 10h12v2H4zM4 10h2v8H4zm10 0h2v8h-2z";
 /// Line 242.
 pub const CLOSE: &str = "M5 5h2v2H5zm2 2h2v2H7zm2 2h2v2H9zm2 2h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zM9 13h2v2H9zm-2 2h2v2H7zm-2 2h2v2H5zm8-4h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2z";
-/// Lines 427-432: the views, by key (biomes, flat, height, temperature, structures, section).
-pub const VIEW_ICONS: [(&str, &str); 6] = [
+/// Lines 427-432: the views, by key (biomes, height, temperature, structures, section).
+pub const VIEW_ICONS: [(&str, &str); 5] = [
     ("biomes", "M8 2h8v2H8zM6 4h12v8H6zM8 12h8v2H8zM11 14h2v6h-2zM5 20h14v2H5z"),
-    ("flat", "M2 12h20v2H2zM2 16h20v2H2zM2 20h20v2H2zM8 6h8v2H8z"),
     ("height", "M10 4h4v2h-4zM8 6h2v2H8zm6 0h2v2h-2zM6 8h2v4H6zm10 0h2v4h-2zM4 12h2v4H4zm14 0h2v4h-2zM2 16h2v4H2zm18 0h2v4h-2zM2 20h20v2H2z"),
     ("temperature", "M10 2h4v2h-4zM8 4h2v10H8zm6 0h2v10h-2zM6 14h2v6H6zm10 0h2v6h-2zM8 20h8v2H8zM11 8h2v8h-2zM9 16h6v2H9z"),
     ("structures", "M4 2h4v2h2V2h4v2h2V2h4v6H4zM6 8h2v12H6zm10 0h2v12h-2zM10 14h4v6h-4zM2 20h20v2H2z"),
@@ -142,7 +141,7 @@ pub fn window_title(s: &PreviewState) -> String {
     }
 }
 
-/// The views that cannot be shown for this world: Flat, Structures and Section come after the full map only (line 2506).
+/// The views that cannot be shown for this world: Steepness, Structures and Section come after the full map only (line 2506).
 /// While the stage shows a run's own picture, Structures and Section are greyed until the run has made them.
 fn greyed(s: &PreviewState, world: Option<&World>) -> [bool; VIEW_COUNT] {
     let coarse = world.is_some_and(World::coarse);
@@ -159,7 +158,7 @@ fn pending(s: &PreviewState) -> bool {
 /// tool open, whatever tool is on, so the views do not shuffle while they slide; the brand's parts follow the
 /// tool on show, so Home, which has the room, keeps the account and the word.
 pub fn form_for(s: &PreviewState, world: Option<&World>, width: f32) -> (Form, Form) {
-    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), account_mark: if s.account_menu.accounts.is_empty() { 0.0 } else { overflow::ACCOUNT_MARK }, preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != crate::paint::SECTION };
+    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), account_mark: if s.account_menu.accounts.is_empty() { 0.0 } else { overflow::ACCOUNT_MARK }, preview_open, pressed: s.view, disabled: greyed(s, world) };
     let open = overflow::plan(&inputs(true));
     let on_show = if s.mode == Mode::Preview { open.clone() } else { overflow::plan(&inputs(false)) };
     (open, on_show)
@@ -490,13 +489,18 @@ fn panel_toggle(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, which: us
     }
 }
 
-/// The preview's tabs as the page sends them to its host (lines 749-754): the six views, then, outside the section,
-/// a gap and 2D and 3D. A disabled one carries the page's `needsFull` as its title, an enabled one its label.
+/// The preview's tabs as the page sends them to its host (lines 749-754): the six views, a gap before the last two
+/// (the structures and the section), then a gap and 2D and 3D, disabled while the section is pressed.
+/// A disabled view carries the page's `needsFull` as its title, an enabled one its label.
 /// The views the form holds back are not tabs: they are the rows of "More", at the end of the views.
 fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&World>, form: &Form) {
     let off = greyed(s, world);
+    let section = s.view == crate::paint::SECTION;
     let why = if pending(s) && !world.is_some_and(World::coarse) { text::COMES_AT_THE_END } else { text::NEEDS_FULL };
     for i in (0..VIEW_COUNT).filter(|i| !form.more.contains(i)) {
+        if overflow::gap_before(form, i) {
+            ui.strip_gap();
+        }
         let word = overflow::view_word(i);
         let disabled = off[i];
         let r = ui.tab(&format!("view{i}"), word, TabLook::Strip, TabOpts { pressed: i == s.view, disabled });
@@ -514,7 +518,7 @@ fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&Wo
         // The views the strip lacks room for, then, when the bar is narrower still, 2D and 3D.
         let mut rows: Vec<TabMenuRow> = form.more.iter().map(|&v| TabMenuRow { text: overflow::view_word(v).to_string(), disabled: off[v] }).collect();
         if form.shapes_in_more {
-            rows.extend(text::SHAPES.iter().map(|w| TabMenuRow { text: w.to_string(), disabled: false }));
+            rows.extend(text::SHAPES.iter().map(|w| TabMenuRow { text: w.to_string(), disabled: section }));
         }
         let r = ui.tab_menu("more", text::MORE, &rows);
         ids.more = r.resp.id;
@@ -527,11 +531,11 @@ fn tabs(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&Wo
             }
         }
     }
-    // The section has no 2D or 3D (line 2540): the tabs and the gap before them are not built.
-    if s.view != crate::paint::SECTION && !form.shapes_in_more {
+    // The section has no 2D or 3D (line 2540): the tabs stay in place, disabled while it is pressed.
+    if !form.shapes_in_more {
         ui.strip_gap();
         for (i, word) in text::SHAPES.iter().enumerate() {
-            let r = ui.tab(&format!("shape{i}"), word, TabLook::Strip, TabOpts { pressed: (i == 1) == s.in3d, disabled: false });
+            let r = ui.tab(&format!("shape{i}"), word, TabLook::Strip, TabOpts { pressed: (i == 1) == s.in3d, disabled: section });
             ids.tabs.push(r.id);
             ids.bar_buttons.push(r.id);
             ui.title(r.id, word);

@@ -3,6 +3,7 @@
 
 use mere_base::Vec2;
 use mere_ui::{Id, Theme, Ui};
+use preview::paint::{SECTION, View};
 use preview::settings::SETTINGS;
 use preview::text;
 use preview::view_filter::{groups_for, visible};
@@ -42,23 +43,21 @@ fn built(only: bool, view: usize) -> (Vec<usize>, usize, ShellIds) {
 
 #[test]
 fn filter_off_lists_every_setting_for_every_view() {
-    for view in 0..9 {
+    for view in 0..=SECTION {
         assert_eq!(listed(false, view), (0..43).collect::<Vec<_>>(), "view {view}");
     }
 }
 #[test]
 fn filter_on_lists_the_groups_of_the_view() {
     // The page's `opensFor` (preview.html 880-881), with the ores group left out: it is not built here.
-    let expect: [(usize, &[usize]); 9] = [
-        (0, &[GROUP_BIOMES, GROUP_CONTINENTS]),
+    let expect: [(usize, &[usize]); 7] = [
+        (0, &[GROUP_RELIEF, GROUP_CONTINENTS]),
         (1, &[GROUP_RELIEF]),
-        (2, &[GROUP_RELIEF]),
-        (3, &[GROUP_RELIEF]),
+        (2, &[GROUP_BIOMES, GROUP_CONTINENTS]),
+        (3, &[GROUP_BIOMES]),
         (4, &[GROUP_BIOMES]),
-        (5, &[GROUP_RELIEF, GROUP_CONTINENTS]),
-        (6, &[GROUP_BIOMES]),
-        (7, &[GROUP_BIOMES]),
-        (8, &[GROUP_RELIEF, GROUP_CAVES]),
+        (5, &[GROUP_BIOMES]),
+        (6, &[GROUP_RELIEF, GROUP_CAVES]),
     ];
     for (view, groups) in expect {
         assert_eq!(groups_listed(true, view), groups, "groups listed for view {view}");
@@ -70,7 +69,7 @@ fn filter_on_lists_the_groups_of_the_view() {
 
 #[test]
 fn the_group_nobody_draws_is_never_listed_with_the_filter_on() {
-    for view in 0..9 {
+    for view in 0..=SECTION {
         assert!(!groups_listed(true, view).contains(&GROUP_OTHER), "view {view}");
         assert!(groups_listed(false, view).contains(&GROUP_OTHER), "view {view}");
     }
@@ -78,7 +77,7 @@ fn the_group_nobody_draws_is_never_listed_with_the_filter_on() {
 
 #[test]
 fn the_panel_builds_only_the_listed_rows_and_headers() {
-    for view in 0..9 {
+    for view in 0..=SECTION {
         let (rows, heads, _) = built(false, view);
         assert_eq!(rows.len(), 43, "filter off, view {view}");
         assert_eq!(heads, 5, "filter off, view {view}");
@@ -91,15 +90,15 @@ fn the_panel_builds_only_the_listed_rows_and_headers() {
 
 #[test]
 fn the_filter_names_the_pressed_map() {
-    assert_eq!(text::view_only(0), "Only for the Biomes map");
-    assert_eq!(text::view_only(5), "Only for the Relief map");
-    assert_eq!(text::view_only(6), "Only for the Temperature map");
-    assert_eq!(text::view_only(8), "Only for the section");
+    assert_eq!(text::view_only(View::Biomes.index()), "Only for the Biomes map");
+    assert_eq!(text::view_only(View::Height.index()), "Only for the Relief map");
+    assert_eq!(text::view_only(View::Temperature.index()), "Only for the Temperature map");
+    assert_eq!(text::view_only(SECTION), "Only for the section");
 }
 
 #[test]
 fn the_count_shows_only_while_the_filter_is_on_and_matches_the_rows() {
-    for view in 0..9 {
+    for view in 0..=SECTION {
         let (_, _, ids) = built(false, view);
         assert_eq!(ids.filter_count, Id::ROOT, "no count with the filter off, view {view}");
         let (rows, _, ids) = built(true, view);
@@ -127,7 +126,7 @@ fn the_filter_toggle_lines_up_with_the_fields_with_and_without_a_scrollbar() {
     // The Temperature map's list is short (no bar, the rows reach the panel's edge); the Relief map's is long (the
     // bar's gutter on the right of the rows). The filter's row ends at the panel's edge and keeps the same gutter
     // inside it, so its toggle ends where the fields do.
-    for (view, bar) in [(6, false), (5, true)] {
+    for (view, bar) in [(View::Temperature.index(), false), (View::Height.index(), true)] {
         let mut s = Session::new(view, true);
         s.frame();
         let first = s.rows()[0];
@@ -173,13 +172,13 @@ impl Session {
 fn changing_the_view_updates_the_list_at_once_and_keeps_the_filter() {
     let mut s = Session::new(1, true);
     assert_eq!(s.rows(), listed(true, 1));
-    s.state.view = 6;
+    s.state.view = View::Temperature.index();
     s.frame();
-    assert_eq!(s.rows(), listed(true, 6));
+    assert_eq!(s.rows(), listed(true, View::Temperature.index()));
     assert!(s.state.view_only, "the filter survives the view change");
-    s.state.view = 8;
+    s.state.view = SECTION;
     s.frame();
-    assert_eq!(s.rows(), listed(true, 8));
+    assert_eq!(s.rows(), listed(true, SECTION));
 }
 
 #[test]
@@ -193,16 +192,16 @@ fn switching_the_filter_off_brings_every_setting_back() {
 
 #[test]
 fn a_new_cut_of_the_list_starts_at_the_top_but_a_view_change_with_the_filter_off_keeps_the_scroll() {
-    let mut s = Session::new(0, false);
+    let mut s = Session::new(View::Biomes.index(), false);
     s.state.settings_y = 60.0;
-    s.state.view = 5;
+    s.state.view = View::Height.index();
     s.frame();
     assert!(s.state.settings_y > 0.0, "the whole list does not change with the view, so the scroll stays");
     s.state.view_only = true;
     s.frame();
     assert_eq!(s.state.settings_y, 0.0, "a shorter list starts at its first group");
     s.state.settings_y = 10.0;
-    s.state.view = 0;
+    s.state.view = View::Biomes.index();
     s.frame();
     assert_eq!(s.state.settings_y, 0.0, "another view's list starts at its first group");
 }

@@ -131,16 +131,24 @@ pub struct Inputs<'a> {
     pub preview_open: bool,
     /// The pressed view, which always stays in the strip.
     pub pressed: usize,
-    /// Which of the six views are greyed.
+    /// Which of the views are greyed.
     pub disabled: [bool; VIEW_COUNT],
-    /// 2D and 3D after the views (not built in the section).
-    pub shapes: bool,
 }
 
 /// The map views and the section.
 pub const VIEW_COUNT: usize = crate::paint::MAP_VIEWS + 1;
 
-/// The word of view `i` (the five views, then the section).
+/// The first view of the strip's last group, the structures then the section, which a gap sets apart from the maps.
+pub const END_GROUP: usize = crate::paint::View::Structures as usize;
+
+/// Whether a gap comes before view `v` in the strip: `v` is the first tab of the last group, and tabs of the
+/// maps' group are before it.
+pub fn gap_before(form: &Form, v: usize) -> bool {
+    let shown = |k: usize| !form.more.contains(&k);
+    v >= END_GROUP && shown(v) && (END_GROUP..v).all(|k| !shown(k)) && (0..END_GROUP).any(shown)
+}
+
+/// The word of view `i` (the six views, then the section).
 pub fn view_word(i: usize) -> &'static str {
     if i < text::VIEWS.len() { text::VIEWS[i] } else { text::SECTION }
 }
@@ -167,11 +175,11 @@ pub fn strip_width(i: &Inputs, form: &Form) -> f32 {
         // The options' box pads its tabs by 1 px on the left, which the first tab's pull takes back, and by the
         // gap that keeps them off the tool.
         w += 1.0 + TOOL_VIEWS_GAP;
-        w += (0..VIEW_COUNT).filter(|v| !form.more.contains(v)).map(|v| tab_step(view_word(v))).sum::<f32>();
+        w += (0..VIEW_COUNT).filter(|v| !form.more.contains(v)).map(|v| tab_step(view_word(v)) + if gap_before(form, v) { SEP } else { 0.0 }).sum::<f32>();
         if form.has_more() {
             w += more_step();
         }
-        if i.shapes && !form.shapes_in_more {
+        if !form.shapes_in_more {
             w += SEP + text::SHAPES.iter().map(|s| tab_step(s)).sum::<f32>();
         }
     }
@@ -250,9 +258,7 @@ pub fn plan(i: &Inputs) -> Form {
         // The tools stop being centred, then the shapes join the views in "More".
         let all = held(from_end.len());
         steps.push(Form { more: all.clone(), centred: false, ..base.clone() });
-        if i.shapes {
-            steps.push(Form { more: all, centred: false, shapes_in_more: true, ..base });
-        }
+        steps.push(Form { more: all, centred: false, shapes_in_more: true, ..base });
     }
     let last = steps.len() - 1;
     let mut chosen = steps.into_iter().enumerate().find(|(n, f)| *n == last || fits(i, f)).map(|(_, f)| f).unwrap_or_default();
