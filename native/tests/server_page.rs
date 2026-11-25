@@ -43,6 +43,28 @@ fn c1_the_page_asks_for_the_eula_before_anything() {
 }
 
 #[test]
+fn c1_a_start_the_api_refuses_before_the_first_start_says_why_and_the_note_stays() {
+    let api = board_api();
+    board_server(&api);
+    // The EULA is accepted: the page goes on with Start enabled, and the server has no settings yet.
+    let mut server = api_get(&api, "/api/server");
+    server["eula"] = json!(true);
+    api.set_get("/api/server", server);
+    let why = "Port 25565 is already in use.";
+    api.set_post("/api/server/start", 409, json!({"error": why}));
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    open_server(&mut rig);
+    let start = rig.home().pages.server.start;
+    rig.click(start);
+    assert_eq!(rig.api.count("POST", "/api/server/start"), 1);
+    // The next reading of the server (it has no settings yet) leaves the reason where it is.
+    rig.wait(4.0);
+    assert_eq!(rig.home().notes().1, why);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    rig.write("server_c1_start_refused_1400.png");
+}
+
+#[test]
 fn c1_start_waits_for_the_eula() {
     let mut rig = server_page(1400, 940);
     let start = rig.home().pages.server.start;
