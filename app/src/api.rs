@@ -15,6 +15,7 @@ pub mod mrpack;
 mod preview;
 mod profiles;
 pub mod servers;
+pub mod skin;
 
 use std::{
     fs,
