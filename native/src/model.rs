@@ -37,7 +37,10 @@ impl Open {
 pub struct Profile {
     pub id: String,
     pub name: String,
+    /// The maximum, in MiB (Prism's MaxMemAlloc).
     pub memory_mb: i64,
+    /// The minimum, in MiB (MinMemAlloc); the api's answer may leave it out: `DEFAULT_MIN_MB` then.
+    pub min_memory_mb: i64,
     pub java_args: String,
     pub game_dir: String,
     pub last_played: i64,
@@ -50,9 +53,61 @@ pub struct Profile {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Profiles {
     pub machine_mb: i64,
+    /// What Windows and the open programs use now, in MiB; 0 when the api does not say.
+    pub used_mb: i64,
     pub account: Option<String>,
     pub locked: bool,
     pub profiles: Vec<Profile>,
+}
+
+/// The starting minimum of a profile (memory.rs `START_MIN_GB`: to validate), in MiB.
+pub const DEFAULT_MIN_MB: i64 = 1024;
+
+/// One mod of a profile, as its page lists it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModLine {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    /// The newer version Modrinth knows for the profile's game version.
+    pub latest: Option<String>,
+    /// The mod's page on Modrinth; None for a file dropped in by hand, which has no page and no update.
+    pub slug: Option<String>,
+}
+
+/// Fabric in a profile: its version and the newer one, if any. None in `Details::fabric` when it is not installed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FabricState {
+    pub version: String,
+    pub latest: Option<String>,
+}
+
+/// What the profile's page reads beside the profile: its game version, Fabric and its mods.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Details {
+    pub game_version: String,
+    pub game_versions: Vec<String>,
+    pub fabric: Option<FabricState>,
+    pub mods: Vec<ModLine>,
+}
+
+impl Details {
+    pub fn parse(v: &Value) -> Details {
+        let text = |x: &Value, key: &str| x[key].as_str().filter(|t| !t.is_empty()).map(String::from);
+        Details {
+            game_version: s(v, "gameVersion"),
+            game_versions: v["gameVersions"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
+            fabric: v["fabric"].is_object().then(|| FabricState { version: s(&v["fabric"], "version"), latest: text(&v["fabric"], "latest") }),
+            mods: v["mods"]
+                .as_array()
+                .map(|a| a.iter().map(|m| ModLine { id: s(m, "id"), name: s(m, "name"), version: s(m, "version"), latest: text(m, "latest"), slug: text(m, "slug") }).collect())
+                .unwrap_or_default(),
+        }
+    }
+    /// How many mods have a newer version.
+    pub fn updates(&self) -> usize {
+        self.mods.iter().filter(|m| m.latest.is_some()).count()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -94,6 +149,7 @@ impl Profiles {
                         id: s(p, "id"),
                         name: s(p, "name"),
                         memory_mb: n(p, "memoryMb"),
+                        min_memory_mb: if p["minMemoryMb"].is_null() { DEFAULT_MIN_MB } else { n(p, "minMemoryMb") },
                         java_args: s(p, "javaArgs"),
                         game_dir: s(p, "gameDir"),
                         last_played: n(p, "lastPlayed"),
@@ -107,6 +163,7 @@ impl Profiles {
             .unwrap_or_default();
         Profiles {
             machine_mb: n(v, "machineMb"),
+            used_mb: n(v, "usedMb"),
             account: v["account"].as_str().filter(|a| !a.is_empty()).map(String::from),
             locked: v["locked"].as_bool().unwrap_or(false),
             profiles,
@@ -198,6 +255,15 @@ pub fn memory_max(machine_mb: i64) -> f64 {
     ((machine_mb as f64 / 1024.0 * 0.75).floor()).max(2.0)
 }
 
+/// The most a profile may ask for, in whole gigabytes: what the PC leaves free now (memory.rs `clamp`), at least 1. When the
+/// api does not say what the PC uses, the old rule: three quarters of the machine.
+pub fn memory_limit_gb(machine_mb: i64, used_mb: i64) -> i64 {
+    if used_mb <= 0 {
+        return memory_max(machine_mb) as i64;
+    }
+    ((machine_mb - used_mb).max(0) / 1024).max(1)
+}
+
 /// The page's `change` handler for a number field (the one on `document`): rounded to a whole number, then held within
 /// its range.
 pub fn round_clamp(v: f64, min: f64, max: f64) -> f64 {
@@ -214,7 +280,7 @@ mod tests {
     use serde_json::json;
 
     fn profile(last: i64, secs: i64, open: Open) -> Profile {
-        Profile { id: "x".into(), name: "X".into(), memory_mb: 0, java_args: String::new(), game_dir: String::new(), last_played: last, played_seconds: secs, running: false, worlds: vec![], open }
+        Profile { id: "x".into(), name: "X".into(), memory_mb: 0, min_memory_mb: 0, java_args: String::new(), game_dir: String::new(), last_played: last, played_seconds: secs, running: false, worlds: vec![], open }
     }
 
     #[test]
@@ -259,12 +325,29 @@ mod tests {
     }
 
     #[test]
+    fn the_limit_is_what_the_pc_leaves_free() {
+        assert_eq!(memory_limit_gb(16384, 5222), 10);
+        assert_eq!(memory_limit_gb(16384, 0), 12);
+        assert_eq!(memory_limit_gb(16384, 16000), 1);
+    }
+
+    #[test]
     fn a_number_is_rounded_then_held() {
         assert_eq!(round_clamp(3.6, 2.0, 24.0), 4.0);
         assert_eq!(round_clamp(99.0, 2.0, 24.0), 24.0);
         assert_eq!(round_clamp(0.0, 2.0, 24.0), 2.0);
         assert_eq!(round_clamp(2.5, 2.0, 24.0), 3.0);
         assert_eq!(round_clamp(f64::NAN, 2.0, 24.0), 2.0);
+    }
+
+    #[test]
+    fn a_profiles_details_are_read_and_the_updates_counted() {
+        let d = Details::parse(&json!({"gameVersion": "26.3", "gameVersions": ["26.3", "26.2"], "fabric": {"version": "0.18.2", "latest": "0.18.4"},
+            "mods": [{"id": "a", "name": "A", "version": "1", "latest": "2", "slug": "a"}, {"id": "b", "name": "b.jar", "version": ""}]}));
+        assert_eq!(d.game_versions, ["26.3", "26.2"]);
+        assert_eq!(d.fabric, Some(FabricState { version: "0.18.2".into(), latest: Some("0.18.4".into()) }));
+        assert_eq!((d.updates(), d.mods[1].slug.clone(), d.mods[1].latest.clone()), (1, None, None));
+        assert_eq!(Details::parse(&json!({})).fabric, None);
     }
 
     #[test]
@@ -275,6 +358,8 @@ mod tests {
         assert!(!p.locked);
         assert_eq!(p.profiles[0].open, Open::Server("h".into()));
         assert_eq!(p.profiles[0].memory_mb, 0);
+        assert_eq!(p.profiles[0].min_memory_mb, DEFAULT_MIN_MB);
+        assert_eq!(p.used_mb, 0);
         let s = Server::parse(&json!({"state": "running", "props": null}));
         assert!(s.props.is_none() && s.busy());
         let s = Server::parse(&json!({"state": "stopped", "props": {"port": 25570, "whitelist": true}}));

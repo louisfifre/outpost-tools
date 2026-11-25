@@ -88,7 +88,7 @@ fn h4_settings_and_the_address() {
     }
     rig.key(Key::Enter);
     let body = rig.api.last_body("POST", "/api/settings/exploration").expect("saved");
-    assert_eq!(body, json!({"javaArgs": "-XX:+UseZGC", "memoryMb": 6144, "open": {"kind": "server", "target": "localhost"}}));
+    assert_eq!(body, json!({"javaArgs": "-XX:+UseZGC", "memoryMb": 6144, "minMemoryMb": 1024, "open": {"kind": "server", "target": "localhost"}}));
     assert!(rig.says("Saved."));
 }
 
@@ -125,21 +125,6 @@ fn h6_locked_fields() {
     rig.click_at(centre(b));
     rig.click_at(Vec2::new(b.x + 30.0, b.y + b.h + 1.0 + 10.0));
     assert_eq!(rig.api.count("POST", "/api/settings/exploration"), 0, "the select does not open");
-}
-
-/// H7: the memory is held within 2 and three quarters of the machine, and rounded.
-#[test]
-fn h7_memory() {
-    let mut rig = Rig::new(1400, 940, true);
-    settings_of_exploration(&mut rig);
-    let id = rig.home().ids().memory;
-    rig.type_into(id, "99");
-    rig.key(Key::Enter);
-    assert_eq!(rig.api.last_body("POST", "/api/settings/exploration").unwrap()["memoryMb"], json!(24 * 1024));
-    let id = rig.home().ids().memory;
-    rig.type_into(id, "3.6");
-    rig.key(Key::Enter);
-    assert_eq!(rig.api.last_body("POST", "/api/settings/exploration").unwrap()["memoryMb"], json!(4096));
 }
 
 /// H8: Back returns to the list, says nothing, and asks the profiles again.

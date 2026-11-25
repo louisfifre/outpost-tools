@@ -83,3 +83,42 @@ pub const OFF: &str = "off";
 pub const FIRST_START: &str = "Distances, players, port and line appear after the first start.";
 pub const SERVER_LOCKED: &str = "The server is running: settings can change once it is stopped.";
 pub const SERVER_SETTINGS: &str = "Settings of the server";
+// The profile page (boards B1 to B3).
+pub const GAME_SECTION: &str = "Game";
+pub fn mods_section(count: usize) -> String {
+    format!("Mods \u{b7} {count}")
+}
+pub const GAME_VERSION: &str = "Game version";
+pub const FABRIC: &str = "Fabric";
+pub const NOT_INSTALLED: &str = "not installed";
+pub const INSTALL: &str = "Install";
+pub const UPDATE: &str = "Update";
+pub fn update_all(count: usize) -> String {
+    format!("Update all ({count})")
+}
+pub const ADD_A_MOD: &str = "Add a mod";
+pub const UNDO: &str = "Undo";
+pub fn removed(name: &str) -> String {
+    format!("{name} removed.")
+}
+pub fn remove_mod(name: &str) -> String {
+    format!("Remove {name}")
+}
+pub fn open_on_modrinth(name: &str) -> String {
+    format!("Open {name} on Modrinth")
+}
+/// The arrow before a newer version.
+pub fn newer(version: &str) -> String {
+    format!("\u{2192} {version}")
+}
+pub fn memory_min(gb: i64) -> String {
+    format!("min {gb} GB")
+}
+pub fn memory_max(gb: i64) -> String {
+    format!("max {gb} GB")
+}
+pub const USED_BY_PC: &str = "used by the PC";
+pub fn memory_total(gb: i64) -> String {
+    format!("{gb} GB")
+}
+pub const USED_TIP: &str = "Used now by Windows and the open programs";
