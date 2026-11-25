@@ -548,6 +548,9 @@ fn memory_bar(home: &mut LauncherHome, ui: &mut Ui, machine_mb: i64, used_mb: i6
         if min_at + w_of(&min_s) + WORDS_GAP > max_at {
             min_at = (max_at - WORDS_GAP - w_of(&min_s)).max(0.0);
         }
+        // On a bar as long as a big PC's memory the grips are close: the least's word cannot go further left than the
+        // bar's start, so the most's word goes right of it rather than over it.
+        let max_at = max_at.max(min_at + w_of(&min_s) + WORDS_GAP);
         let total_at = w - w_of(&total_s);
         cmds.push(word(min_at, &min_s, t.text));
         cmds.push(word(max_at, &max_s, t.text));
