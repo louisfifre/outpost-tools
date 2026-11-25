@@ -8,6 +8,7 @@
 
 mod dev_server;
 pub mod instance;
+pub mod java;
 mod key_value;
 mod memory;
 mod modrinth;
