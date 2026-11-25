@@ -231,6 +231,11 @@ pub struct PreviewState {
     /// The bar's `#account` (launcher line 84): who plays, said once beside the game's name. None while unknown, and
     /// in the standalone preview, which has no account.
     pub account: Option<String>,
+    /// What the account's menu lists, as Home gave it, and whether it is open. `account_ask` is what the person asked of
+    /// it in the last build, taken by the application once the build is over.
+    pub account_menu: Arc<crate::home::AccountMenu>,
+    pub account_open: bool,
+    pub account_ask: Option<crate::home::AccountAsk>,
     /// The tools' options sliding open and shut (launcher line 124), 1 being open. Kept in step with `mode`: a
     /// state that names a mode without it is put right when the bar is built.
     pub options: Slide,
@@ -309,6 +314,9 @@ impl Default for PreviewState {
             preview_seen: true,
             ended: RunEnd::Idle,
             account: None,
+            account_menu: Arc::default(),
+            account_open: false,
+            account_ask: None,
             options: Slide::settled(true),
             options_w: 0.0,
             reduce_motion: false,
@@ -328,6 +336,9 @@ pub struct ShellIds {
     /// The bar of the window, its brand, the two tools' buttons (Home, preview) and the window's three buttons.
     pub bar: Id,
     pub brand: Id,
+    /// The account's button and its open menu (Id::ROOT while there is no menu or it is shut).
+    pub account: Id,
+    pub account_list: Id,
     /// The bar's two buttons that open and close the settings and the figures panel (Id::ROOT in Home).
     pub toggles: [Id; 2],
     /// The grips between each panel and the stage (Id::ROOT when stacked or the panel is closed).
@@ -497,6 +508,8 @@ impl Default for ShellIds {
             right: o,
             bar: o,
             brand: o,
+            account: o,
+            account_list: o,
             toggles: [o; 2],
             grips: [o; 2],
             plan: Plan { stacked: false, widths: [0.0; 2] },

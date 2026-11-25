@@ -524,6 +524,13 @@ pub const MORE_TITLE: &str = "More views";
 /// The tooltips of the bar's two buttons that open and close the side panels (preview tool only), and of the grip
 /// between a panel and the stage. Not the page's: the page has fixed panels.
 pub const SETTINGS_PANEL: &str = "Settings panel";
+/// The account menu of the bar (board A2).
+pub const ACCOUNT_MENU: &str = "Accounts";
+pub const ADD_ACCOUNT: &str = "Add an account";
+pub const IN_USE: &str = "in use";
+pub fn sign_out(name: &str) -> String {
+    format!("Sign out of {name}")
+}
 pub const FIGURES_PANEL: &str = "Figures panel";
 pub const RESIZE_PANEL: &str = "Drag to resize, double-click to reset";
 /// Line 342: where a run of the preview stands, by marker.

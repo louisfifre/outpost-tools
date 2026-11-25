@@ -42,7 +42,7 @@ fn drawn(list: &mere_base::DrawList) -> Vec<String> {
 }
 
 fn inputs(w: f32, account: Option<&str>, pressed: usize, disabled: [bool; 9]) -> Inputs<'_> {
-    Inputs { width: w, account, preview_open: true, pressed, disabled, shapes: pressed != SECTION }
+    Inputs { width: w, account, account_mark: 0.0, preview_open: true, pressed, disabled, shapes: pressed != SECTION }
 }
 
 /// Every distinct form met while the window narrows from 2560 to 500, widest first.
@@ -137,7 +137,7 @@ fn the_bar_gives_way_in_its_order() {
 /// room next to the window's buttons. At the window's least width it gives up nothing.
 #[test]
 fn home_gives_up_the_account_and_never_the_word() {
-    let home = |w: f32| Inputs { width: w, account: Some("Louis"), preview_open: false, pressed: 2, disabled: [false; 9], shapes: true };
+    let home = |w: f32| Inputs { width: w, account: Some("Louis"), account_mark: 0.0, preview_open: false, pressed: 2, disabled: [false; 9], shapes: true };
     assert_eq!(overflow::plan(&home(preview::MIN_SIZE.0)), Form::default());
     assert_eq!(overflow::plan(&home(2560.0)), Form::default());
     let mut seen: Vec<Form> = Vec::new();

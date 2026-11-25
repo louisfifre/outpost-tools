@@ -5,6 +5,45 @@
 use mere_base::Vec2;
 use mere_ui::Ui;
 
+/// A picture of pixels, 4 bytes each (RGBA, rows from the top): an account's face and its player, as the skin gives them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Pixels {
+    pub w: u32,
+    pub h: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// One account of the bar's menu.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AccountEntry {
+    pub name: String,
+    /// The one the game is played with: marked with a check.
+    pub in_use: bool,
+    /// Its head, 8 x 8 pixels; None while its skin is not read.
+    pub face: Option<Pixels>,
+}
+
+/// What the bar's account menu shows: the accounts, and the player of the one in use. No account: no menu.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AccountMenu {
+    pub accounts: Vec<AccountEntry>,
+    /// The player of the account in use, from the front, 24 x 40 pixels.
+    pub figure: Option<Pixels>,
+}
+
+/// What the person asked of the account menu.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AccountAsk {
+    /// The menu was opened: read the accounts again.
+    Opened,
+    /// Play with this account.
+    Use(String),
+    /// Add an account.
+    Add,
+    /// Sign this account out.
+    SignOut(String),
+}
+
 pub trait Home {
     /// Builds Home in the pane under the bar; `size` is the pane's (window width, window height - BAR_H).
     fn build(&mut self, ui: &mut Ui, size: Vec2);
@@ -19,5 +58,11 @@ pub trait Home {
     fn shown(&mut self);
     /// The bar's #account: None while unknown.
     fn account(&self) -> Option<String>;
+    /// The accounts the bar's menu lists; none by default (the standalone preview has no account).
+    fn account_menu(&self) -> std::sync::Arc<AccountMenu> {
+        std::sync::Arc::default()
+    }
+    /// What the person asked of the account menu; acted on by the next `act`.
+    fn account_ask(&mut self, _ask: AccountAsk) {}
     fn as_any(&self) -> &dyn std::any::Any;
 }
