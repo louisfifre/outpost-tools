@@ -130,7 +130,7 @@ fn the_app_opens_on_the_set_up_when_java_is_missing_and_on_home_otherwise() {
     let api = Arc::new(fixture());
     java_missing(&api, 51 * MB);
     outpost_tools::fake::with_accounts(&api);
-    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    let rig = Rig::with_api(api, 1400, 940, true, true);
     assert_eq!(rig.home().page(), Some(&Page::Setup), "no Java 25: the set-up first");
     assert_eq!(rig.api.count("GET", "/api/java/found"), 1);
     assert!(rig.says("Outpost Tools needs Java 25 to run the game."));
