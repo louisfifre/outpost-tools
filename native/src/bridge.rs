@@ -39,6 +39,12 @@ pub enum Tag {
     SaveProfile,
     SaveServer,
     Folder,
+    /// A profile's game version, Fabric and mods (its page).
+    Instance(String),
+    /// One of the profile page's actions on a mod, Fabric or all of them: what it was, to say it.
+    ModAction(String),
+    /// A link opened in the browser.
+    OpenUrl,
     ServerFolder,
 }
 
