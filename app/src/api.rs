@@ -9,6 +9,7 @@
 mod dev_server;
 pub mod instance;
 pub mod java;
+mod java_setup;
 mod key_value;
 mod memory;
 mod modrinth;
@@ -202,6 +203,7 @@ impl Api {
                     let mut live = self.live();
                     Reply::json(200, self.server_info(&mut live)?)
                 }
+                "/api/java" => self.java_state(),
                 "/api/ping" => Reply::empty(200),
                 "/api/preview" => Reply::json(200, json!({ "available": self.preview_serve().exists(), "url": PREVIEW_URL })),
                 _ => Reply::empty(404),
@@ -221,6 +223,8 @@ impl Api {
                 }
                 Err(unavailable) => return Err(unavailable),
             }),
+            "/api/java/download" => Ok(self.java_download()),
+            "/api/java/stop" => Ok(self.java_stop()),
             "/api/server/start" => self.server_start(),
             "/api/server/stop" => self.server_stop(),
             "/api/server/folder" => {

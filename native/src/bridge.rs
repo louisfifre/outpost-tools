@@ -58,6 +58,10 @@ pub enum Tag {
     AccountUse,
     AccountAdd,
     AccountSignOut,
+    /// The first start's Java step: its state, the start of its download, its stop.
+    Java,
+    JavaStart,
+    JavaStop,
 }
 
 #[derive(Clone, Debug)]
