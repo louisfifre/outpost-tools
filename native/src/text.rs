@@ -30,6 +30,8 @@ pub fn new_version(version: &str) -> String {
 pub fn came_with(dependency: &str, by: &str) -> String {
     format!("{dependency} came with it: {by} needs it.")
 }
+/// The word of the Play action on a profile's page, after its icon.
+pub const PLAY: &str = "Play";
 /// `play`.
 pub fn play(name: &str) -> String {
     format!("Play {name}")

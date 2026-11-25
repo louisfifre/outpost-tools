@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 use mere_base::{Cmd, Cursor, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Margin, Side, Style, Track, Tracks};
 use mere_ui::tokens::{CONTROL, GAP, GAP_TIGHT, GAP_WIDE};
-use mere_ui::{ActionLook, ActionOpts, FieldOpts, Icon, IconLook, IconOpts, Id, LineAction, LineEnd, ListLine, SelectOpts, TextLook, Tone, Ui, text_width};
+use mere_ui::{ActionLook, ActionOpts, FieldOpts, Icon, Id, LineAction, LineEnd, ListLine, SelectOpts, TextLook, Tone, Ui, text_width};
 use serde_json::json;
 
 use super::Page;
@@ -287,7 +287,7 @@ pub fn build(home: &mut LauncherHome, ui: &mut Ui) {
         COLUMNS_MAX,
         &name,
         |ui| {
-            let r = ui.icon_action("play", &icons().play, IconLook::Filled, IconOpts { disabled: blocked, ..IconOpts::default() });
+            let r = ui.action_icon("play", &icons().play, text::PLAY, ActionLook::Primary, ActionOpts { disabled: blocked, ..ActionOpts::default() });
             ui.title(r.id, &text::play(&name));
             play = Some(r);
         },
