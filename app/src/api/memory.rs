@@ -1,6 +1,9 @@
 // The PC's memory and the amounts a profile may ask for (play-a-profile.md, Profile page, Memory). Amounts of a
 // profile are in MiB, the unit of Prism's MinMemAlloc and MaxMemAlloc in instance.cfg (see profiles.rs); the PC's
 // own figures are in bytes. A "gigabyte" here is 1024 MiB, which is what Java's -Xmx counts.
+// The amounts below (clamp, plain_default) wait for New profile, not built yet; only PcMemory::read is wired today.
+// When they are wired, clamp must step by half gigabytes, as the profile page's memory bar does.
+#![allow(dead_code)]
 
 use sysinfo::{MemoryRefreshKind, System};
 
