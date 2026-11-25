@@ -66,9 +66,6 @@ fn l4_the_numbers_at_1400() {
     let below = top + FRAME + head + INSET_HAIR;
     // Both actions end at their part's right edge, in the head's line.
     let (new_profile, new_server) = (r(ids.new_profile), r(ids.new_server));
-    // The servers' second action sits before New server, in the same line of the head.
-    let choose = r(ids.choose_folder);
-    assert!(choose.x > left + part + COLUMNS_GAP && choose.x + choose.w < new_server.x && (choose.y - new_server.y).abs() < 0.01, "{choose:?}");
     assert!((new_profile.x + new_profile.w - (left + part)).abs() < 0.01, "{new_profile:?}");
     assert!((new_server.x + new_server.w - (left + 2.0 * part + COLUMNS_GAP)).abs() < 0.01, "{new_server:?}");
     assert!(new_profile.y > top && new_profile.y + new_profile.h < below, "{new_profile:?}");

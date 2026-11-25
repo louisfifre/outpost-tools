@@ -98,7 +98,6 @@ pub struct HomeIds {
     pub server_rows: Vec<RowIds>,
     pub new_profile: Id,
     pub new_server: Id,
-    pub choose_folder: Id,
     pub s_memory: Id,
     pub s_java: Id,
     pub s_view: Id,
@@ -135,7 +134,6 @@ impl Default for HomeIds {
             server_rows: Vec::new(),
             new_profile: o,
             new_server: o,
-            choose_folder: o,
             s_memory: o,
             s_java: o,
             s_view: o,
@@ -218,8 +216,6 @@ pub(crate) enum Want {
     ServerStop,
     ServerSave,
     ServerFolder,
-    /// Choose the folder the servers live in.
-    ChooseFolder,
     Mods(pages::add_mod::Ask),
     /// Accept the Minecraft EULA: the api writes it, on the person's press.
     Eula,
@@ -656,18 +652,6 @@ impl LauncherHome {
                 }
             },
             Tag::Mods(ref ask) => pages::add_mod::done(self, ask.clone(), &d),
-            // The servers folder was chosen (or the dialog closed with none): the list is read again from where it is now.
-            Tag::ServersFolder => {
-                if !ok {
-                    let why = if matches!(d.status, 409 | 422) { said(&d) } else { self.failure(&d) };
-                    self.say_server(&why);
-                } else {
-                    // A server of the old folder is no longer one: the page asks about none in particular.
-                    self.select("");
-                    self.say_server("");
-                }
-                self.load_server();
-            }
             Tag::ServerFolder => {
                 if !ok {
                     let why = self.failure(&d);
@@ -981,14 +965,11 @@ impl LauncherHome {
         let lit = ui.theme().tint();
         let lines = self.server_lines();
         let mut new = (Id::ROOT, false);
-        let mut choose = (Id::ROOT, false);
         self.ids.server_rows.clear();
         let section = ui.section(
             "servers",
             text::SERVER_GROUP,
             |ui| {
-                let r = ui.action("chooseFolder", text::CHOOSE_FOLDER, ActionLook::Underlined);
-                choose = (r.id, r.clicked);
                 let r = ui.action("new", text::NEW_SERVER, ActionLook::Underlined);
                 new = (r.id, r.clicked);
             },
@@ -1039,10 +1020,6 @@ impl LauncherHome {
         );
         self.ids.server_header = section;
         self.ids.new_server = new.0;
-        self.ids.choose_folder = choose.0;
-        if choose.1 {
-            self.wants.push(Want::ChooseFolder);
-        }
         self.server_note_under(ui);
     }
 
@@ -1221,7 +1198,6 @@ impl Home for LauncherHome {
                 Want::ServerSave => self.save_server(),
                 Want::ServerFolder => self.send_server(Tag::ServerFolder, "POST", "/api/server/folder", None),
                 // Not a server's own request: the servers folder is one for all of them.
-                Want::ChooseFolder => self.send(Tag::ServersFolder, "POST", "/api/servers/folder", None),
                 Want::Mods(ask) => pages::add_mod::act(self, ask),
                 Want::Eula => self.send_server(Tag::Eula, "POST", "/api/server/eula", None),
                 Want::OpenLink(url) => self.send(Tag::OpenLink, "POST", "/api/open-link", Some(json!({ "url": url }))),
