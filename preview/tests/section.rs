@@ -164,10 +164,10 @@ fn c1_layout_of_the_section_at_1400() {
     assert_eq!((cv.w as f64, cv.h as f64), ids.cut_box, "the laid-out box is the arithmetic one");
     assert_eq!(cv.y + cv.h, BAR_H + CONTENT_TOP + 804.0, "the cut view ends with the frame");
     assert_eq!(rig.rect(ids.under).y, 864.0);
-    assert_eq!(ids.tabs.len(), 9, "the section has no 2D and 3D tabs");
+    assert_eq!(ids.tabs.len(), 9, "the section keeps its 2D and 3D tabs, disabled");
     let section = world.section.as_ref().unwrap();
     // Section is pressed: its tab is filled in the colour of the text.
-    let t = rig.rect(ids.tabs[8]);
+    let t = rig.rect(ids.tabs[6]);
     assert_eq!(rig.px(&rgba, t.x as usize + 3, t.y as usize + 3), DARK_TEXT);
     assert_ne!(ids.next_cut, Id::ROOT);
     assert_ne!(ids.export, Id::ROOT);

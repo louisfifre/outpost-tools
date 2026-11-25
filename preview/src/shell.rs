@@ -145,7 +145,7 @@ pub struct PreviewState {
     pub grip: Option<Grip>,
     /// The scroll of each panel as one whole, when the panels are stacked.
     pub panel_y: [f32; 2],
-    /// The strip's pressed view: 0 to 7 are `text::VIEWS`, 8 (`paint::SECTION`) is the section.
+    /// The strip's pressed view: 0 to 5 are `text::VIEWS`, 6 (`paint::SECTION`) is the section.
     pub view: usize,
     pub in3d: bool,
     /// How finely the 3D view draws the land: the pressed one of `text::LEVELS`.
@@ -657,7 +657,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
     let mut ids = ShellIds::default();
     // A map stopped at a coarser detail cannot give these views (line 2509): the page goes back to the biomes.
     if world.is_some_and(World::coarse) && crate::paint::needs_full(s.view) {
-        s.view = 0;
+        s.view = View::Biomes.index();
     }
 
     // The panels' widths come first: the stage is what they leave. A hand's drag is applied before, so that the
@@ -1616,10 +1616,10 @@ fn ore_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option
     }
 }
 
-/// The list beside the map in the five map views (`showList` and `showChoice`, lines 1639-1758): its title, the
+/// The list beside the map in the six map views (`showList` and `showChoice`, lines 1639-1758): its title, the
 /// filter, what the choice weighs, the legend and the rows.
 fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&World>, stacked: bool) {
-    let view = View::from_index(s.view).expect("the map views are 0 to 4");
+    let view = View::from_index(s.view).expect("the map views are 0 to 5");
     let counted = view == View::Structures;
     let list: Option<&List> = world.and_then(|w| w.measured.lists[view.index()].as_ref());
     // Before any list was shown the page's markup holds the filter and the legend with no column name.

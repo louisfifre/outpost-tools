@@ -78,14 +78,19 @@ fn p1_paint_is_byte_identical_to_the_pages() {
     println!("colours, structures ({} kinds) and flat land ({flat} points) equal", s.ids.len());
 
     let cases: Vec<String> = meta.get("cases").unwrap().array().unwrap().iter().map(|v| v.text().unwrap()).collect();
-    assert_eq!(cases.len(), 18, "eight views in two schemes, and two with a choice");
+    assert_eq!(cases.len(), 18, "the page's eight views in two schemes, and two with a choice");
     for name in &cases {
         let (view, dark, chosen) = match name.as_str() {
             "biomes_chosen_dark" => (View::Biomes, true, set(&["minecraft:badlands", "minecraft:savanna"])),
             "height_chosen_light" => (View::Height, false, set(&["3", "4"])),
             other => {
                 let (key, scheme) = other.rsplit_once('_').unwrap();
-                (View::from_key(key).unwrap_or_else(|| panic!("view {key}")), scheme == "dark", BTreeSet::new())
+                // The page still draws Flat and Cliffs, which the preview no longer has.
+                let Some(view) = View::from_key(key) else {
+                    assert!(["flat", "cliffs"].contains(&key), "view {key}");
+                    continue;
+                };
+                (view, scheme == "dark", BTreeSet::new())
             }
         };
         let page = std::fs::read(dest.join(format!("{name}.rgba"))).unwrap();

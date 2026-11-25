@@ -130,7 +130,7 @@ fn i2_a_press_that_travels_carries_the_map_and_chooses_nothing() {
 #[test]
 fn i3_a_still_click_chooses_the_biome_under_it_and_a_second_unchooses() {
     let Some(world) = load() else { return };
-    let mut r = Rig::new(world, PreviewState { view: 0, ..PreviewState::default() });
+    let mut r = Rig::new(world, PreviewState { view: View::Biomes.index(), ..PreviewState::default() });
     // A little off the centre, so that the cross is not what is clicked.
     let c = r.centre();
     let p = Vec2::new(c.x + 60.0, c.y + 40.0);
@@ -138,14 +138,14 @@ fn i3_a_still_click_chooses_the_biome_under_it_and_a_second_unchooses() {
     let (_, _, i) = point_under(&r.world, Look::REST, rect.w, Vec2::new(p.x - rect.x, p.y - rect.y));
     let want = r.world.biomes[r.world.biome_at[i] as usize].id.clone();
     r.click(p);
-    assert_eq!(r.s.chosen[0], BTreeSet::from([want.clone()]));
-    assert!(r.s.chosen[1..].iter().all(BTreeSet::is_empty));
+    assert_eq!(r.s.chosen[View::Biomes.index()], BTreeSet::from([want.clone()]));
+    assert!(r.s.chosen.iter().enumerate().all(|(i, c)| i == View::Biomes.index() || c.is_empty()));
     // The next paint dims the others: the choice is what paint() reads.
-    let img = paint(&r.world, View::Biomes, true, &r.s.chosen[0]);
+    let img = paint(&r.world, View::Biomes, true, &r.s.chosen[View::Biomes.index()]);
     let plain = paint(&r.world, View::Biomes, true, &BTreeSet::new());
     assert_ne!(img, plain);
     r.click(p);
-    assert!(r.s.chosen[0].is_empty(), "the second click takes it away");
+    assert!(r.s.chosen[View::Biomes.index()].is_empty(), "the second click takes it away");
     let (_, ids) = rows(&r.world, View::Biomes).unwrap();
     assert!(ids.contains(&want));
 }
@@ -221,13 +221,13 @@ fn i5_the_tab_changes_the_colouring_through_the_whole_application() {
     assert_eq!(px(&first), tex(&heights, col, row), "the relief to begin with");
 
     // Click the Biomes tab: the frame after it is painted with the biomes' colours.
-    let tab: Rect = app.ui().rect(app.ids().tabs[0]).unwrap();
+    let tab: Rect = app.ui().rect(app.ids().tabs[View::Biomes.index()]).unwrap();
     let c = Vec2::new(tab.x + tab.w / 2.0, tab.y + tab.h / 2.0);
     for e in [Event::PointerMoved { pos: c }, Event::PointerDown { pos: c, button: Button::Left, clicks: 1 }, Event::PointerUp { pos: c, button: Button::Left }] {
         app.event(e);
     }
     let second = picture(&mut app, &mut r);
-    assert_eq!(app.state().view, 0, "the click set the view");
+    assert_eq!(app.state().view, View::Biomes.index(), "the click set the view");
     assert_eq!(px(&second), tex(&biomes, col, row), "the biomes' colour");
     assert_ne!(px(&second), tex(&heights, col, row), "and no longer the relief's");
 }

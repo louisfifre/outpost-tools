@@ -4,7 +4,7 @@
 //! page's own code with Node and compares bit for bit.
 
 use crate::bands::{HEIGHT_STEPS, SEA_DEPTHS, band_colours, band_names};
-use crate::colour::{self, flat_colour, flat_sea_colour, steep_colour, temperature_colour};
+use crate::colour::{self, temperature_colour};
 use crate::json::Json;
 use crate::ground;
 use crate::paint::{MAP_VIEWS, View, rows};
@@ -245,7 +245,7 @@ pub fn measure(world: &World, absent: Vec<String>, listed: bool) -> Measured {
         counted: false,
         total: total_f,
     });
-    for view in [View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature] {
+    for view in [View::Slope, View::Vegetation, View::Height, View::Temperature] {
         let Some((at, ids)) = rows(world, view) else { continue };
         let (names, colours): (Vec<String>, Vec<[u8; 3]>) = match view {
             View::Height => (band_names(sea, &HEIGHT_STEPS, &SEA_DEPTHS), band_colours(sea, &HEIGHT_STEPS, &SEA_DEPTHS)),
@@ -253,10 +253,10 @@ pub fn measure(world: &World, absent: Vec<String>, listed: bool) -> Measured {
                 text::LEGEND_TEMPERATURE.iter().map(|s| s.to_string()).collect(),
                 (0..5).map(|i| temperature_colour(-0.7 + i as f64 * 2.7 / 4.0)).collect(),
             ),
-            View::Slope | View::Cliffs | View::Vegetation => {
+            View::Slope | View::Vegetation => {
                 (text::legend(view.index()).iter().map(|s| s.to_string()).collect(), ground::colours(view))
             }
-            _ => (text::LEGEND_FLAT.iter().map(|s| s.to_string()).collect(), vec![flat_colour(), steep_colour(), flat_sea_colour()]),
+            _ => continue,
         };
         let mut band_cells = vec![0.0f64; names.len()];
         let mut band_weighted = vec![0.0f64; names.len()];

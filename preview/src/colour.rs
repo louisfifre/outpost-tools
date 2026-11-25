@@ -208,9 +208,6 @@ pub fn temperature_colour(t: f64) -> [u8; 3] {
 }
 
 /// Line 1109.
-pub fn flat_colour() -> [u8; 3] {
-    hsl_to_rgb(92.0, 48.0, 62.0)
-}
 pub fn steep_colour() -> [u8; 3] {
     hsl_to_rgb(30.0, 8.0, 30.0)
 }
