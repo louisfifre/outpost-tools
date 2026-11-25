@@ -10,6 +10,7 @@ mod dev_server;
 mod key_value;
 mod preview;
 mod profiles;
+pub mod skin;
 
 use std::{
     fs,
