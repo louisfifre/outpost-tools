@@ -8,6 +8,7 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use serde_json::Value;
@@ -21,6 +22,8 @@ const JAVA_EXE: &str = "java.exe";
 const SCAN_DEPTH: u32 = 4;
 // The folder an extraction works in before its result takes its final name, so a failed one leaves no half Java.
 const STAGING: &str = ".partial";
+// Where the previous Java waits while the new one is put in its place.
+const ASIDE: &str = ".previous";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Finding a Java on the PC
@@ -98,7 +101,7 @@ pub fn find_all(locations: &Locations) -> Vec<JavaInstall> {
     let mut found: Vec<JavaInstall> = Vec::new();
     let mut add = |home: &Path, source: JavaSource| {
         let Some(install) = read_home(home, source) else { return };
-        let key = |p: &Path| p.to_string_lossy().to_lowercase();
+        let key = |p: &Path| p.to_string_lossy().to_lowercase().replace('/', "\\").trim_end_matches('\\').to_string();
         if !found.iter().any(|f| key(&f.home) == key(&install.home)) {
             found.push(install);
         }
@@ -284,8 +287,23 @@ pub struct Http {
 impl Http {
     // Names the program and its version, and nothing of the PC or its user.
     pub fn new() -> Http {
-        let agent =
-            ureq::Agent::config_builder().user_agent(concat!("outpost-tools/", env!("CARGO_PKG_VERSION"))).build().into();
+        let agent = ureq::Agent::config_builder()
+            .user_agent(concat!("outpost-tools/", env!("CARGO_PKG_VERSION")))
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .into();
+        Http { agent }
+    }
+
+    // For the archive: a short wait to connect and to be answered, a long one for the whole transfer.
+    fn for_download() -> Http {
+        let agent = ureq::Agent::config_builder()
+            .user_agent(concat!("outpost-tools/", env!("CARGO_PKG_VERSION")))
+            .timeout_connect(Some(Duration::from_secs(15)))
+            .timeout_recv_response(Some(Duration::from_secs(30)))
+            .timeout_global(Some(Duration::from_secs(30 * 60)))
+            .build()
+            .into();
         Http { agent }
     }
 }
@@ -383,10 +401,24 @@ pub fn download(package: &JavaPackage, dest: &Path, on: OnProgress) -> Result<()
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("The download folder could not be made: {e}"))?;
     }
-    let mut response = Http::new().agent.get(&package.url).call().map_err(|e| format!("The download failed: {e}"))?;
-    let mut reader = response.body_mut().as_reader();
+    let mut response =
+        Http::for_download().agent.get(&package.url).call().map_err(|e| format!("The download failed: {e}"))?;
+    save_stream(&mut response.body_mut().as_reader(), dest, package.size, on)
+}
+
+// Writes a stream to `dest` and checks its length against the package's. A file that failed or came short is
+// removed, so no later step finds a partial archive.
+fn save_stream(reader: &mut dyn Read, dest: &Path, size: u64, on: OnProgress) -> Result<(), String> {
     let mut file = File::create(dest).map_err(|e| format!("The download file could not be made: {e}"))?;
-    copy_hashed(&mut reader, &mut file, Stage::Downloading, package.size, on).map(|_| ())
+    let result = copy_hashed(reader, &mut file, Stage::Downloading, size, on).and_then(|_| {
+        let got = file.metadata().map(|m| m.len()).map_err(|e| format!("The download could not be measured: {e}"))?;
+        if got == size { Ok(()) } else { Err(format!("The download is {got} bytes, expected {size}.")) }
+    });
+    drop(file);
+    if result.is_err() {
+        let _ = fs::remove_file(dest);
+    }
+    result
 }
 
 fn sha256_of_file(path: &Path, on: OnProgress) -> Result<String, String> {
@@ -452,13 +484,32 @@ fn extract_into(java: &Path, staging: &Path, zip_path: &Path, on: OnProgress) ->
         Some(name) if home != staging => name.to_os_string(),
         _ => zip_path.file_stem().unwrap_or_default().to_os_string(),
     };
-    let final_home = java.join(name);
-    if final_home.exists() {
-        fs::remove_dir_all(&final_home).map_err(|e| format!("The previous Java could not be replaced: {e}"))?;
+    // Checked before anything is touched: a Java with no release file must not replace a working one.
+    if read_home(home, JavaSource::OutpostTools).is_none() {
+        return Err("The archive's Java has no readable release file.".to_string());
     }
-    fs::rename(home, &final_home).map_err(|e| format!("The Java could not be put in place: {e}"))?;
+    let final_home = java.join(name);
+    swap_in(home, &final_home, &java.join(ASIDE))?;
     read_home(&final_home, JavaSource::OutpostTools)
         .ok_or_else(|| "The archive's Java has no readable release file.".to_string())
+}
+
+// Puts `new` at `target`. A previous Java there is renamed to `aside` first, and renamed back if the new one cannot
+// be moved in, so a failure leaves the old Java as it was. It is removed only once the new one is in place.
+fn swap_in(new: &Path, target: &Path, aside: &Path) -> Result<(), String> {
+    let _ = fs::remove_dir_all(aside);
+    let had_old = target.exists();
+    if had_old {
+        fs::rename(target, aside).map_err(|e| format!("The previous Java could not be set aside: {e}"))?;
+    }
+    if let Err(e) = fs::rename(new, target) {
+        if had_old {
+            let _ = fs::rename(aside, target);
+        }
+        return Err(format!("The Java could not be put in place: {e}"));
+    }
+    let _ = fs::remove_dir_all(aside);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -719,6 +770,71 @@ mod tests {
         let error = install_zip(&root, &zip_path, &sha_of(&zip_path), &mut |_| {}).unwrap_err();
         assert!(error.contains("no Java"));
         assert!(!root.join("java").join(STAGING).exists());
+    }
+
+    #[test]
+    fn a_failed_swap_keeps_the_previous_java() {
+        let s = Scratch::new("swap");
+        let target = s.0.join("java").join("jdk-25");
+        fake_home(&target, "25.0.1");
+        let aside = s.0.join("java").join(ASIDE);
+        // The new Java is missing, so moving it in fails.
+        let error = swap_in(&s.0.join("nothing-here"), &target, &aside).unwrap_err();
+        assert!(error.contains("put in place"), "{error}");
+        assert_eq!(read_home(&target, JavaSource::OutpostTools).unwrap().version, "25.0.1");
+        assert!(!aside.exists());
+        // A good swap replaces it and leaves nothing aside.
+        let new = s.0.join("java").join(STAGING).join("jdk-25");
+        fake_home(&new, "25.0.2");
+        swap_in(&new, &target, &aside).unwrap();
+        assert_eq!(read_home(&target, JavaSource::OutpostTools).unwrap().version, "25.0.2");
+        assert!(!aside.exists());
+    }
+
+    #[test]
+    fn a_zip_whose_java_has_no_release_file_keeps_the_previous_one() {
+        let s = Scratch::new("norelease");
+        let root = s.0.join("root");
+        let old = root.join("java").join("jdk-x");
+        fake_home(&old, "25.0.1");
+        let zip_path = s.0.join("x.zip");
+        let mut writer = zip::ZipWriter::new(File::create(&zip_path).unwrap());
+        writer.start_file("jdk-x/bin/java.exe", zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(b"x").unwrap();
+        writer.finish().unwrap();
+        let error = install_zip(&root, &zip_path, &sha_of(&zip_path), &mut |_| {}).unwrap_err();
+        assert!(error.contains("release"), "{error}");
+        assert_eq!(read_home(&old, JavaSource::OutpostTools).unwrap().version, "25.0.1");
+    }
+
+    #[test]
+    fn a_short_or_broken_download_is_removed_and_a_whole_one_kept() {
+        let s = Scratch::new("save");
+        let dest = s.0.join("a.zip");
+        let data = vec![7u8; 1000];
+        save_stream(&mut &data[..], &dest, 1000, &mut |_| {}).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), data);
+        let error = save_stream(&mut &data[..], &dest, 1500, &mut |_| {}).unwrap_err();
+        assert!(error.contains("expected 1500"), "{error}");
+        assert!(!dest.exists());
+        struct Broken;
+        impl Read for Broken {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("cut"))
+            }
+        }
+        assert!(save_stream(&mut Broken, &dest, 10, &mut |_| {}).is_err());
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn a_home_given_twice_with_a_trailing_separator_is_listed_once() {
+        let s = Scratch::new("dedup");
+        let home = s.0.join("jdk");
+        fake_home(&home, "25.0.1");
+        let with_slash = PathBuf::from(format!("{}\\", home.display()));
+        let locations = Locations { java_home: vec![home.clone(), with_slash], ..Locations::default() };
+        assert_eq!(find_all(&locations).len(), 1);
     }
 
     #[test]
