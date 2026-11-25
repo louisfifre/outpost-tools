@@ -14,6 +14,7 @@ mod memory;
 mod modrinth;
 pub mod mrpack;
 mod preview;
+mod prism_portable;
 mod profiles;
 pub mod servers;
 pub mod skin;

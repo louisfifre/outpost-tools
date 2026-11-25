@@ -425,7 +425,7 @@ fn extract_into(java: &Path, staging: &Path, zip_path: &Path, on: OnProgress) ->
         let mut entry = archive.by_index(i).map_err(|e| format!("The archive could not be read: {e}"))?;
         // enclosed_name refuses a path that climbs out of the folder or is absolute.
         let relative =
-            entry.enclosed_name().ok_or_else(|| format!("The archive holds an unsafe path: {}", entry.name().map(|n| n.into_owned()).unwrap_or_default()))?;
+            entry.enclosed_name().ok_or_else(|| format!("The archive holds an unsafe path: {}", entry.name()))?;
         let target = staging.join(relative);
         if entry.is_dir() {
             fs::create_dir_all(&target).map_err(|e| format!("Extraction failed: {e}"))?;
