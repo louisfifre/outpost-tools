@@ -13,6 +13,7 @@ use mere_ui::{ActionLook, ActionOpts, Id, TextLook, Tone, Ui};
 use crate::home::{COLUMNS_GAP, LauncherHome, Want};
 use crate::model::{MadeFrom, folder_tail};
 use crate::text;
+use preview::bar::icons;
 
 /// The page's width: two columns of a half each.
 pub const WIDTH: f32 = 1120.0;
@@ -133,7 +134,7 @@ pub fn build(home: &mut LauncherHome, ui: &mut Ui) {
         ui,
         WIDTH,
         &title,
-        |ui| start = Some(ui.action_with("start", text::START, ActionLook::Primary, ActionOpts { disabled: off, ..ActionOpts::default() })),
+        |ui| start = Some(ui.action_icon("start", &icons().play, text::START, ActionLook::Primary, ActionOpts { disabled: off, ..ActionOpts::default() })),
         |home, ui| {
             if loaded && !eula {
                 eula_line(ui, &mut st, &mut wants);

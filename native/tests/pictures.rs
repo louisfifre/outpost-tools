@@ -142,7 +142,10 @@ fn the_preview_tool_in_the_launcher() {
 /// A1: Home at 1400, the board's four profiles (the last one cut with an ellipsis) and the server, stopped then running.
 #[test]
 fn a1_home_full() {
-    let mut rig = Rig::with_api(board_api(), 1400, 940, true, true);
+    // The bar at rest shows the account's face before its name (A1): its skin is read with the first answer.
+    let api = board_api();
+    launcher_native::fake::with_accounts(&api);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
     rig.hover_at(Vec2::new(5.0, 930.0));
     assert!(rig.says("stopped \u{b7} joins at localhost:25565"));
     let long = rig.texts().into_iter().find(|t| t.1.starts_with("Friday server pack")).expect("the long name is drawn");
