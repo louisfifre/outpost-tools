@@ -17,7 +17,7 @@ use serde_json::json;
 use sha1::{Digest, Sha1};
 
 const BASE: &str = "https://api.modrinth.com/v2";
-const LOADER: &str = "fabric";
+pub const LOADER: &str = "fabric";
 const MAX_LIMIT: u32 = 100;
 
 // What the client needs of the network: one GET, one POST with a JSON body, the answer's bytes.
@@ -160,6 +160,9 @@ pub struct Mod {
     pub downloads: u64,
     pub client_side: Side,
     pub server_side: Side,
+    // Only a search hit has it: the id of the project's newest version.
+    #[serde(default)]
+    pub latest_version: Option<String>,
 }
 
 impl Mod {
@@ -249,7 +252,7 @@ impl ModVersion {
     pub fn primary_file(&self) -> Option<&File> {
         self.files.iter().find(|f| f.primary).or_else(|| self.files.first())
     }
-    fn fits(&self, game_version: &str) -> bool {
+    pub fn fits(&self, game_version: &str) -> bool {
         self.game_versions.iter().any(|g| g == game_version)
             && self.loaders.iter().any(|l| l == LOADER)
             && self.status.as_deref().is_none_or(|s| s == "listed")
@@ -392,6 +395,16 @@ impl<H: Http> Modrinth<H> {
         for chunk in ids.chunks(50) {
             let url = format!("{}/projects?ids={}", self.base, encode(&json!(chunk).to_string()));
             out.extend(parse::<Vec<Mod>>(&self.http.get(&url)?)?);
+        }
+        Ok(out)
+    }
+
+    // Versions by their ids, in no promised order: one request for up to 50. Ids that do not exist are left out.
+    pub fn versions(&self, ids: &[String]) -> Result<Vec<ModVersion>, Error> {
+        let mut out = Vec::new();
+        for chunk in ids.chunks(50) {
+            let url = format!("{}/versions?ids={}", self.base, encode(&json!(chunk).to_string()));
+            out.extend(parse::<Vec<ModVersion>>(&self.http.get(&url)?)?);
         }
         Ok(out)
     }

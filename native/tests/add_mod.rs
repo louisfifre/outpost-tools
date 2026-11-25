@@ -145,6 +145,10 @@ fn an_old_answer_does_not_replace_a_newer_one() {
     done(&mut home, Ask::Search("so".into()), &answer("so", "Something else"));
     assert_eq!(home.pages.add_mod.found.len(), 1);
     assert_eq!(home.pages.add_mod.found[0].title, "Sodium");
+    // An answer the api itself calls stale is dropped, whatever its query.
+    let stale = Done { tag: Tag::Mods(Ask::Search("sod".into())), status: 200, body: json!({"stale": true}) };
+    done(&mut home, Ask::Search("sod".into()), &stale);
+    assert_eq!(home.pages.add_mod.found[0].title, "Sodium");
     // A late failure of an older query says nothing either.
     let failed = Done { tag: Tag::Mods(Ask::Search("s".into())), status: 503, body: json!({"error": "offline"}) };
     done(&mut home, Ask::Search("s".into()), &failed);

@@ -333,24 +333,38 @@ fn update_all_brings_every_mod_that_has_a_newer_version_up() {
     assert_eq!(w.asked("cdn.test"), 1);
 }
 
-#[test]
-fn a_search_is_for_the_profiles_game_and_fabric_and_says_what_the_profile_has() {
-    let w = World::new("search");
-    board(&w);
+// What a search of Modrinth answers for the three mods of the board: a hit names its project `project_id` and the id of
+// its newest version, and Modrinth answers those ids in one call.
+fn recorded_search(w: &World) {
+    recorded_search_with(w, version("v-jm", "jm", "6.0.0", "2026-11-02T00:00:00Z", "journeymap-6.0.0.jar", b"jm", &[]));
+}
+
+fn recorded_search_with(w: &World, jm: Value) {
     let hits = [("sod", "sodium", "Sodium", "A faster renderer."), ("lit", "lithium", "Lithium", "Faster logic."), ("jm", "journeymap", "JourneyMap", "A minimap.")];
     let hits: Vec<Value> = hits
         .iter()
         .map(|(id, slug, title, description)| {
             let mut hit = project(id, slug, title, description);
-            // A search hit names its project `project_id`.
             hit["project_id"] = hit["id"].take();
+            hit["latest_version"] = json!(format!("v-{id}"));
             hit.as_object_mut().unwrap().remove("id");
             hit
         })
         .collect();
     w.net.when_get("/search", json!({ "hits": hits, "total_hits": 3 }).to_string());
-    w.net.when_get("/project/jm/version", array(vec![version("v-jm", "jm", "6.0.0", "2026-11-02T00:00:00Z", "journeymap-6.0.0.jar", b"jm", &[])]));
-    let (status, found) = w.post("/api/mods/search", json!({ "profile": "exploration", "query": "map" }));
+    w.net.when_get("/versions?ids=", array(vec![jm]));
+}
+
+fn search_for(w: &World, query: &str) -> (u16, Value) {
+    w.post("/api/mods/search", json!({ "profile": "exploration", "query": query }))
+}
+
+#[test]
+fn a_search_is_for_the_profiles_game_and_fabric_and_says_what_the_profile_has() {
+    let w = World::new("search");
+    board(&w);
+    recorded_search(&w);
+    let (status, found) = search_for(&w, "map");
     assert_eq!(status, 200, "{found}");
     assert_eq!(
         found["mods"],
@@ -362,9 +376,117 @@ fn a_search_is_for_the_profiles_game_and_fabric_and_says_what_the_profile_has() 
     );
     let url = w.net.requests().into_iter().find(|r| r.contains("/search")).unwrap();
     assert!(url.contains("versions%3A26.3") && url.contains("categories%3Afabric") && url.contains("query=map"), "{url}");
-    // Only the mod the profile lacks was asked for a version.
-    assert_eq!(w.asked("/project/jm/version"), 1);
-    assert_eq!(w.asked("/project/sod/version"), 0);
+    // The versions the rows need come in one call, by the ids the hits name; no request per mod.
+    assert_eq!(w.asked("/versions?ids="), 1);
+    let ask = w.net.requests().into_iter().find(|r| r.contains("/versions?ids=")).unwrap();
+    assert!(ask.contains("v-sod") && ask.contains("v-lit") && ask.contains("v-jm"), "{ask}");
+    assert_eq!(w.asked("/project/"), 0);
+}
+
+#[test]
+fn a_query_is_two_calls_to_modrinth_and_the_profiles_files_are_looked_up_once() {
+    let w = World::new("search-calls");
+    board(&w);
+    recorded_search(&w);
+    assert_eq!(search_for(&w, "map").0, 200);
+    // The search, the versions, and the two lookups of the profile's files.
+    assert_eq!(w.net.requests().len(), 4, "{:?}", w.net.requests());
+    assert_eq!((w.asked("/search"), w.asked("/versions?ids="), w.asked("/version_files")), (1, 1, 2));
+    // Another query asks again for its own list and versions, not for the files.
+    assert_eq!(search_for(&w, "mini").0, 200);
+    assert_eq!((w.asked("/search"), w.asked("/versions?ids="), w.asked("/version_files")), (2, 2, 2));
+}
+
+#[test]
+fn the_same_query_is_answered_from_memory() {
+    let w = World::new("search-cache");
+    board(&w);
+    recorded_search(&w);
+    let first = search_for(&w, "map");
+    let before = w.net.requests().len();
+    // The same words, in other capitals and with a space, are the same query.
+    let again = search_for(&w, " Map ");
+    assert_eq!(first, again);
+    assert_eq!(w.net.requests().len(), before, "nothing was asked");
+    // A change of the profile's files shows at once: the lines say what the profile has now.
+    w.jar("journeymap-6.0.0.jar", b"jm");
+    let after = search_for(&w, "map");
+    assert_eq!(after.0, 200);
+    assert_eq!(w.asked("/search"), 1, "the list of Modrinth is still the one kept");
+    assert_eq!(w.asked("/versions?ids="), 1);
+}
+
+#[test]
+fn what_modrinth_said_is_kept_a_few_minutes_and_no_more() {
+    let w = World::new("search-expiry");
+    board(&w);
+    recorded_search(&w);
+    let searches = search::Searches::default();
+    let outside: Arc<dyn Outside> = w.net.clone();
+    let profile = w.api.mods_profile("exploration").ok().flatten().unwrap();
+    let start = std::time::Instant::now();
+    let ask = |at: std::time::Instant| search::search_at(&searches, &profile, &outside, "map", at).unwrap_or_else(|stop| stop);
+    assert_eq!(ask(start).status, 200);
+    assert_eq!(ask(start + std::time::Duration::from_secs(60)).status, 200);
+    assert_eq!(w.asked("/search"), 1, "a minute later it is kept");
+    assert_eq!(ask(start + search::KEPT + std::time::Duration::from_secs(1)).status, 200);
+    assert_eq!(w.asked("/search"), 2, "after its time it is asked again");
+    assert_eq!(w.asked("/versions?ids="), 2);
+    assert_eq!(w.asked("/version_files"), 4);
+}
+
+// An outside where another search is asked while Modrinth answers the first.
+struct Overtaken {
+    net: Arc<Canned>,
+    searches: Arc<search::Searches>,
+}
+
+impl Http for Overtaken {
+    fn get(&self, url: &str) -> Result<Vec<u8>, HttpError> {
+        if url.contains("/search") {
+            self.searches.ticket();
+        }
+        self.net.get(url)
+    }
+    fn post_json(&self, url: &str, body: &str) -> Result<Vec<u8>, HttpError> {
+        self.net.post_json(url, body)
+    }
+}
+
+impl Outside for Overtaken {
+    fn open(&self, url: &str) -> Result<(), String> {
+        self.net.open(url)
+    }
+    fn pick_file(&self) -> Option<PathBuf> {
+        None
+    }
+}
+
+#[test]
+fn a_search_that_a_newer_one_overtook_stops_and_says_stale() {
+    let w = World::new("search-stale");
+    board(&w);
+    recorded_search(&w);
+    let searches = Arc::new(search::Searches::default());
+    let outside: Arc<dyn Outside> = Arc::new(Overtaken { net: w.net.clone(), searches: searches.clone() });
+    let profile = w.api.mods_profile("exploration").ok().flatten().unwrap();
+    let reply = search::search_at(&searches, &profile, &outside, "map", std::time::Instant::now()).unwrap_or_else(|stop| stop);
+    assert_eq!(reply.status, 200);
+    assert_eq!(serde_json::from_slice::<Value>(&reply.body).unwrap(), json!({ "stale": true }));
+    // It stopped after the search: no versions, no lookup of the files, nothing kept for the next.
+    assert_eq!((w.asked("/search"), w.asked("/versions?ids="), w.asked("/version_files")), (1, 0, 0));
+}
+
+#[test]
+fn a_hit_whose_newest_version_does_not_fit_is_listed_with_no_version() {
+    let w = World::new("search-nofit");
+    board(&w);
+    let mut other = version("v-jm", "jm", "7.0.0", "2026-11-02T00:00:00Z", "journeymap-7.0.0.jar", b"jm7", &[]);
+    other["game_versions"] = json!(["27.1"]);
+    recorded_search_with(&w, other);
+    let (_, found) = search_for(&w, "map");
+    let jm = found["mods"].as_array().unwrap().iter().find(|m| m["id"] == "jm").unwrap();
+    assert_eq!((jm["state"].as_str(), jm["version"].as_str()), (Some("add"), Some("")));
 }
 
 #[test]

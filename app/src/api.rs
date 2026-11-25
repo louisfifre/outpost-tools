@@ -114,6 +114,8 @@ pub struct Api {
     live: Mutex<Live>,
     machine_mb: u64,
     log: PathBuf,
+    // What the page that adds a mod asked of Modrinth lately, and the order of its searches (api/mods/search.rs).
+    searches: mods::Searches,
 }
 
 impl Api {
@@ -129,6 +131,7 @@ impl Api {
             live: Mutex::new(Live { launch: None, server: None, preview: None, system }),
             machine_mb,
             log,
+            searches: mods::Searches::default(),
         }
     }
 

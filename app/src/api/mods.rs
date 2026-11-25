@@ -14,6 +14,7 @@
 //   POST /api/mods/<profile>/update-all       -> {}
 //   POST /api/mods/<profile>/fabric           -> {}   installs Fabric, or moves it to the newest stable loader
 //   POST /api/mods/search {profile, query}    -> {mods: [{id, title, description, version, url, state, newVersion}]}
+//                                                or {stale: true} when a newer search has overtaken it (search.rs)
 //   POST /api/mods/add    {profile, mod}      -> {added: [{id, title, version, neededBy}]}
 //   POST /api/mods/update {profile, mod}      -> {}
 //   POST /api/mods/file   {profile}           -> {}   asks for a jar and adds it as it is; nothing when none is chosen
@@ -36,6 +37,7 @@ use sha1::{Digest, Sha1};
 use super::instance::{self, Fetch, InstanceError};
 use super::modrinth::{self, Http, HttpError, Modrinth, UpdateState};
 use super::{Api, Failure, Reply};
+pub(crate) use search::Searches;
 use crate::system;
 
 /// What the mods' routes ask of the world outside the process.
@@ -152,8 +154,6 @@ fn io(what: &str, error: std::io::Error) -> Stop {
 const RUNNING: &str = "Minecraft is running: mods can change once it is closed.";
 // How many results the page that adds a mod shows.
 const FOUND: u32 = 20;
-// How many versions are asked of Modrinth at once for a list of results.
-const AT_ONCE: usize = 6;
 
 // A profile: its folder (Prism's instance), the game folder inside it and where its jars are.
 struct Profile {
@@ -187,6 +187,7 @@ struct Jar {
 }
 
 // A jar and what Modrinth says of it.
+#[derive(Clone)]
 struct Known {
     jar: Jar,
     current: Option<modrinth::ModVersion>,
@@ -329,7 +330,7 @@ impl Api {
                 "fabric" => fabric(&profile, &outside),
                 "add" => add(&profile, &outside, &text("mod")),
                 "file" => add_file(&profile, &outside),
-                "search" => search(&profile, &outside, &text("query")),
+                "search" => search::search(&self.searches, &profile, &outside, &text("query")),
                 _ => Ok(Reply::empty(404)),
             }
         })();
@@ -472,51 +473,6 @@ fn fabric(profile: &Profile, outside: &Arc<dyn Outside>) -> Done<Reply> {
     Ok(Reply::empty(200))
 }
 
-fn search(profile: &Profile, outside: &Arc<dyn Outside>, query: &str) -> Done<Reply> {
-    let (_, game, _) = profile.pack()?;
-    let modrinth = Modrinth::new(outside.clone());
-    let page = modrinth.discover(&game, query, 0, FOUND).map_err(from_modrinth)?;
-    let known = inspect(outside, &jars(&profile.mods), &game).map_err(from_modrinth)?;
-    let have = |project: &str| known.iter().find(|k| k.current.as_ref().is_some_and(|c| c.project_id == project));
-    // The version a mod not in the profile would bring: asked for several at once.
-    let to_add: Vec<&modrinth::Mod> = page.hits.iter().filter(|h| have(&h.id).is_none()).collect();
-    let mut versions: Vec<(String, String)> = Vec::new();
-    for chunk in to_add.chunks(AT_ONCE) {
-        let asked: Vec<(String, String)> = std::thread::scope(|scope| {
-            let threads: Vec<_> = chunk
-                .iter()
-                .map(|hit| {
-                    let (modrinth, game) = (&modrinth, &game);
-                    scope.spawn(move || {
-                        let version = modrinth.compatible_version(&hit.id, game).ok().flatten().map(|v| v.version_number);
-                        (hit.id.clone(), version.unwrap_or_default())
-                    })
-                })
-                .collect();
-            threads.into_iter().filter_map(|t| t.join().ok()).collect()
-        });
-        versions.extend(asked);
-    }
-    let mods: Vec<Value> = page
-        .hits
-        .iter()
-        .map(|hit| {
-            let (state, version, newer) = match have(&hit.id) {
-                Some(Known { current, state: UpdateState::Newer { latest, .. }, .. }) => {
-                    ("update", current.as_ref().map(|c| c.version_number.clone()).unwrap_or_default(), latest.version_number.clone())
-                }
-                Some(k) => ("added", k.current.as_ref().map(|c| c.version_number.clone()).unwrap_or_default(), String::new()),
-                None => ("add", versions.iter().find(|(id, _)| *id == hit.id).map(|(_, v)| v.clone()).unwrap_or_default(), String::new()),
-            };
-            json!({
-                "id": hit.id, "title": hit.title, "description": hit.description, "version": version,
-                "url": hit.url(), "state": state, "newVersion": newer,
-            })
-        })
-        .collect();
-    Ok(Reply::json(200, json!({ "mods": mods })))
-}
-
 fn add(profile: &Profile, outside: &Arc<dyn Outside>, project: &str) -> Done<Reply> {
     if project.is_empty() {
         return Err(said(400, "No mod was named."));
@@ -626,6 +582,8 @@ pub mod canned {
         }
     }
 }
+
+mod search;
 
 #[cfg(test)]
 mod tests;

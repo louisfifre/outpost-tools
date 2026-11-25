@@ -8,6 +8,7 @@
 //! for the tests).
 //!   POST /api/mods/search {profile, query}  -> {mods: [{id, title, description, version, url, state, newVersion}]}
 //!        `state` is "add", "added" or "update"; `version` is the profile's when it has the mod, else the one to add.
+//!        {stale: true} instead when a newer search overtook this one on the api's side: the page drops it.
 //!   POST /api/mods/add {profile, mod}       -> {added: [{id, title, version, neededBy}]}  (the mod, then what it needs)
 //!   POST /api/mods/update {profile, mod}    -> {}
 //!   POST /api/mods/file {profile}           -> {}  (the api asks for the file, adds it as it is; {} too when none is chosen)
@@ -160,7 +161,7 @@ pub fn done(home: &mut LauncherHome, ask: Ask, d: &Done) {
         Ask::Search(query) => {
             let state = &mut home.pages.add_mod;
             // An answer to a query the field no longer holds is out of date.
-            if query.trim() != state.query.trim() {
+            if query.trim() != state.query.trim() || d.body["stale"].as_bool() == Some(true) {
                 return;
             }
             if ok {
