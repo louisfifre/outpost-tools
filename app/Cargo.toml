@@ -22,7 +22,9 @@ window = ["dep:tao", "dep:wry"]
 [dependencies]
 tao = { version = "0.37", optional = true }
 wry = { version = "0.57", optional = true }
+serde = "1"
 serde_json = "1"
+ureq = "3"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
