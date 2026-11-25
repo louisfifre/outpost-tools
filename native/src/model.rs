@@ -48,6 +48,10 @@ pub struct Profile {
     pub running: bool,
     pub worlds: Vec<String>,
     pub open: Open,
+    /// The jars the profile holds, and how many the last look at Modrinth found newer; None when the api does not say
+    /// (no look was made yet, for the updates).
+    pub mods: Option<usize>,
+    pub updates: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -216,6 +220,8 @@ impl Profiles {
                         running: p["running"].as_bool().unwrap_or(false),
                         worlds: p["worlds"].as_array().map(|w| w.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default(),
                         open: Open::from(p["open"]["kind"].as_str().unwrap_or("menu"), p["open"]["target"].as_str().unwrap_or("")),
+                        mods: p["mods"].as_u64().map(|c| c as usize),
+                        updates: p["updates"].as_u64().map(|c| c as usize),
                     })
                     .collect()
             })
@@ -302,8 +308,9 @@ fn to_fixed_plus(v: f64, digits: u32) -> String {
     format!("{back}")
 }
 
-/// "yesterday · 1.7 h played · opens New World" (`about`). `days` is the local calendar day of the last play
-/// less today's.
+/// "yesterday · 1.7 h played · 3 updates" (`about`, board A1): when it was played, for how long, then what the profile
+/// holds: how many mods have a newer version, else how many mods it has. `days` is the local calendar day of the last
+/// play less today's. A profile never played says only that.
 pub fn about(p: &Profile, days: i64) -> String {
     if p.last_played == 0 {
         return "not played yet".into();
@@ -316,12 +323,20 @@ pub fn about(p: &Profile, days: i64) -> String {
     } else if minutes > 0 {
         parts.push(format!("{minutes} min played"));
     }
-    match &p.open {
-        Open::World(w) => parts.push(format!("opens {w}")),
-        Open::Server(a) => parts.push(format!("joins {a}")),
-        Open::Menu => {}
-    }
+    parts.extend(mods_said(p));
     parts.join(" \u{b7} ")
+}
+
+/// What the profile holds, for its line on Home: "3 updates" when mods have a newer version, else "41 mods", "1 mod" or
+/// "no mods"; nothing when the api does not say.
+pub fn mods_said(p: &Profile) -> Option<String> {
+    let plural = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    match (p.updates, p.mods) {
+        (Some(u), _) if u > 0 => Some(plural(u, "update", "updates")),
+        (_, Some(0)) => Some("no mods".into()),
+        (_, Some(m)) => Some(plural(m, "mod", "mods")),
+        _ => None,
+    }
 }
 
 /// The profile played last first, then by name (`localeCompare`, read as a comparison without case: an
@@ -363,21 +378,36 @@ mod tests {
     use serde_json::json;
 
     fn profile(last: i64, secs: i64, open: Open) -> Profile {
-        Profile { id: "x".into(), name: "X".into(), memory_mb: 0, min_memory_mb: 0, java_args: String::new(), game_dir: String::new(), last_played: last, played_seconds: secs, running: false, worlds: vec![], open }
+        Profile { id: "x".into(), name: "X".into(), memory_mb: 0, min_memory_mb: 0, java_args: String::new(), game_dir: String::new(), last_played: last, played_seconds: secs, running: false, worlds: vec![], open, mods: None, updates: None }
     }
 
     #[test]
     fn about_says_when_how_long_and_what_opens() {
         assert_eq!(about(&profile(0, 0, Open::Menu), 0), "not played yet");
-        assert_eq!(about(&profile(1, 6120, Open::World("New World".into())), -1), "yesterday \u{b7} 1.7 h played \u{b7} opens New World");
+        assert_eq!(about(&profile(1, 6120, Open::World("New World".into())), -1), "yesterday \u{b7} 1.7 h played");
         assert_eq!(about(&profile(1, 1200, Open::Menu), 0), "today \u{b7} 20 min played");
-        assert_eq!(about(&profile(1, 0, Open::Server("localhost".into())), 3), "in 3 days \u{b7} joins localhost");
+        assert_eq!(about(&profile(1, 0, Open::Server("localhost".into())), 3), "in 3 days");
         assert_eq!(about(&profile(1, 7200, Open::Menu), -2), "2 days ago \u{b7} 2 h played");
         // 600 minutes and over: no decimal.
         assert_eq!(about(&profile(1, 39_600, Open::Menu), 0), "today \u{b7} 11 h played");
         // x.25 and x.75 round up, as toFixed does.
         assert_eq!(about(&profile(1, 4500, Open::Menu), 0), "today \u{b7} 1.3 h played");
         assert_eq!(about(&profile(1, 29, Open::Menu), 0), "today");
+    }
+
+    #[test]
+    fn the_line_ends_with_the_updates_or_the_mods_when_the_api_says() {
+        let with = |updates: Option<usize>, mods: Option<usize>| Profile { updates, mods, ..profile(1, 6120, Open::Menu) };
+        let said = |p: &Profile| about(p, -1);
+        assert_eq!(said(&with(Some(3), Some(14))), "yesterday \u{b7} 1.7 h played \u{b7} 3 updates");
+        assert_eq!(said(&with(Some(1), Some(14))), "yesterday \u{b7} 1.7 h played \u{b7} 1 update");
+        assert_eq!(said(&with(Some(0), Some(41))), "yesterday \u{b7} 1.7 h played \u{b7} 41 mods");
+        // Before any look at Modrinth the updates are unknown: the mods are said.
+        assert_eq!(said(&with(None, Some(1))), "yesterday \u{b7} 1.7 h played \u{b7} 1 mod");
+        assert_eq!(said(&with(None, Some(0))), "yesterday \u{b7} 1.7 h played \u{b7} no mods");
+        assert_eq!(said(&with(None, None)), "yesterday \u{b7} 1.7 h played");
+        // The board's profile never played says only that.
+        assert_eq!(about(&Profile { mods: Some(6), ..profile(0, 0, Open::Menu) }, 0), "not played yet");
     }
 
     #[test]
