@@ -18,8 +18,7 @@ fn open_menu_row(rig: &mut Rig, row: usize) {
 }
 
 fn settings_of_exploration(rig: &mut Rig) {
-    let id = rig.home().ids().rows.iter().find(|r| r.profile == "exploration").unwrap().settings;
-    rig.click(id);
+    open_profile(rig, "exploration");
 }
 
 /// H1: the first frame asks for the profiles and the server; the profile played last is above.
@@ -54,6 +53,10 @@ fn h3_play_and_the_follow() {
     // One launch at a time: the other Play does nothing.
     rig.click(ids[1].play);
     assert_eq!(rig.api.count("POST", "/api/launch/atelier"), 0);
+    // A press on the disabled Play falls to the line, which opens the profile's page: back to Home.
+    assert_eq!(rig.home().page(), Some(&launcher_native::pages::Page::Profile("atelier".into())));
+    let back = rig.home().ids().back;
+    rig.click(back);
     // The page's every second, from the click (clock 1.0): 12 s on, the game is loading.
     rig.api.set_get("/api/launch", json!({"id": "exploration", "state": "loading"}));
     rig.set_clock(13.0);
@@ -74,7 +77,7 @@ fn h4_settings_and_the_address() {
     let mut rig = Rig::new(1400, 940, true);
     settings_of_exploration(&mut rig);
     let said: String = rig.texts().iter().map(|t| t.1.as_str()).collect();
-    assert!(said.contains("EXPLORATION"), "the h2");
+    assert!(said.contains("Exploration") && !said.contains("EXPLORATION"), "the title line keeps the name's case");
     assert!(rig.says("world: New World"));
     open_menu_row(&mut rig, 2);
     assert_eq!(rig.api.count("POST", "/api/settings/exploration"), 0, "a server without its address is not a choice yet");
@@ -169,7 +172,7 @@ fn h9_start_and_stop() {
     v["state"] = json!("running");
     rig.api.set_get("/api/server", v);
     rig.wait(3.0);
-    assert!(rig.says("Running \u{b7} localhost:25565"));
+    assert!(rig.says("running \u{b7} localhost:25565"));
     let toggle = rig.home().ids().server_play;
     let c = centre(rig.rect(toggle));
     rig.hover_at(c);
@@ -200,7 +203,7 @@ fn h9b_a_refused_stop_says_why_and_releases_the_button() {
     assert_eq!(rig.home().notes().1, "Exception: RCON login refused");
     rig.wait(3.0);
     assert_eq!(rig.home().notes().1, "Exception: RCON login refused", "the next poll keeps the reason");
-    assert!(rig.says("Running \u{b7} localhost:25565"));
+    assert!(rig.says("running \u{b7} localhost:25565"));
     rig.click(stop);
     assert_eq!(rig.api.count("POST", "/api/server/stop"), 2, "the button is free again");
 }
@@ -214,7 +217,7 @@ fn h9c_a_stop_that_does_not_end_the_server_releases_the_button_after_30_s() {
     rig.wait(27.0);
     assert!(rig.says("Saving and stopping\u{2026}"));
     rig.wait(4.0);
-    assert!(rig.says("Running \u{b7} localhost:25565"));
+    assert!(rig.says("running \u{b7} localhost:25565"));
     rig.click(stop);
     assert_eq!(rig.api.count("POST", "/api/server/stop"), 2);
 }
@@ -229,23 +232,20 @@ fn h9d_an_unreadable_pack_says_why_until_it_is_read() {
     api.set_get_status("/api/server", 503, json!({"error": WHY}));
     let mut rig = Rig::with_api(api, 1400, 940, true, true);
     assert_eq!(rig.home().notes(), (WHY, WHY));
-    assert!(rig.says(WHY));
+    assert!(rig.texts().iter().any(|t| t.1.starts_with("scripts/common.ps1 could not")), "the reason is said, wrapped in the part's width");
     rig.api.set_get("/api/profiles", profiles);
     rig.api.set_get("/api/server", server);
     rig.wait(10.0);
     assert_eq!(rig.home().notes(), ("", ""));
 }
 
-/// H10: the server's fields: the icon opens them reversed; without props, or while it runs, they are locked.
+/// H10: the server's fields: its page shows them; without props, or while it runs, they are locked.
 #[test]
 fn h10_server_fields_and_locks() {
     let mut rig = Rig::new(1400, 940, true);
-    let gear = rig.home().ids().server_settings;
-    assert_eq!(rig.home().ids().s_memory, mere_ui::Id::ROOT, "folded at first");
-    rig.click(gear);
+    assert_eq!(rig.home().ids().s_memory, mere_ui::Id::ROOT, "Home does not show them");
+    open_server(&mut rig);
     assert_ne!(rig.home().ids().s_memory, mere_ui::Id::ROOT);
-    let r = rig.rect(rig.home().ids().server_settings);
-    assert!(rig.app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Fill { rect, color } if *color == rig.theme.fill && (rect.x - r.x).abs() < 0.01 && (rect.w - mere_ui::tokens::ICON_SQUARE).abs() < 0.01)), "drawn in reverse");
     // No props: the first start has not happened.
     rig.api.set_get("/api/server", json!({"dir": "C:\\Code\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
     rig.wait(3.0);
@@ -266,8 +266,7 @@ fn h10_server_fields_and_locks() {
 #[test]
 fn h11_whitelist() {
     let mut rig = Rig::new(1400, 940, true);
-    let gear = rig.home().ids().server_settings;
-    rig.click(gear);
+    open_server(&mut rig);
     let w = rig.home().ids().s_whitelist;
     rig.click(w);
     let body = rig.api.last_body("POST", "/api/server/settings").expect("saved");
@@ -305,8 +304,9 @@ fn h13_folders() {
     let open = rig.home().ids().open_folder;
     rig.click(open);
     assert_eq!(rig.api.count("POST", "/api/folder/exploration"), 1);
-    let gear = rig.home().ids().server_settings;
-    rig.click(gear);
+    let back = rig.home().ids().back;
+    rig.click(back);
+    open_server(&mut rig);
     let open = rig.home().ids().s_open_folder;
     rig.click(open);
     assert_eq!(rig.api.count("POST", "/api/server/folder"), 1);
@@ -322,4 +322,78 @@ fn h14_only_the_fake_is_asked() {
     assert!(!asked.is_empty() && asked.iter().all(|(_, path, _)| path.starts_with("/api/")));
     let helper = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/common/mod.rs")).unwrap();
     assert!(!helper.contains(&["Api", "::new"].concat()), "the helper never builds the real api");
+}
+
+/// N1: a press on a profile's line opens its page, with the title line (its name and the back action); Back returns to
+/// Home. A press on the Play button is the button's alone.
+#[test]
+fn n1_a_profile_line_opens_its_page_and_back_returns() {
+    use launcher_native::pages::Page;
+    let mut rig = Rig::new(1400, 940, true);
+    assert_eq!(rig.home().page(), None);
+    let play = rig.home().ids().rows[0].play;
+    rig.click(play);
+    assert_eq!(rig.home().page(), None, "Play does not open the page");
+    assert_eq!(rig.api.count("POST", "/api/launch/exploration"), 1);
+    rig.set_clock(rig.clock + 20.0);
+    open_profile(&mut rig, "atelier");
+    assert_eq!(rig.home().page(), Some(&Page::Profile("atelier".into())));
+    let said: String = rig.texts().iter().map(|t| t.1.as_str()).collect();
+    assert!(said.contains("Atelier") && !said.contains("PROFILES"), "the page replaces Home");
+    let back = rig.home().ids().back;
+    let tip_at = centre(rig.rect(back));
+    rig.hover_at(tip_at);
+    rig.set_clock(rig.clock + 0.6);
+    rig.frame();
+    assert!(rig.says("Back"), "the back action has its tip");
+    rig.click(back);
+    assert_eq!(rig.home().page(), None);
+    let again: String = rig.texts().iter().map(|t| t.1.as_str()).collect();
+    assert!(again.contains("PROFILES"), "Home is back");
+}
+
+/// N2: the server's line opens the server's page, and the pages stack: the page that adds a mod sits over the profile's,
+/// and Back leaves one at a time. The set-up has no title line.
+#[test]
+fn n2_pages_stack_and_back_pops_one() {
+    use launcher_native::pages::Page;
+    let mut rig = Rig::new(1400, 940, true);
+    open_server(&mut rig);
+    assert_eq!(rig.home().page(), Some(&Page::Server));
+    let said: String = rig.texts().iter().map(|t| t.1.as_str()).collect();
+    assert!(said.contains("Dev server"));
+    let back = rig.home().ids().back;
+    rig.click(back);
+    assert_eq!(rig.home().page(), None);
+    open_profile(&mut rig, "exploration");
+    // The page that adds a mod is pushed over it (by the profile screen's own action, once it has one).
+    let mut home = launcher_native::home::LauncherHome::new(launcher_native::bridge::Bridge::inline(std::sync::Arc::new(launcher_native::fake::fixture())), launcher_native::home::Calendar::fixed());
+    preview::Home::poll(&mut home, 0.0, true);
+    home.open(Page::Profile("exploration".into()));
+    home.open(Page::AddMod("exploration".into()));
+    assert_eq!(home.page(), Some(&Page::AddMod("exploration".into())));
+    home.back();
+    assert_eq!(home.page(), Some(&Page::Profile("exploration".into())));
+    home.back();
+    assert_eq!(home.page(), None);
+    home.open(Page::Setup);
+    assert_eq!(home.page(), Some(&Page::Setup));
+}
+
+/// N3: every page draws, in the shell: the add-a-mod page's title says the profile, the set-up has no title line.
+#[test]
+fn n3_every_page_draws_in_the_shell() {
+    use launcher_native::pages::Page;
+    for (page, title) in [(Page::AddMod("exploration".into()), Some("Add a mod to Exploration")), (Page::Setup, None), (Page::Server, Some("Dev server"))] {
+        let api = std::sync::Arc::new(launcher_native::fake::fixture());
+        let mut home = loaded_home(api);
+        home.open(page.clone());
+        let state = preview::PreviewState { mode: Mode::Home, reduce_motion: true, ..preview::PreviewState::default() };
+        let (list, _, _) = preview::picture_with_home(mere_ui::Theme::dark(), Vec2::new(1400.0, 940.0), None, state, &mut home);
+        let said: String = list.cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { text, .. } = c { Some(text.as_str()) } else { None }).collect();
+        match title {
+            Some(t) => assert!(said.contains(t), "{page:?} says {t}: {said}"),
+            None => assert!(!said.contains("PROFILES") && home.ids().back == mere_ui::Id::ROOT, "{page:?} has no title line"),
+        }
+    }
 }

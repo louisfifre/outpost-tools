@@ -19,12 +19,12 @@ fn home_at(w: f32, h: f32) -> (mere_ui::Ui, launcher_native::HomeIds, mere_base:
     (ui, home.ids().clone(), list)
 }
 
-/// L1: side by side, every width from 1000 (the window's least) to 2560, one rule and no switch: `.columns` (two minmax(0, 1fr) and a gap of 48), the page's
-/// padding of 28 (`.page`, side), the top of the preview's page (10) under the bar (40), and the page's cap of 1120
+/// L1: side by side from the stack's width (860) to 2560, one rule and no switch: two minmax(0, 1fr) and a gap of 48, the
+/// page's padding of 28 (side), the top of the preview's page (10) under the bar (40), and the cap of 880 (board A1)
 /// for the two together, centred beyond it.
 #[test]
 fn l1_side_by_side_up_to_the_cap() {
-    for w in 1000..=2560 {
+    for w in 860..=2560 {
         let (ui, ids, _) = home_at(w as f32, 940.0);
         let inner = w as f32 - 56.0;
         let used = inner.min(launcher_native::home::COLUMNS_MAX);
@@ -36,52 +36,61 @@ fn l1_side_by_side_up_to_the_cap() {
     }
 }
 
-/// L4: at 1400 x 940, the page's rows in the kit's measures: a header as tall as an icon square and its hairline,
-/// a row with `inset` all round pulled `inset` out on each side, its two lines (the name's 19.5 and the small
-/// line's 16.5) taller than the squares, and the second square pulled a frame over the first. At 1400 the columns
-/// are at their cap of 1120, centred: 112 px of room on each side beyond the padding of 28, two parts of 536.
+/// L1b: under the stack's width the two parts are one column as wide as the page's padding leaves (board A3), the
+/// servers under the profiles `gap-wide` below them, and nothing overlaps.
+#[test]
+fn l1b_stacked_in_a_narrow_window() {
+    use mere_ui::tokens::GAP_WIDE;
+    for w in 620..860 {
+        let (ui, ids, _) = home_at(w as f32, 940.0);
+        let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
+        assert!((a.x - 28.0).abs() < 0.01 && (a.w - (w as f32 - 56.0)).abs() < 0.01 && (b.x - a.x).abs() < 0.01 && (b.w - a.w).abs() < 0.01, "at {w}: {a:?} {b:?}");
+        assert!((b.y - (a.y + a.h + GAP_WIDE)).abs() < 0.01, "the servers are under the profiles at {w}: {a:?} {b:?}");
+    }
+}
+
+/// L4: at 1400 x 940, the rows in the kit's measures (board A1). The two columns are at their cap of 880, centred
+/// (260 px of room on each side), two parts of 416. A section is its rule, a head as tall as an underlined action's
+/// line with `gap` above and below, and `inset-hair`; a row has `inset` all round, pulled `inset` out on each side, its
+/// two lines (the name's 19.5 and the small line's 16.5) taller than its square button, which ends at the part's edge.
 #[test]
 fn l4_the_numbers_at_1400() {
     use launcher_native::home::COLUMNS_GAP;
-    use mere_ui::tokens::{FRAME, ICON_SQUARE, INSET};
+    use mere_ui::tokens::{FRAME, GAP, ICON_SQUARE, INSET, INSET_HAIR};
     let (ui, ids, _) = home_at(1400.0, 940.0);
-    let (left, part, top) = (140.0, (1120.0 - COLUMNS_GAP) / 2.0, 50.0);
-    rect_is(ui.rect(ids.profiles_header).unwrap(), left, top, part, ICON_SQUARE + FRAME, "header");
+    let (left, part, top) = (260.0, (880.0 - COLUMNS_GAP) / 2.0, 50.0);
     let r = |id| ui.rect(id).unwrap();
-    // The hairline is the header's last pixel row.
-    let below = top + ICON_SQUARE + FRAME;
-    assert_eq!(r(ids.profiles_header).y + r(ids.profiles_header).h - FRAME, below - FRAME);
+    let section = r(ids.profiles_header);
+    assert!((section.x - left).abs() < 0.01 && (section.y - top).abs() < 0.01 && (section.w - part).abs() < 0.01, "profiles section: {section:?}");
+    let head = 2.0 * GAP + mere_ui::BODY_LINE + 2.0 * INSET_HAIR;
+    let below = top + FRAME + head + INSET_HAIR;
+    // Both actions end at their part's right edge, in the head's line.
+    let (new_profile, new_server) = (r(ids.new_profile), r(ids.new_server));
+    assert!((new_profile.x + new_profile.w - (left + part)).abs() < 0.01, "{new_profile:?}");
+    assert!((new_server.x + new_server.w - (left + 2.0 * part + COLUMNS_GAP)).abs() < 0.01, "{new_server:?}");
+    assert!(new_profile.y > top && new_profile.y + new_profile.h < below, "{new_profile:?}");
     let first = &ids.rows[0];
     assert_eq!(first.profile, "exploration", "the profile played last comes first");
     let row_h = 2.0 * INSET + 19.5 + 16.5;
     let square_y = below + (row_h - ICON_SQUARE) / 2.0;
-    // The squares sit at the row's right, inside its inset, the second over the first by a frame.
-    let squares = |row_x: f32| {
-        let settings = row_x + part + 2.0 * INSET - INSET - ICON_SQUARE;
-        (settings - ICON_SQUARE + FRAME, settings)
-    };
     let row_x = left - INSET;
     rect_is(r(first.row), row_x, below, part + 2.0 * INSET, row_h, "first row");
-    let (play, settings) = squares(row_x);
-    rect_is(r(first.play), play, square_y, ICON_SQUARE, ICON_SQUARE, "play");
-    rect_is(r(first.settings), settings, square_y, ICON_SQUARE, ICON_SQUARE, "settings");
+    rect_is(r(first.play), left + part - ICON_SQUARE, square_y, ICON_SQUARE, ICON_SQUARE, "play");
     let row_x = left + part + COLUMNS_GAP - INSET;
     rect_is(r(ids.server_row), row_x, below, part + 2.0 * INSET, row_h, "server row");
-    let (start, settings) = squares(row_x);
-    rect_is(r(ids.server_play), start, square_y, ICON_SQUARE, ICON_SQUARE, "start");
-    rect_is(r(ids.server_settings), settings, square_y, ICON_SQUARE, ICON_SQUARE, "server settings");
+    rect_is(r(ids.server_play), left + 2.0 * part + COLUMNS_GAP - ICON_SQUARE, square_y, ICON_SQUARE, ICON_SQUARE, "start");
 }
 
 fn texts(list: &mere_base::DrawList) -> Vec<(Vec2, String)> {
     list.cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { at, text, .. } = c { Some((*at, text.clone())) } else { None }).collect()
 }
 
-/// L4 (cont.): the name starts at the column, x 140 at 1400.
+/// L4 (cont.): the name starts at the column, x 260 at 1400.
 #[test]
 fn l4_the_name_starts_at_the_column() {
     let (_, _, list) = home_at(1400.0, 940.0);
     let name = texts(&list).into_iter().find(|(_, t)| t == "Exploration").expect("the name is drawn whole");
-    assert!((name.0.x - 140.0).abs() < 0.01, "{:?}", name.0);
+    assert!((name.0.x - 260.0).abs() < 0.01, "{:?}", name.0);
 }
 
 /// L5: nothing clipped or overlapped, at every width the pictures use and a short height.
@@ -91,22 +100,22 @@ fn l5_nothing_is_clipped_or_overlapped() {
         let (ui, ids, list) = home_at(w, h);
         let (a, b) = (ui.rect(ids.profiles).unwrap(), ui.rect(ids.server).unwrap());
         assert!(a.intersect(&b).w <= 0.0 || a.intersect(&b).h <= 0.0, "{w}x{h}: the parts overlap: {a:?} {b:?}");
-        let mut rects: Vec<Rect> = ids.rows.iter().flat_map(|r| [r.row, r.play, r.settings]).map(|i| ui.rect(i).unwrap()).collect();
-        rects.extend([ui.rect(ids.server_row).unwrap(), ui.rect(ids.server_play).unwrap(), ui.rect(ids.server_settings).unwrap()]);
+        let mut rects: Vec<Rect> = ids.rows.iter().flat_map(|r| [r.row, r.play]).map(|i| ui.rect(i).unwrap()).collect();
+        rects.extend([ui.rect(ids.server_row).unwrap(), ui.rect(ids.server_play).unwrap(), ui.rect(ids.new_profile).unwrap(), ui.rect(ids.new_server).unwrap()]);
         for r in rects {
             assert!(r.x >= 20.0 - 0.01 && r.x + r.w <= w - 20.0 + 0.01, "{w}x{h}: {r:?} leaves the page's margins");
         }
         let said = texts(&list);
         // A title is drawn one glyph at a time (its letter spacing).
         let all: String = said.iter().map(|(_, t)| t.as_str()).collect();
-        for name in ["Exploration", "Atelier", "Dev server", "PROFILES", "SERVER"] {
+        for name in ["Exploration", "Atelier", "Dev server", "PROFILES", "SERVERS", "New profile", "New server"] {
             assert!(all.contains(name), "{w}x{h}: {name} is cut or missing");
         }
     }
 }
 
-/// L6: a short window with a profile's settings and the server's fields open: the content scrolls, and its end
-/// brings the server folder's "Open" wholly inside the pane.
+/// L6: a short window with the server's page open and its note long: the content scrolls, and its end brings the
+/// server folder's "Open" wholly inside the pane.
 #[test]
 fn l6_a_short_window_scrolls_to_its_end() {
     let mut rig = Rig::new(1400, 600, true);
@@ -116,10 +125,7 @@ fn l6_a_short_window_scrolls_to_its_end() {
     rig.api.set_post("/api/server/start", 412, serde_json::json!({ "error": why }));
     let start = rig.home().ids().server_play;
     rig.click(start);
-    let settings = rig.home().ids().rows[0].settings;
-    rig.click(settings);
-    let gear = rig.home().ids().server_settings;
-    rig.click(gear);
+    open_server(&mut rig);
     let thumb = rig.app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Fill { rect, color } if *color == rig.theme.line && rect.w < 8.0 && rect.h > 10.0));
     assert!(thumb, "the scrollbar's thumb is drawn");
     for _ in 0..20 {

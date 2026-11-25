@@ -6,6 +6,7 @@ pub mod fake;
 pub mod home;
 pub mod icons;
 pub mod model;
+pub mod pages;
 pub mod text;
 
 use mere_base::Vec2;

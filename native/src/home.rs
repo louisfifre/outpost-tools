@@ -1,9 +1,13 @@
 //! The launcher's Home (index.html's `#launcher` and its script, `load` to `saveServer`): the profiles and the dev server, in two
 //! parts that fill the window, drawn with mere-ui and answered by the api through a `Bridge`.
 //!
-//! Layout is the page's without its breakpoints: two columns that widen continuously, with no switch, up to the
-//! page's cap of 1120 px (`COLUMNS_MAX`), then stay centred. The window's least is the preview's `MIN_SIZE` (about
-//! 610 px), where each part is about 250 px wide and its lines wrap; the page's one-column form at 860 is not built.
+//! Layout (boards A1 and A3): two columns that widen continuously up to a cap of 880 px (`COLUMNS_MAX`), then stay
+//! centred; under `STACK_BELOW` the two parts are stacked in one column. Each part is a section with its action at
+//! the right end of its head (it does not fold), and its lines open its page: a press on a profile's line or on the
+//! server's opens that page (`pages`), the Play and Start buttons keeping their own press.
+//!
+//! Home is the floor of a stack of pages (`pages::Page`): `open` pushes one, the back action pops it. A page is drawn
+//! inside `page_frame`, which gives it the title line and its width.
 //!
 //! The build only reads the pointer and the keys, and records what was asked (`Want`); `act` does it, after the
 //! build, so that a build never waits on the api. Answers are taken by `poll`.
@@ -12,11 +16,15 @@ use std::any::Any;
 
 use mere_base::Vec2;
 use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
-use mere_ui::tokens::{CONTROL, FRAME, GAP, GAP_TIGHT, GAP_WIDE, ICON_SQUARE, INSET, INSET_TIGHT, REGION};
+use mere_ui::tokens::{CONTROL, FRAME, GAP, GAP_TIGHT, GAP_WIDE, INSET, INSET_TIGHT, REGION};
 use mere_ui::{ActionLook, ActionOpts, FieldOpts, FieldResp, IconLook, IconOpts, Id, NumberOpts, NumberSpec, SelectOpts, TextLook, ToggleOpts, Tone, Ui};
 
-/// The widest the two columns grow together, the page's cap (index.html's `.page`).
-pub const COLUMNS_MAX: f32 = 1120.0;
+/// The widest the two columns grow together (board A1): a line read across a whole wide screen loses the link between
+/// its name and its button.
+pub const COLUMNS_MAX: f32 = 880.0;
+/// Under this width of the window the two parts are stacked (board A3 is 800 px wide, board A1 1400). The boards do not
+/// give the width where it changes: to validate.
+pub const STACK_BELOW: f32 = 860.0;
 /// The gap between the two columns.
 pub const COLUMNS_GAP: f32 = REGION;
 /// The width of the memory field and of the whitelist toggle, which line up: two digits and a unit fit, on the 4 px grid.
@@ -37,6 +45,7 @@ use serde_json::{Value, json};
 use crate::bridge::{Bridge, Done, Tag};
 use crate::icons as own_icons;
 use crate::model::{Open, Profile, Profiles, Server, about, memory_max, ordered, round_clamp};
+use crate::pages::{self, Page};
 use crate::text;
 
 /// What time is, for the line under a profile: the real one, or a fixed one for pictures.
@@ -82,7 +91,8 @@ pub struct HomeIds {
     pub note: Id,
     pub server_row: Id,
     pub server_play: Id,
-    pub server_settings: Id,
+    pub new_profile: Id,
+    pub new_server: Id,
     pub s_memory: Id,
     pub s_java: Id,
     pub s_view: Id,
@@ -116,7 +126,8 @@ impl Default for HomeIds {
             note: o,
             server_row: o,
             server_play: o,
-            server_settings: o,
+            new_profile: o,
+            new_server: o,
             s_memory: o,
             s_java: o,
             s_view: o,
@@ -137,7 +148,6 @@ pub struct RowIds {
     pub profile: String,
     pub row: Id,
     pub play: Id,
-    pub settings: Id,
 }
 
 /// A launch this window follows (the page's `launching`).
@@ -205,7 +215,8 @@ fn said(d: &Done) -> String {
 #[derive(Clone, Debug, PartialEq)]
 enum Want {
     Play(String),
-    Settings(String),
+    OpenProfile(String),
+    OpenServer,
     Back,
     SaveProfile,
     Folder,
@@ -225,11 +236,12 @@ pub struct LauncherHome {
     machine_mb: i64,
     server: Option<Server>,
     launching: Option<Launching>,
-    /// The profile whose settings are open.
-    current: Option<String>,
+    /// The pages above Home, the one shown last.
+    stack: Vec<Page>,
+    /// What each page keeps between frames.
+    pub pages: pages::Pages,
     form: ProfileForm,
     sform: ServerForm,
-    server_open: bool,
     stopping: bool,
     /// When the last stop was asked, on the poll's clock.
     stop_asked: f64,
@@ -267,10 +279,10 @@ impl LauncherHome {
             machine_mb: 0,
             server: None,
             launching: None,
-            current: None,
+            stack: Vec::new(),
+            pages: pages::Pages::default(),
             form: ProfileForm::default(),
             sform: ServerForm::default(),
-            server_open: false,
             stopping: false,
             stop_asked: 0.0,
             stop_refused: None,
@@ -303,18 +315,39 @@ impl LauncherHome {
         (&self.status, &self.server_note)
     }
 
-    /// Opens the settings of a profile, as a click on its icon does.
-    pub fn settings_open(&self) -> Option<&str> {
-        self.current.as_deref()
+    /// The page shown above Home; None while Home itself is.
+    pub fn page(&self) -> Option<&Page> {
+        self.stack.last()
     }
 
-    pub fn server_fields_open(&self) -> bool {
-        self.server_open
+    /// Pushes a page above the one shown, as a press on a line (or on a page's own action) does.
+    pub fn open(&mut self, page: Page) {
+        match &page {
+            Page::Profile(id) => self.fill_profile(id),
+            Page::AddMod(_) | Page::Server | Page::Setup => {}
+        }
+        self.stack.push(page);
     }
 
-    /// Opens the dev server's fields, as a click on its settings icon does.
-    pub fn open_server_fields(&mut self) {
-        self.server_open = true;
+    /// Leaves the page shown, as its back action does: says nothing more, and asks the profiles again.
+    pub fn back(&mut self) {
+        self.stack.pop();
+        self.say("");
+        self.load_profiles();
+    }
+
+    /// The id of the profile the page shown is about (its page, or the page that adds a mod to it).
+    pub(crate) fn current(&self) -> Option<String> {
+        match self.stack.last() {
+            Some(Page::Profile(id) | Page::AddMod(id)) => Some(id.clone()),
+            _ => None,
+        }
+    }
+
+    /// The name of that profile, empty when it is gone.
+    pub(crate) fn profile_name(&self) -> String {
+        let id = self.current();
+        self.profiles.iter().find(|p| Some(&p.id) == id.as_ref()).map(|p| p.name.clone()).unwrap_or_default()
     }
 
     fn mem_max(&self) -> f64 {
@@ -373,7 +406,7 @@ impl LauncherHome {
                 self.locked = p.locked;
                 self.machine_mb = p.machine_mb;
                 self.account = Some(p.account.unwrap_or_else(|| text::NO_ACCOUNT.to_string()));
-                if self.current.is_some() {
+                if matches!(self.stack.last(), Some(Page::Profile(_))) {
                     self.lock();
                 }
             }
@@ -446,7 +479,8 @@ impl LauncherHome {
             // save.
             Tag::SaveProfile => match d.status {
                 200 => {
-                    if let Some(p) = self.profiles.iter_mut().find(|p| Some(&p.id) == self.current.as_ref()) {
+                    let current = self.current();
+                    if let Some(p) = self.profiles.iter_mut().find(|p| Some(&p.id) == current.as_ref()) {
                         p.memory_mb = (self.form.memory * 1024.0) as i64;
                         p.java_args = self.form.java.trim().to_string();
                         if let Some((open, _)) = self.form.options.get(self.form.open_on) {
@@ -554,8 +588,8 @@ impl LauncherHome {
         };
     }
 
-    /// `openSettings`.
-    fn open_settings(&mut self, id: &str) {
+    /// `openSettings`: the form of the profile's page, filled from the profile.
+    fn fill_profile(&mut self, id: &str) {
         let Some(p) = self.profiles.iter().find(|p| p.id == id).cloned() else { return };
         let mut options = vec![(Open::Menu, text::ON_MENU.to_string())];
         options.extend(p.worlds.iter().map(|w| (Open::World(w.clone()), text::on_world(w))));
@@ -571,7 +605,6 @@ impl LauncherHome {
             memory: (p.memory_mb as f64 / 1024.0).round(),
             java: p.java_args.clone(),
         };
-        self.current = Some(p.id.clone());
         self.tracks = Trackers::default();
         self.say("");
         self.lock();
@@ -579,7 +612,7 @@ impl LauncherHome {
 
     /// `save`: a server without its address is not a choice yet, so nothing is sent.
     fn save_profile(&mut self) {
-        let Some(id) = self.current.clone() else { return };
+        let Some(id) = self.current() else { return };
         let Some((open, _)) = self.form.options.get(self.form.open_on).cloned() else { return };
         let open = match open {
             Open::Server(_) => {
@@ -642,30 +675,53 @@ impl LauncherHome {
         if state == "stopped" && !s.eula {
             line = text::NO_EULA.to_string();
         }
-        Some((line, state != "stopped"))
+        Some((line, !matches!(state, "stopped" | "running")))
     }
 
     fn col() -> Style {
         Style { column: true, min_w: Dim::Px(0.0), ..Style::default() }
     }
 
-    /// `.col header`: a row as tall as the back button's square, so that the header keeps its height
-    /// with or without it, and a hairline.
-    fn header(&mut self, ui: &mut Ui, key: &str, back: bool, title: &str) -> Id {
-        ui.node(key, Style { column: true, ..Style::default() }, |ui| {
-            ui.node("bar", Style { min_h: Dim::Px(ICON_SQUARE), align_items: Align::Center, gap: Vec2::new(GAP, 0.0), ..Style::default() }, |ui| {
-                if back {
-                    let r = ui.icon_action("back", own_icons::back(), IconLook::Bare, IconOpts::default());
-                    ui.title(r.id, text::BACK);
-                    self.ids.back = r.id;
-                    if r.clicked {
-                        self.wants.push(Want::Back);
-                    }
-                }
-                ui.text(&title.to_uppercase(), TextLook::heading());
-            });
-            ui.rule(mere_ui::Rule::Section, Edges::default());
-        })
+    /// What every page above Home is drawn in: a column `max_w` wide at most, centred, with the title line over the page
+    /// (the back action, `title`, `end` at the right end), then what `body` builds. The back action asks to leave the page.
+    pub(crate) fn page_frame(&mut self, ui: &mut Ui, max_w: f32, title: &str, end: impl FnOnce(&mut Ui), body: impl FnOnce(&mut LauncherHome, &mut Ui)) {
+        let style = Style { column: true, w: Dim::Pct(100.0), max_w: Dim::Px(max_w), margin: Margin::horizontal_auto(), ..Style::default() };
+        ui.node("pageColumn", style, |ui| {
+            let head = ui.page_head("head", own_icons::back(), title, end);
+            ui.title(head.back.id, text::BACK);
+            self.ids.back = head.back.id;
+            if head.back.clicked {
+                self.wants.push(Want::Back);
+            }
+            body(self, ui);
+        });
+    }
+
+    /// Home itself: the profiles and the servers, side by side up to the cap, stacked in a narrow window.
+    fn home_page(&mut self, ui: &mut Ui, stacked: bool) {
+        let columns = if stacked {
+            Style { column: true, gap: Vec2::new(0.0, GAP_WIDE), w: Dim::Pct(100.0), ..Style::default() }
+        } else {
+            Style {
+                display: Display::Grid,
+                cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]),
+                gap: Vec2::new(COLUMNS_GAP, 0.0),
+                align_items: Align::Start,
+                w: Dim::Pct(100.0),
+                max_w: Dim::Px(COLUMNS_MAX),
+                margin: Margin::horizontal_auto(),
+                ..Style::default()
+            }
+        };
+        self.ids.columns = ui.node("columns", columns, |ui| {
+            self.ids.profiles = ui.node("profilesPart", Self::col(), |ui| self.profiles_part(ui));
+            self.ids.server = ui.node("serverPart", Self::col(), |ui| self.server_part(ui));
+        });
+    }
+
+    /// A column `w` wide at most that holds one half of a page's two columns.
+    pub(crate) fn half(&mut self, ui: &mut Ui, w: f32, body: impl FnOnce(&mut LauncherHome, &mut Ui)) {
+        ui.node("half", Style { column: true, w: Dim::Pct(100.0), max_w: Dim::Px(w), min_w: Dim::Px(0.0), ..Style::default() }, |ui| body(self, ui));
     }
 
     /// A `.profile` row's look: `inset` all round, pulled out by as much on each side so that its
@@ -701,14 +757,20 @@ impl LauncherHome {
     fn profiles_part(&mut self, ui: &mut Ui) {
         let clock = ui.clock();
         let lit = ui.theme().tint();
-        match self.current.clone() {
-            None => {
-                self.ids.profiles_header = self.header(ui, "header", false, text::PROFILES_GROUP);
-                let busy = self.launching.as_ref().is_some_and(|l| !l.over);
+        let busy = self.launching.as_ref().is_some_and(|l| !l.over);
+        let mut new = (Id::ROOT, false);
+        let section = ui.section(
+            "profiles",
+            text::PROFILES_GROUP,
+            |ui| {
+                let r = ui.action("new", text::NEW_PROFILE, ActionLook::Underlined);
+                new = (r.id, r.clicked);
+            },
+            |ui| {
                 for p in ordered(&self.profiles) {
                     let (line, now) = self.lines_of(&p, clock);
-                    let mut row_ids = RowIds { profile: p.id.clone(), row: Id::ROOT, play: Id::ROOT, settings: Id::ROOT };
-                    row_ids.row = ui.hover_box(&format!("row-{}", p.id), Self::row_style(), lit, |ui| {
+                    let mut row_ids = RowIds { profile: p.id.clone(), row: Id::ROOT, play: Id::ROOT };
+                    let row = ui.hover_action(&format!("row-{}", p.id), Self::row_style(), lit, |ui| {
                         Self::who(ui, &p.name, &line, now);
                         let play = ui.icon_action("play", &icons().play, IconLook::Filled, IconOpts { disabled: p.running || busy, ..IconOpts::default() });
                         ui.title(play.id, &text::play(&p.name));
@@ -716,22 +778,27 @@ impl LauncherHome {
                         if play.clicked {
                             self.wants.push(Want::Play(p.id.clone()));
                         }
-                        let set = ui.icon_action("settings", &icons().settings, IconLook::Square, IconOpts { joined: true, ..IconOpts::default() });
-                        ui.title(set.id, &text::settings(&p.name));
-                        row_ids.settings = set.id;
-                        if set.clicked {
-                            self.wants.push(Want::Settings(p.id.clone()));
-                        }
                     });
+                    row_ids.row = row.id;
+                    if row.clicked {
+                        self.wants.push(Want::OpenProfile(p.id.clone()));
+                    }
                     self.ids.rows.push(row_ids);
                 }
-            }
-            Some(id) => {
-                let name = self.profiles.iter().find(|p| p.id == id).map(|p| p.name.clone()).unwrap_or_default();
-                self.ids.profiles_header = self.header(ui, "header", true, &name);
-                self.settings_view(ui);
-            }
+            },
+        );
+        self.ids.profiles_header = section;
+        self.ids.new_profile = new.0;
+        if !self.status.is_empty() {
+            let note = self.status.clone();
+            self.ids.note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
         }
+    }
+
+    /// The profile's settings, as Home showed them in place: the form of the profile's page until its screen replaces it,
+    /// and the note under it.
+    pub(crate) fn settings_form(&mut self, ui: &mut Ui) {
+        self.settings_view(ui);
         if !self.status.is_empty() {
             let note = self.status.clone();
             self.ids.note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
@@ -794,7 +861,8 @@ impl LauncherHome {
                     self.wants.push(Want::SaveProfile);
                 }
             });
-            let dir = self.profiles.iter().find(|p| Some(&p.id) == self.current.as_ref()).map(|p| p.game_dir.clone()).unwrap_or_default();
+            let current = self.current();
+            let dir = self.profiles.iter().find(|p| Some(&p.id) == current.as_ref()).map(|p| p.game_dir.clone()).unwrap_or_default();
             Self::field(ui, "folder", text::FOLDER, |ui| {
                 let r = Self::folder_row(ui, &dir);
                 self.ids.open_folder = r.id;
@@ -817,48 +885,69 @@ impl LauncherHome {
     /// The server's part (the second `section.col`).
     fn server_part(&mut self, ui: &mut Ui) {
         let lit = ui.theme().tint();
-        self.ids.server_header = self.header(ui, "header", false, text::SERVER_GROUP);
         let line = self.server_line();
         let (running, busy) = self.server.as_ref().map_or((false, false), |s| (s.state == "running", s.busy()));
         let stopping = self.stopping;
-        let open = self.server_open;
-        self.ids.server_row = ui.hover_box("serverRow", Self::row_style(), lit, |ui| {
-            let (words, now) = line.clone().unwrap_or_default();
-            Self::who(ui, text::SERVER_NAME, &words, now);
-            if self.server.is_some() {
-                // Start once at a time; stop only a server that is ready to hear it (`renderServer`).
-                let off = stopping || (!running && busy);
-                let r = if running {
-                    let r = ui.icon_action("stop", &icons().stop, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
-                    ui.title(r.id, text::STOP_SERVER);
-                    if r.clicked {
-                        self.wants.push(Want::ServerStop);
+        let loaded = self.server.is_some();
+        let mut new = (Id::ROOT, false);
+        let section = ui.section(
+            "servers",
+            text::SERVER_GROUP,
+            |ui| {
+                let r = ui.action("new", text::NEW_SERVER, ActionLook::Underlined);
+                new = (r.id, r.clicked);
+            },
+            |ui| {
+                let row = ui.hover_action("serverRow", Self::row_style(), lit, |ui| {
+                    let (words, now) = line.clone().unwrap_or_default();
+                    Self::who(ui, text::SERVER_NAME, &words, now);
+                    if loaded {
+                        // Start once at a time; stop only a server that is ready to hear it (`renderServer`).
+                        let off = stopping || (!running && busy);
+                        let r = if running {
+                            let r = ui.icon_action("stop", &icons().stop, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
+                            ui.title(r.id, text::STOP_SERVER);
+                            if r.clicked {
+                                self.wants.push(Want::ServerStop);
+                            }
+                            r
+                        } else {
+                            let r = ui.icon_action("start", &icons().play, IconLook::Square, IconOpts { disabled: off, ..IconOpts::default() });
+                            ui.title(r.id, text::START_SERVER);
+                            if r.clicked {
+                                self.wants.push(Want::ServerStart);
+                            }
+                            r
+                        };
+                        self.ids.server_play = r.id;
                     }
-                    r
-                } else {
-                    let r = ui.icon_action("start", &icons().play, IconLook::Filled, IconOpts { disabled: off, ..IconOpts::default() });
-                    ui.title(r.id, text::START_SERVER);
-                    if r.clicked {
-                        self.wants.push(Want::ServerStart);
-                    }
-                    r
-                };
-                self.ids.server_play = r.id;
-                let s = ui.icon_action("settings", &icons().settings, IconLook::Square, IconOpts { pressed: open, joined: true, ..IconOpts::default() });
-                ui.title(s.id, text::SERVER_SETTINGS);
-                self.ids.server_settings = s.id;
-                if s.clicked {
-                    self.server_open = !self.server_open;
+                });
+                self.ids.server_row = row.id;
+                if row.clicked && loaded {
+                    self.wants.push(Want::OpenServer);
                 }
-            }
-        });
-        if self.server_open && self.server.is_some() {
-            self.server_fields(ui);
-        }
+            },
+        );
+        self.ids.server_header = section;
+        self.ids.new_server = new.0;
+        self.server_note_under(ui);
+    }
+
+    /// What the server's last request said, under its part.
+    fn server_note_under(&mut self, ui: &mut Ui) {
         if !self.server_note.is_empty() {
             let note = self.server_note.clone();
             self.ids.server_note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
         }
+    }
+
+    /// The server's settings, as Home showed them in place: the form of the server's page until its screen replaces it,
+    /// and the note under it.
+    pub(crate) fn server_form(&mut self, ui: &mut Ui) {
+        if self.server.is_some() {
+            self.server_fields(ui);
+        }
+        self.server_note_under(ui);
     }
 
     /// `#server-fields`.
@@ -953,7 +1042,7 @@ impl LauncherHome {
 }
 
 impl Home for LauncherHome {
-    fn build(&mut self, ui: &mut Ui, _size: Vec2) {
+    fn build(&mut self, ui: &mut Ui, size: Vec2) {
         self.ids = HomeIds::default();
         // The page's `#launcher`: a column that scrolls when it is taller than the window.
         let scroll = Style {
@@ -969,23 +1058,12 @@ impl Home for LauncherHome {
         let r = ui.scroll("home", &mut y, scroll, mere_ui::ScrollOpts { fade: 0.0 }, |ui| {
             // `.page` without its cap and its 860 padding change; the top is the preview's.
             let page = Style { column: true, pad: PAGE.pad, ..Style::default() };
-            self.ids.page = ui.node("homePage", page, |ui| {
-                // Capped at the page's 1120 and centred: a row of a list read across a whole wide screen loses the
-                // link between its name and its buttons, so the room beyond the cap stays empty on both sides.
-                let columns = Style {
-                    display: Display::Grid,
-                    cols: Tracks::new(&[Track::MinMaxFr0(1.0), Track::MinMaxFr0(1.0)]),
-                    gap: Vec2::new(COLUMNS_GAP, 0.0),
-                    align_items: Align::Start,
-                    w: Dim::Pct(100.0),
-                    max_w: Dim::Px(COLUMNS_MAX),
-                    margin: Margin::horizontal_auto(),
-                    ..Style::default()
-                };
-                self.ids.columns = ui.node("columns", columns, |ui| {
-                    self.ids.profiles = ui.node("profilesPart", Self::col(), |ui| self.profiles_part(ui));
-                    self.ids.server = ui.node("serverPart", Self::col(), |ui| self.server_part(ui));
-                });
+            self.ids.page = ui.node("homePage", page, |ui| match self.stack.last().cloned() {
+                None => self.home_page(ui, size.x < STACK_BELOW),
+                Some(Page::Profile(_)) => pages::profile::build(self, ui),
+                Some(Page::AddMod(_)) => pages::add_mod::build(self, ui),
+                Some(Page::Server) => pages::server::build(self, ui),
+                Some(Page::Setup) => pages::setup::build(self, ui),
             });
         });
         self.ids.scroll = r.id;
@@ -1015,16 +1093,13 @@ impl Home for LauncherHome {
                     self.next_launch = f64::INFINITY;
                     self.send(Tag::Play(id.clone()), "POST", &format!("/api/launch/{id}"), None);
                 }
-                Want::Settings(id) => self.open_settings(&id),
-                // ack's click listener.
-                Want::Back => {
-                    self.current = None;
-                    self.say("");
-                    self.load_profiles();
-                }
+                Want::OpenProfile(id) => self.open(Page::Profile(id)),
+                Want::OpenServer => self.open(Page::Server),
+                // The page's `back` listener.
+                Want::Back => self.back(),
                 Want::SaveProfile => self.save_profile(),
                 Want::Folder => {
-                    if let Some(id) = self.current.clone() {
+                    if let Some(id) = self.current() {
                         self.send(Tag::Folder, "POST", &format!("/api/folder/{id}"), None);
                     }
                 }

@@ -71,10 +71,7 @@ fn the_short_window_with_everything_open() {
     rig.api.set_post("/api/server/start", 412, json!({ "error": why }));
     let start = rig.home().ids().server_play;
     rig.click(start);
-    let settings = rig.home().ids().rows[0].settings;
-    rig.click(settings);
-    let gear = rig.home().ids().server_settings;
-    rig.click(gear);
+    open_server(&mut rig);
     // Out of the way of every widget, so that nothing is lit.
     rig.hover_at(Vec2::new(5.0, 590.0));
     rig.write("home_1400x600.png");
@@ -83,8 +80,7 @@ fn the_short_window_with_everything_open() {
 #[test]
 fn the_settings_with_the_menu_open() {
     let mut rig = Rig::new(1400, 940, true);
-    let id = rig.home().ids().rows.iter().find(|r| r.profile == "exploration").unwrap().settings;
-    rig.click(id);
+    open_profile(&mut rig, "exploration");
     let b = rig.rect(rig.home().ids().open_on);
     rig.click_at(centre(b));
     // "a server", the third row, under the pointer.
@@ -105,7 +101,7 @@ fn a_launch_and_a_running_server() {
     rig.set_clock(13.0);
     rig.frame();
     rig.hover_at(Vec2::new(5.0, 930.0));
-    assert!(rig.says("Loading the game\u{2026} 12 s") && rig.says("Running \u{b7} localhost:25565"));
+    assert!(rig.says("Loading the game\u{2026} 12 s") && rig.says("running \u{b7} localhost:25565"));
     rig.write("home_launch_1400.png");
 }
 
@@ -140,4 +136,33 @@ fn the_preview_tool_in_the_launcher() {
         assert!(!rig.texts().iter().any(|t| t.1.starts_with("Player")), "the account is Home's only, at {w}");
         rig.write(name);
     }
+}
+
+/// A1: Home at 1400, the board's four profiles (the last one cut with an ellipsis) and the server, stopped then running.
+#[test]
+fn a1_home_full() {
+    let mut rig = Rig::with_api(board_api(), 1400, 940, true, true);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    assert!(rig.says("stopped \u{b7} joins at localhost:25565"));
+    let long = rig.texts().into_iter().find(|t| t.1.starts_with("Friday server pack")).expect("the long name is drawn");
+    assert!(long.1.ends_with('\u{2026}'), "the long name is cut with an ellipsis: {:?}", long.1);
+    rig.write("home_a1_1400.png");
+    let mut server = api_get(&rig.api, "/api/server");
+    server["state"] = json!("running");
+    rig.api.set_get("/api/server", server);
+    rig.wait(3.0);
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    assert!(rig.says("running \u{b7} localhost:25565"));
+    rig.write("home_a1_running_1400.png");
+}
+
+/// A3: Home at 800 x 600, the two parts stacked.
+#[test]
+fn a3_home_small() {
+    let mut rig = Rig::with_api(board_api(), 800, 600, true, true);
+    rig.hover_at(Vec2::new(5.0, 590.0));
+    let profiles = rig.rect(rig.home().ids().profiles);
+    let servers = rig.rect(rig.home().ids().server);
+    assert!(servers.y > profiles.y + profiles.h, "stacked");
+    rig.write("home_a3_800.png");
 }

@@ -5,6 +5,13 @@
 pub const NO_ACCOUNT: &str = "No account: sign in once in Prism";
 /// `profilesGroup`.
 pub const PROFILES_GROUP: &str = "Profiles";
+/// The action at the head of the profiles, and of the servers (board A1).
+pub const NEW_PROFILE: &str = "New profile";
+pub const NEW_SERVER: &str = "New server";
+/// The title of the page that adds a mod to a profile (board B4).
+pub fn add_mod_title(profile: &str) -> String {
+    format!("Add a mod to {profile}")
+}
 /// `play`.
 pub fn play(name: &str) -> String {
     format!("Play {name}")
@@ -48,7 +55,7 @@ pub fn launch(state: &str, seconds: i64) -> Option<String> {
     })
 }
 /// `joinsServer`, `opensWorld`, `playedHours`, `playedMinutes` and `neverPlayed` are in model.rs (`about`).
-pub const SERVER_GROUP: &str = "Server";
+pub const SERVER_GROUP: &str = "Servers";
 pub const SERVER_NAME: &str = "Dev server";
 pub const START_SERVER: &str = "Start the server";
 pub const STOP_SERVER: &str = "Stop the server";
@@ -58,7 +65,7 @@ pub fn server(state: &str, port: i64) -> Option<String> {
         "stopped" => format!("stopped \u{b7} joins at localhost:{port}"),
         "preparing" => "Syncing the mods\u{2026} its window shows each step".into(),
         "starting" => "Starting the world\u{2026}".into(),
-        "running" => format!("Running \u{b7} localhost:{port}"),
+        "running" => format!("running \u{b7} localhost:{port}"),
         "failed" => "The start failed. Its window says why.".into(),
         "stopping" => "Saving and stopping\u{2026}".into(),
         _ => return None,
