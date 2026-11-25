@@ -5,7 +5,7 @@ use mere_base::{Rect, Vec2};
 use mere_ui::{GUTTER, Id, Theme, Ui};
 use preview::settings::{SETTINGS, grouped};
 use preview::world::World;
-use preview::{BAR_H, Columns, PAGE, PreviewState, ShellIds, panels, picture, picture_with};
+use preview::{Action, BAR_H, Columns, PAGE, PreviewState, ShellIds, panels, picture, picture_with};
 
 const H: f32 = 940.0;
 
@@ -196,11 +196,24 @@ fn l9_goal_values() {
 }
 #[test]
 fn l10_run_block() {
+    // At rest: the two actions side by side, and nothing of what they open.
     let (ui, ids, _) = shell(1400.0, H);
-    let left = r(&ui, ids.left);
-    let d = r(&ui, ids.details);
-    near(d.h, 28.0, "details h");
-    let g = r(&ui, ids.generate);
+    let (g, a) = (r(&ui, ids.generate), r(&ui, ids.apply_open));
     near(g.h, 36.0, "generate h");
-    near(g.w, left.w, "generate w");
+    near(a.h, 36.0, "apply h");
+    near(g.y, a.y, "one row");
+    near(g.w, a.w, "equal halves");
+    near(a.x, g.x + g.w + 6.0, "6 px between them");
+    assert_eq!((ids.details, ids.generate_go, ids.apply, ids.place_line), (Id::ROOT, Id::ROOT, Id::ROOT, Id::ROOT), "closed");
+
+    // Generate open: the details and the Generate that confirms, above the row, as wide as the column.
+    let state = PreviewState { action: Some(Action::Generate), ..PreviewState::default() };
+    let (_, ui, ids) = picture_with(Theme::dark(), Vec2::new(1400.0, H), None, state);
+    let left = r(&ui, ids.left);
+    let (d, go, g) = (r(&ui, ids.details), r(&ui, ids.generate_go), r(&ui, ids.generate));
+    near(d.h, 28.0, "details h");
+    near(go.h, 36.0, "generate h");
+    near(go.w, g.w + 6.0 + r(&ui, ids.apply_open).w, "the confirming button is as wide as the row");
+    assert!(go.x >= left.x && go.x + go.w <= left.x + left.w + 0.01);
+    assert!(d.y + d.h <= go.y && go.y + go.h <= g.y, "the details, then the button, then the row");
 }

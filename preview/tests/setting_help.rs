@@ -309,7 +309,8 @@ fn h8_the_help_starts_at_its_row_s_top_and_is_raised_only_to_stay_in_the_window(
                     snapped(panel.y, row.y, &format!("{what}: the panel starts at its row's top"));
                 } else {
                     raised += 1;
-                    assert!(panel.y + panel.h <= size.y && panel.y + panel.h > size.y - 1.5, "{what}: the panel ends at the window's bottom, {panel:?}");
+                    // Half a pixel of the layout's rounding is allowed: a row on a half pixel snaps its panel to the whole one above.
+                    assert!(panel.y + panel.h <= size.y + 0.5 && panel.y + panel.h > size.y - 1.5, "{what}: the panel ends at the window's bottom, {panel:?}");
                 }
             }
         }

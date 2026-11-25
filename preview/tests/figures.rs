@@ -382,8 +382,7 @@ fn h4_a_finished_run_keeps_the_run_before_and_the_new_map() {
     let mut rig = Rig::new(&world, state, Some(runs(&root, &env)));
     rig.park();
     assert_eq!(history::load(&root.join("history.json")).len(), 1, "the map on screen is kept at the start");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(60, "the run to end", |r| !r.app.running());
     rig.park();
     rig.shot("history_h4.png");
