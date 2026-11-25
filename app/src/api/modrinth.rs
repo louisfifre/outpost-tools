@@ -21,6 +21,7 @@ use sha1::{Digest, Sha1};
 
 const BASE: &str = "https://api.modrinth.com/v2";
 const LOADER: &str = "fabric";
+const MAX_LIMIT: u32 = 100;
 
 // What the client needs of the network: one GET, one POST with a JSON body, the answer's bytes.
 pub trait Http {
@@ -348,6 +349,8 @@ impl<H: Http> Modrinth<H> {
     // The Add a mod list: mods for `game_version` with Fabric, in Modrinth's "relevance" order, which with an empty
     // `query` is, as far as read (unverified against the site), the order of its Discover page. A query filters by name.
     pub fn discover(&self, game_version: &str, query: &str, offset: u32, limit: u32) -> Result<Page, Error> {
+        // Modrinth answers an error above 100 rather than a shorter page.
+        let limit = limit.clamp(1, MAX_LIMIT);
         let facets = json!([["project_type:mod"], [format!("versions:{game_version}")], [format!("categories:{LOADER}")]]);
         let mut url = format!(
             "{}/search?facets={}&index=relevance&offset={offset}&limit={limit}",
@@ -397,7 +400,7 @@ impl<H: Http> Modrinth<H> {
     // What adding `project` takes: its fitting version, then the required dependencies, recursively, each project
     // once. `installed` holds the project ids the profile already has: they are not picked again, nor looked into.
     // Optional and embedded dependencies are left out. Fails on the first mod with no fitting version, or on a declared
-    // incompatibility inside the set.
+    // incompatibility with another mod of the set or with an installed one.
     pub fn resolve(&self, project: &str, game_version: &str, installed: &[String]) -> Result<Resolution, Error> {
         let mut have: HashSet<String> = installed.iter().cloned().collect();
         let mut chosen: Vec<(ModVersion, Option<String>)> = Vec::new();
@@ -436,6 +439,12 @@ impl<H: Http> Modrinth<H> {
                 if let Some(other) = picks.iter().find(|p| Some(&p.info.id) == dep.project_id.as_ref()) {
                     return Err(Error::Incompatible { project: pick.info.title.clone(), with: other.info.title.clone() });
                 }
+                // A mod the profile already has. Only the new mods' declarations are known here: an installed mod
+                // that declares itself incompatible with a new one is not found.
+                if let Some(id) = dep.project_id.as_ref().filter(|id| installed.contains(id)) {
+                    let with = self.mods(std::slice::from_ref(id)).ok().and_then(|m| m.into_iter().find(|m| m.id == *id)).map_or_else(|| id.clone(), |m| m.title);
+                    return Err(Error::Incompatible { project: pick.info.title.clone(), with });
+                }
             }
         }
         Ok(Resolution { picks })
@@ -467,30 +476,46 @@ impl<H: Http> Modrinth<H> {
         if hashes.is_empty() {
             return Ok(Vec::new());
         }
-        let current_body = json!({ "hashes": hashes, "algorithm": "sha1" }).to_string();
+        // Modrinth's keys are lower-case hex: a hash given in capitals is asked and matched all the same.
+        let asked: Vec<String> = hashes.iter().map(|h| h.to_lowercase()).collect();
+        let current_body = json!({ "hashes": asked, "algorithm": "sha1" }).to_string();
         let latest_body =
-            json!({ "hashes": hashes, "algorithm": "sha1", "loaders": [LOADER], "game_versions": [game_version] }).to_string();
-        let current: HashMap<String, ModVersion> =
-            parse(&self.http.post_json(&format!("{}/version_files", self.base), &current_body)?)?;
-        let latest: HashMap<String, ModVersion> =
-            parse(&self.http.post_json(&format!("{}/version_files/update", self.base), &latest_body)?)?;
-        Ok(hashes
-            .iter()
-            .map(|hash| {
-                let state = match (current.get(hash), latest.get(hash)) {
-                    (None, _) => UpdateState::Unknown,
-                    (Some(current), None) => UpdateState::NoVersionForGame { current: current.clone() },
-                    (Some(current), Some(latest))
-                        if latest.id != current.id && latest.date_published > current.date_published =>
-                    {
-                        UpdateState::Newer { current: current.clone(), latest: latest.clone() }
+            json!({ "hashes": asked, "algorithm": "sha1", "loaders": [LOADER], "game_versions": [game_version] }).to_string();
+        let lower = |m: HashMap<String, ModVersion>| -> HashMap<String, ModVersion> {
+            m.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect()
+        };
+        let current = lower(parse(&self.http.post_json(&format!("{}/version_files", self.base), &current_body)?)?);
+        let latest = lower(parse(&self.http.post_json(&format!("{}/version_files/update", self.base), &latest_body)?)?);
+        let mut checks = Vec::new();
+        for (hash, key) in hashes.iter().zip(&asked) {
+            let state = match (current.get(key), latest.get(key)) {
+                (None, _) => UpdateState::Unknown,
+                (Some(current), None) => UpdateState::NoVersionForGame { current: current.clone() },
+                // The endpoint offers the newest of any kind. A mod installed as a release is only moved to a
+                // release: a beta or an alpha is offered to a mod that is already one.
+                (Some(current), Some(latest))
+                    if current.version_type == VersionType::Release && latest.version_type != VersionType::Release =>
+                {
+                    match self.compatible_version(&current.project_id, game_version)?.filter(|v| v.version_type == VersionType::Release) {
+                        Some(release) if is_newer(&release, current) => UpdateState::Newer { current: current.clone(), latest: release },
+                        Some(_) => UpdateState::UpToDate,
+                        None if current.fits(game_version) => UpdateState::UpToDate,
+                        None => UpdateState::NoVersionForGame { current: current.clone() },
                     }
-                    _ => UpdateState::UpToDate,
-                };
-                UpdateCheck { sha1: hash.clone(), state }
-            })
-            .collect())
+                }
+                (Some(current), Some(latest)) if is_newer(latest, current) => {
+                    UpdateState::Newer { current: current.clone(), latest: latest.clone() }
+                }
+                _ => UpdateState::UpToDate,
+            };
+            checks.push(UpdateCheck { sha1: hash.clone(), state });
+        }
+        Ok(checks)
     }
+}
+
+fn is_newer(candidate: &ModVersion, current: &ModVersion) -> bool {
+    candidate.id != current.id && candidate.date_published > current.date_published
 }
 
 #[cfg(test)]
@@ -774,7 +799,17 @@ mod tests {
     const UNKNOWN_FILE: &str = "0000000000000000000000000000000000000000";
 
     fn updates_with(latest: String) -> Vec<UpdateCheck> {
-        let api = client(Fake::new().post("/version_files/update", latest).post("/version_files", fixture("current.json")));
+        updates_with_current(latest, fixture("current.json"))
+    }
+
+    fn updates_with_current(latest: String, current: String) -> Vec<UpdateCheck> {
+        let api = client(
+            Fake::new()
+                .post("/version_files/update", latest)
+                .post("/version_files", current)
+                // What the client asks when the newest version is not a release.
+                .get("/project/AANobbMI/version", fixture("versions_sodium.json")),
+        );
         let checks = api.updates(&[OLD_SODIUM.to_string(), UNKNOWN_FILE.to_string()], GAME).unwrap();
         let log = api.http.log.borrow();
         let latest_request = log.iter().find(|r| r.contains("/version_files/update")).unwrap();
@@ -790,12 +825,79 @@ mod tests {
         match &checks[0].state {
             UpdateState::Newer { current, latest } => {
                 assert_eq!(current.version_number, "mc1.21-0.5.11");
-                assert_eq!(latest.version_number, "mc1.21.1-0.8.14-beta.2-fabric");
+                // The installed one is a release: the newest beta is not offered, the newest release is.
+                assert_eq!(latest.version_number, "mc1.21.1-0.8.13-fabric");
             }
             other => panic!("{other:?}"),
         }
         // A file Modrinth does not know gets no updates.
         assert_eq!(checks[1].state, UpdateState::Unknown);
+    }
+
+    #[test]
+    fn an_installed_beta_is_offered_the_newer_beta() {
+        let mut current: serde_json::Value = serde_json::from_str(&fixture("current.json")).unwrap();
+        current.as_object_mut().unwrap().values_mut().for_each(|v| v["version_type"] = json!("beta"));
+        let checks = updates_with_current(fixture("update.json"), current.to_string());
+        match &checks[0].state {
+            UpdateState::Newer { latest, .. } => assert_eq!(latest.version_number, "mc1.21.1-0.8.14-beta.2-fabric"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_release_with_only_a_newer_beta_is_up_to_date_or_cannot_follow() {
+        let only_betas = |keep: &str| -> Fake {
+            let mut versions: Vec<serde_json::Value> = serde_json::from_str(&fixture("versions_sodium.json")).unwrap();
+            versions.retain(|v| v["version_type"] == "beta");
+            let mut current: serde_json::Value = serde_json::from_str(&fixture("current.json")).unwrap();
+            current.as_object_mut().unwrap().values_mut().for_each(|v| v["game_versions"] = json!([keep]));
+            Fake::new()
+                .post("/version_files/update", fixture("update.json"))
+                .post("/version_files", current.to_string())
+                .get("/project/AANobbMI/version", serde_json::to_string(&versions).unwrap())
+        };
+        let hash = [OLD_SODIUM.to_string()];
+        // The installed release already runs on the game version asked: nothing to offer.
+        let state = client(only_betas(GAME)).updates(&hash, GAME).unwrap().remove(0).state;
+        assert_eq!(state, UpdateState::UpToDate);
+        // It runs on another one, and only betas exist for this one: it cannot follow with a release.
+        let state = client(only_betas("1.20.1")).updates(&hash, GAME).unwrap().remove(0).state;
+        assert!(matches!(state, UpdateState::NoVersionForGame { .. }), "{state:?}");
+    }
+
+    #[test]
+    fn a_hash_in_capitals_is_asked_and_matched_in_lower_case() {
+        let api = client(Fake::new().post("/version_files/update", fixture("current.json")).post("/version_files", fixture("current.json")));
+        let checks = api.updates(&[OLD_SODIUM.to_uppercase()], GAME).unwrap();
+        assert_eq!(checks[0].state, UpdateState::UpToDate);
+        assert_eq!(checks[0].sha1, OLD_SODIUM.to_uppercase());
+        assert!(api.http.log.borrow()[0].contains(OLD_SODIUM) && !api.http.log.borrow()[0].contains(&OLD_SODIUM.to_uppercase()));
+    }
+
+    #[test]
+    fn a_search_asks_for_at_most_100() {
+        let api = client(Fake::new().get("/search", fixture("search.json")));
+        api.discover(GAME, "", 0, 5000).unwrap();
+        api.discover(GAME, "", 0, 0).unwrap();
+        let log = api.http.log.borrow();
+        assert!(log[0].contains("limit=100 "), "{}", log[0]);
+        assert!(log[1].contains("limit=1 "), "{}", log[1]);
+    }
+
+    #[test]
+    fn a_mod_incompatible_with_an_installed_one_is_refused() {
+        let api = client(
+            Fake::new()
+                .get("/project/a/version", listing(version("a", &[("x", "incompatible")])))
+                .get("/projects?ids=", projects(&["a", "x"])),
+        );
+        assert_eq!(
+            api.resolve("a", GAME, &["x".to_string()]),
+            Err(Error::Incompatible { project: "A".into(), with: "X".into() })
+        );
+        // Not installed: no clash.
+        assert!(api.resolve("a", GAME, &[]).is_ok());
     }
 
     #[test]
