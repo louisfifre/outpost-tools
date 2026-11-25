@@ -1,4 +1,4 @@
-//! The native launcher: the world preview's window (`preview::PreviewApp`) with the launcher's Home given to it,
+//! Outpost Tools, the native form: the world preview's window (`preview::PreviewApp`) with the launcher's Home given to it,
 //! talking to the same api as the page's launcher, in process.
 
 pub mod bridge;

@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use launcher_native::bridge::{Backend, Bridge};
-use launcher_native::fake::{FakeApi, fixture};
-use launcher_native::home::{Calendar, LauncherHome};
+use outpost_tools::bridge::{Backend, Bridge};
+use outpost_tools::fake::{FakeApi, fixture};
+use outpost_tools::home::{Calendar, LauncherHome};
 use mere_base::{App, Button, Cmd, Color, Event, Key, Mods, Rect, Vec2};
 use mere_ui::{Id, Theme};
 use mere_win32::Renderer;
@@ -29,7 +29,7 @@ pub fn with_server_profile(api: &FakeApi) {
 
 pub fn api_get(api: &FakeApi, path: &str) -> Value {
     // The fake answers a GET like any backend: ask it.
-    use launcher_native::bridge::Backend;
+    use outpost_tools::bridge::Backend;
     serde_json::from_slice(&api.ask("GET", path, b"").body).unwrap()
 }
 
@@ -70,7 +70,7 @@ impl Rig {
         let theme = if dark { Theme::dark() } else { Theme::light() };
         let (pw, ph) = preview::min_size_px((w, h));
         let mut r = Renderer::offscreen(pw, ph, 1.0).expect("offscreen renderer");
-        let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, LauncherHome::new(Bridge::inline(backend), Calendar::fixed()), true);
+        let mut app = outpost_tools::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, LauncherHome::new(Bridge::inline(backend), Calendar::fixed()), true);
         app.start(&mut r);
         app.event(Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
         app.event(Event::Window { maximized: false });
@@ -206,7 +206,7 @@ pub fn board_api() -> Arc<FakeApi> {
     for (id, name, days, mods) in [("plain", "Plain 26.3", 14, 0), ("friday", "Friday server pack from L\u{e9}a, with shaders and a minimap", 31, 41)] {
         v["profiles"].as_array_mut().unwrap().push(json!({
             "id": id, "name": name, "memoryMb": 4096, "javaArgs": "", "gameDir": format!("C:/Code/{id}"),
-            "lastPlayed": launcher_native::fake::FIXED_NOW_MS - days * day, "playedSeconds": 0, "running": false, "worlds": [],
+            "lastPlayed": outpost_tools::fake::FIXED_NOW_MS - days * day, "playedSeconds": 0, "running": false, "worlds": [],
             "open": {"kind": "menu", "target": ""}, "mods": mods, "updates": 0
         }));
     }

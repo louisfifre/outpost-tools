@@ -5,8 +5,8 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::{FakeApi, fixture};
-use launcher_native::pages::Page;
+use outpost_tools::fake::{FakeApi, fixture};
+use outpost_tools::pages::Page;
 use mere_base::{App, Button, Cmd, Event, Key, Vec2};
 use serde_json::{Value, json};
 
@@ -19,7 +19,7 @@ fn board_pc() -> Arc<FakeApi> {
     v["profiles"][1]["minMemoryMb"] = json!(2048);
     api.set_get("/api/profiles", v);
     // The bar shows the account's face before its name (the boards).
-    launcher_native::fake::with_accounts(&api);
+    outpost_tools::fake::with_accounts(&api);
     api
 }
 
@@ -31,7 +31,7 @@ fn page(w: u32, h: u32) -> Rig {
     rig
 }
 
-fn ids(rig: &Rig) -> launcher_native::pages::profile::Ids {
+fn ids(rig: &Rig) -> outpost_tools::pages::profile::Ids {
     rig.home().pages.profile.ids.clone()
 }
 
@@ -110,7 +110,7 @@ fn b3_remove_and_undo() {
     let sodium = ids(&rig).lines[0].clone();
     assert_eq!(sodium.mod_id, "sodium");
     // The api's list after the removal.
-    let mut after = launcher_native::fake::exploration_mods();
+    let mut after = outpost_tools::fake::exploration_mods();
     after["mods"].as_array_mut().unwrap().remove(0);
     rig.api.set_get("/api/mods/exploration", after);
     rig.click(sodium.remove);
@@ -119,7 +119,7 @@ fn b3_remove_and_undo() {
     assert!(rig.says("Sodium removed.") && rig.says("Undo") && has(&rig, "MODS \u{b7} 13") && rig.says("Update all (2)"), "{:?}", said(&rig));
     assert!(!ids(&rig).lines.iter().any(|l| l.mod_id == "sodium"));
     rig.write("profile_b3_1400.png");
-    rig.api.set_get("/api/mods/exploration", launcher_native::fake::exploration_mods());
+    rig.api.set_get("/api/mods/exploration", outpost_tools::fake::exploration_mods());
     rig.click(ids(&rig).undo);
     assert_eq!(rig.api.last_body("POST", "/api/mods/exploration/restore"), Some(json!({"mod": "sodium"})));
     assert!(!rig.says("Sodium removed.") && has(&rig, "MODS \u{b7} 14"), "the line closes when the mod is back");
@@ -150,7 +150,7 @@ fn b4_updates_links_and_add() {
 #[test]
 fn b5_update_all_waits_for_several() {
     let api = board_pc();
-    let mut v = launcher_native::fake::exploration_mods();
+    let mut v = outpost_tools::fake::exploration_mods();
     for m in v["mods"].as_array_mut().unwrap().iter_mut().skip(1) {
         m["latest"] = Value::Null;
     }
@@ -291,12 +291,12 @@ fn m3_the_words_never_overlap() {
 /// The sizes are read in gigabytes with one decimal at most: half gigabytes show their half, whole ones show no decimal.
 #[test]
 fn m4_sizes_read_in_gigabytes_with_one_decimal() {
-    assert_eq!(launcher_native::text::gb(2048), "2");
-    assert_eq!(launcher_native::text::gb(2560), "2.5");
-    assert_eq!(launcher_native::text::gb(6656), "6.5");
-    assert_eq!(launcher_native::text::gb(1536), "1.5");
-    assert_eq!(launcher_native::text::gb(1000), "1");
-    assert_eq!(launcher_native::text::gb(5222), "5.1");
+    assert_eq!(outpost_tools::text::gb(2048), "2");
+    assert_eq!(outpost_tools::text::gb(2560), "2.5");
+    assert_eq!(outpost_tools::text::gb(6656), "6.5");
+    assert_eq!(outpost_tools::text::gb(1536), "1.5");
+    assert_eq!(outpost_tools::text::gb(1000), "1");
+    assert_eq!(outpost_tools::text::gb(5222), "5.1");
     let mut rig = page(1400, 940);
     drag(&mut rig, 6.0, 6.5);
     assert!(rig.says("max 6.5 GB"), "{:?}", said(&rig));

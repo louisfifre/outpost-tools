@@ -12,9 +12,9 @@ use std::sync::Arc;
 use common::*;
 use launcher::api::Api;
 use launcher::api::mods::{self, canned::Canned};
-use launcher_native::ORIGIN;
-use launcher_native::bridge::Backend;
-use launcher_native::fake::FakeApi;
+use outpost_tools::ORIGIN;
+use outpost_tools::bridge::Backend;
+use outpost_tools::fake::FakeApi;
 use mere_base::{App, Vec2};
 use serde_json::{Value, json};
 

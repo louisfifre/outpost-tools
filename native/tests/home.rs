@@ -24,7 +24,7 @@ fn settings_of_exploration(rig: &mut Rig) {
 /// H1: the first frame asks for the profiles and the server; the profile played last is above.
 #[test]
 fn h1_the_first_frame_asks_and_orders() {
-    let mut rig = Rig::with_api(std::sync::Arc::new(launcher_native::fake::fixture()), 1400, 940, true, false);
+    let mut rig = Rig::with_api(std::sync::Arc::new(outpost_tools::fake::fixture()), 1400, 940, true, false);
     rig.frame();
     assert_eq!(rig.api.count("GET", "/api/profiles"), 1);
     assert_eq!(rig.api.count("GET", "/api/server"), 1);
@@ -54,7 +54,7 @@ fn h3_play_and_the_follow() {
     rig.click(ids[1].play);
     assert_eq!(rig.api.count("POST", "/api/launch/atelier"), 0);
     // A press on the disabled Play falls to the line, which opens the profile's page: back to Home.
-    assert_eq!(rig.home().page(), Some(&launcher_native::pages::Page::Profile("atelier".into())));
+    assert_eq!(rig.home().page(), Some(&outpost_tools::pages::Page::Profile("atelier".into())));
     let back = rig.home().ids().back;
     rig.click(back);
     // The page's every second, from the click (clock 1.0): 12 s on, the game is loading.
@@ -108,7 +108,7 @@ fn h5_refused_then_locked() {
 /// H6: Prism running: the four fields are disabled and the note says why.
 #[test]
 fn h6_locked_fields() {
-    let api = std::sync::Arc::new(launcher_native::fake::fixture());
+    let api = std::sync::Arc::new(outpost_tools::fake::fixture());
     with_server_profile(&api);
     let mut v = api_get(&api, "/api/profiles");
     v["locked"] = json!(true);
@@ -211,7 +211,7 @@ fn h9c_a_stop_that_does_not_end_the_server_releases_the_button_after_30_s() {
 #[test]
 fn h9d_an_unreadable_pack_says_why_until_it_is_read() {
     const WHY: &str = "scripts/common.ps1 could not be read: The term 'Find-Prism' is not recognized.";
-    let api = std::sync::Arc::new(launcher_native::fake::fixture());
+    let api = std::sync::Arc::new(outpost_tools::fake::fixture());
     let (profiles, server) = (api_get(&api, "/api/profiles"), api_get(&api, "/api/server"));
     api.set_get_status("/api/profiles", 503, json!({"error": WHY}));
     api.set_get_status("/api/server", 503, json!({"error": WHY}));
@@ -313,7 +313,7 @@ fn h14_only_the_fake_is_asked() {
 /// Home. A press on the Play button is the button's alone.
 #[test]
 fn n1_a_profile_line_opens_its_page_and_back_returns() {
-    use launcher_native::pages::Page;
+    use outpost_tools::pages::Page;
     let mut rig = Rig::new(1400, 940, true);
     assert_eq!(rig.home().page(), None);
     let play = rig.home().ids().rows[0].play;
@@ -341,7 +341,7 @@ fn n1_a_profile_line_opens_its_page_and_back_returns() {
 /// and Back leaves one at a time. The set-up has no title line.
 #[test]
 fn n2_pages_stack_and_back_pops_one() {
-    use launcher_native::pages::Page;
+    use outpost_tools::pages::Page;
     let mut rig = Rig::new(1400, 940, true);
     open_server(&mut rig);
     assert_eq!(rig.home().page(), Some(&Page::Server));
@@ -352,7 +352,7 @@ fn n2_pages_stack_and_back_pops_one() {
     assert_eq!(rig.home().page(), None);
     open_profile(&mut rig, "exploration");
     // The page that adds a mod is pushed over it (by the profile screen's own action, once it has one).
-    let mut home = launcher_native::home::LauncherHome::new(launcher_native::bridge::Bridge::inline(std::sync::Arc::new(launcher_native::fake::fixture())), launcher_native::home::Calendar::fixed());
+    let mut home = outpost_tools::home::LauncherHome::new(outpost_tools::bridge::Bridge::inline(std::sync::Arc::new(outpost_tools::fake::fixture())), outpost_tools::home::Calendar::fixed());
     preview::Home::poll(&mut home, 0.0, true);
     home.open(Page::Profile("exploration".into()));
     home.open(Page::AddMod("exploration".into()));
@@ -368,9 +368,9 @@ fn n2_pages_stack_and_back_pops_one() {
 /// N3: every page draws, in the shell: the add-a-mod page's title says the profile, the set-up has no title line.
 #[test]
 fn n3_every_page_draws_in_the_shell() {
-    use launcher_native::pages::Page;
+    use outpost_tools::pages::Page;
     for (page, title) in [(Page::AddMod("exploration".into()), Some("Add a mod to Exploration")), (Page::Setup, None), (Page::Server, Some("Dev server"))] {
-        let api = std::sync::Arc::new(launcher_native::fake::fixture());
+        let api = std::sync::Arc::new(outpost_tools::fake::fixture());
         let mut home = loaded_home(api);
         home.open(page.clone());
         let state = preview::PreviewState { mode: Mode::Home, reduce_motion: true, ..preview::PreviewState::default() };

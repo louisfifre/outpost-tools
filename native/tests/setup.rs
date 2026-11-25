@@ -5,8 +5,8 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::{FakeApi, fixture, java_downloading, java_missing, java_present};
-use launcher_native::pages::Page;
+use outpost_tools::fake::{FakeApi, fixture, java_downloading, java_missing, java_present};
+use outpost_tools::pages::Page;
 use mere_base::{App, Event, Vec2};
 use mere_ui::Theme;
 use mere_win32::Renderer;
@@ -25,7 +25,7 @@ fn setup_rig(api: Arc<FakeApi>, w: u32, h: u32) -> Rig {
         home.open(Page::Setup);
     }
     let mut r = Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
-    let mut app = launcher_native::app(theme, true, Vec2::new(w as f32, h as f32), None::<World>, None, home, true);
+    let mut app = outpost_tools::app(theme, true, Vec2::new(w as f32, h as f32), None::<World>, None, home, true);
     app.start(&mut r);
     app.event(Event::Resized { width_px: w, height_px: h, scale: 1.0 });
     app.set_clock(Some(1.0));
@@ -129,7 +129,7 @@ fn bar_words(rig: &Rig) -> Vec<String> {
 fn the_app_opens_on_the_set_up_when_java_is_missing_and_on_home_otherwise() {
     let api = Arc::new(fixture());
     java_missing(&api, 51 * MB);
-    launcher_native::fake::with_accounts(&api);
+    outpost_tools::fake::with_accounts(&api);
     let mut rig = Rig::with_api(api, 1400, 940, true, true);
     assert_eq!(rig.home().page(), Some(&Page::Setup), "no Java 25: the set-up first");
     assert_eq!(rig.api.count("GET", "/api/java/found"), 1);
@@ -163,7 +163,7 @@ fn an_unknown_answer_leaves_home_and_later_is_not_asked_again() {
 fn the_bar_has_no_tools_and_no_account_while_the_set_up_shows() {
     let api = Arc::new(fixture());
     java_missing(&api, 51 * MB);
-    launcher_native::fake::with_accounts(&api);
+    outpost_tools::fake::with_accounts(&api);
     let mut rig = Rig::with_api(api, 1400, 940, true, true);
     assert_eq!(rig.home().page(), Some(&Page::Setup));
     let words = bar_words(&rig);

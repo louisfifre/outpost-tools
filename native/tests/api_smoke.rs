@@ -4,8 +4,8 @@
 
 use launcher::api::Api;
 use launcher::api::servers::{META_FILE, eula_accepted};
-use launcher_native::ORIGIN;
-use launcher_native::bridge::Backend;
+use outpost_tools::ORIGIN;
+use outpost_tools::bridge::Backend;
 
 #[test]
 fn the_real_api_answers_a_ping_and_a_miss_in_process() {
