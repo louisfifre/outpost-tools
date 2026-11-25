@@ -370,6 +370,11 @@ impl LauncherHome {
         self.profiles.iter().find(|p| Some(&p.id) == id.as_ref()).map(|p| p.name.clone()).unwrap_or_default()
     }
 
+    /// The poll's clock, in seconds.
+    pub(crate) fn now(&self) -> f64 {
+        self.now
+    }
+
     /// What the page that adds a mod asks of the api, done after the build like the rest.
     pub(crate) fn ask_mods(&mut self, ask: pages::add_mod::Ask) {
         self.wants.push(Want::Mods(ask));
@@ -1213,6 +1218,7 @@ impl Home for LauncherHome {
                 wanted = true;
             }
             wanted |= pages::setup::poll(self, now);
+            wanted |= pages::add_mod::poll(self, now);
             // A stand-in for the page's reload on window focus (its `focus` listener): mere_base has no such event.
             if now >= self.next_profiles && !self.asking(&Tag::Profiles) {
                 self.load_profiles();
@@ -1242,6 +1248,7 @@ impl Home for LauncherHome {
             due.push(self.next_server);
             due.push(self.next_profiles);
             due.extend(pages::setup::due(self));
+            due.extend(pages::add_mod::due(self));
         }
         if self.launching.as_ref().is_some_and(|l| !l.over) {
             if self.next_launch.is_finite() {

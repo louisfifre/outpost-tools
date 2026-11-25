@@ -118,6 +118,8 @@ pub struct Api {
     // How many mods have a newer version, per profile, as the last look at Modrinth found them (mods.rs). Home reads
     // it with the profiles and never asks the network: a profile not looked at yet has no entry.
     updates_seen: Mutex<HashMap<String, usize>>,
+    // What the page that adds a mod asked of Modrinth lately, and the order of its searches (api/mods/search.rs).
+    searches: mods::Searches,
 }
 
 impl Api {
@@ -134,6 +136,7 @@ impl Api {
             machine_mb,
             log,
             updates_seen: Mutex::new(HashMap::new()),
+            searches: mods::Searches::default(),
         }
     }
 

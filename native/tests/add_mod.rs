@@ -86,20 +86,74 @@ fn b4_the_list_and_what_came_with_a_mod() {
     rig.write("add_mod_b4_1400.png");
 }
 
-/// Typing filters: the search asks with the query and shows its answer.
+/// Typing filters: the page waits for a pause in the typing, asks once with the query and shows its answer.
 #[test]
-fn typing_searches_and_the_list_shows_its_answer() {
+fn typing_waits_for_a_pause_then_searches_once() {
     let api = api();
     let mut rig = on_the_page(api.clone(), 1400, 940);
     assert!(rig.says("Continuity"));
+    let before = api.count("POST", "/api/mods/search");
     api.set_post("/api/mods/search", 200, json!({"mods": [found("sodium", "Sodium", "A faster renderer for the game.", "0.7.1", "update", "0.7.3")]}));
-    // The field has the keyboard when the page opens.
+    // The field has the keyboard when the page opens. Each key comes 0.1 s after the one before: no ask while it goes on.
     for ch in "sod".chars() {
         rig.app.event(Event::Char { ch });
+        rig.set_clock(rig.clock + 0.1);
         rig.frame();
     }
+    assert_eq!(api.count("POST", "/api/mods/search"), before, "no ask while the keys follow one another");
+    assert!(rig.says("Continuity"), "the list is still the old one");
+    // The pause is over 0.3 s after the last key.
+    rig.set_clock(rig.clock + 0.35);
+    rig.frame();
+    assert_eq!(api.count("POST", "/api/mods/search"), before + 1, "one ask for the three keys");
     assert_eq!(api.last_body("POST", "/api/mods/search").unwrap(), json!({"profile": "exploration", "query": "sod"}));
     assert!(rig.says("Sodium") && !rig.says("Continuity"), "{}", said(&rig));
+    // Nothing more is asked afterwards.
+    rig.set_clock(rig.clock + 2.0);
+    rig.frame();
+    assert_eq!(api.count("POST", "/api/mods/search"), before + 1);
+}
+
+/// The page tells the loop when the pause ends, so that the window wakes for it.
+#[test]
+fn the_page_wakes_the_window_for_the_end_of_the_pause() {
+    use preview::Home;
+    let api = api();
+    let mut rig = on_the_page(api, 1400, 940);
+    rig.app.event(Event::Char { ch: 's' });
+    rig.frame();
+    let wake = rig.home().wake_in(rig.clock).expect("a wake is due");
+    assert!(wake > 0.2 && wake <= 0.3, "{wake}");
+}
+
+/// An answer to words the field no longer holds is dropped.
+#[test]
+fn an_old_answer_does_not_replace_a_newer_one() {
+    use launcher_native::bridge::{Done, Tag};
+    use launcher_native::pages::add_mod::{Ask, done};
+    let mut home = loaded_home(api());
+    home.open(Page::Profile("exploration".into()));
+    home.open(Page::AddMod("exploration".into()));
+    let answer = |query: &str, title: &str| Done {
+        tag: Tag::Mods(Ask::Search(query.into())),
+        status: 200,
+        body: json!({"mods": [found("m", title, "d", "1.0.0", "add", "")]}),
+    };
+    home.pages.add_mod.query = "sod".into();
+    // The answer to "sod" comes first, then the late answer to "so": the late one is dropped.
+    done(&mut home, Ask::Search("sod".into()), &answer("sod", "Sodium"));
+    done(&mut home, Ask::Search("so".into()), &answer("so", "Something else"));
+    assert_eq!(home.pages.add_mod.found.len(), 1);
+    assert_eq!(home.pages.add_mod.found[0].title, "Sodium");
+    // An answer the api itself calls stale is dropped, whatever its query.
+    let stale = Done { tag: Tag::Mods(Ask::Search("sod".into())), status: 200, body: json!({"stale": true}) };
+    done(&mut home, Ask::Search("sod".into()), &stale);
+    assert_eq!(home.pages.add_mod.found[0].title, "Sodium");
+    // A late failure of an older query says nothing either.
+    let failed = Done { tag: Tag::Mods(Ask::Search("s".into())), status: 503, body: json!({"error": "offline"}) };
+    done(&mut home, Ask::Search("s".into()), &failed);
+    assert_eq!(home.pages.add_mod.found[0].title, "Sodium");
+    assert!(home.pages.add_mod.note.is_empty());
 }
 
 /// Nothing found, and a failure of Modrinth, say one sentence and show no line.

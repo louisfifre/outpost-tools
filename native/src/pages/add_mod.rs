@@ -8,11 +8,15 @@
 //! for the tests).
 //!   POST /api/mods/search {profile, query}  -> {mods: [{id, title, description, version, url, state, newVersion}]}
 //!        `state` is "add", "added" or "update"; `version` is the profile's when it has the mod, else the one to add.
+//!        {stale: true} instead when a newer search overtook this one on the api's side: the page drops it.
 //!   POST /api/mods/add {profile, mod}       -> {added: [{id, title, version, neededBy}]}  (the mod, then what it needs)
 //!   POST /api/mods/update {profile, mod}    -> {}
 //!   POST /api/mods/file {profile}           -> {}  (the api asks for the file, adds it as it is; {} too when none is chosen)
 //!   POST /api/mods/open {url}               -> {}  (opens a page of Modrinth in the browser)
 //! A failure is an `error` sentence with its status, shown under the search.
+//!
+//! Typing does not ask at each key: the page waits `PAUSE` seconds after the last one, then asks once for what the
+//! field holds. An answer to a query the field no longer holds is dropped, so an old answer never replaces a newer one.
 
 use std::sync::OnceLock;
 
@@ -24,10 +28,13 @@ use serde_json::{Value, json};
 
 use crate::bridge::{Done, Tag};
 use crate::home::LauncherHome;
+use crate::pages::Page;
 use crate::text;
 
 /// The page's width.
 pub const WIDTH: f32 = 760.0;
+/// How long the field stays quiet, in seconds, before the page asks for what it holds.
+pub const PAUSE: f64 = 0.3;
 /// The search field's width: 48 characters of the body text (board B4).
 pub const FIELD_W: f32 = 346.0;
 
@@ -100,6 +107,8 @@ pub struct State {
     pub busy: Vec<String>,
     /// One sentence under the search: why there is no list.
     pub note: String,
+    /// When the search for the field's words is asked, on the poll's clock: set by a key, cleared by the ask.
+    due: Option<f64>,
     focus: bool,
 }
 
@@ -113,9 +122,28 @@ pub fn opened(home: &mut LauncherHome) {
     home.ask_mods(Ask::Search(String::new()));
 }
 
+/// When the page next asks, on the poll's clock; None when no key waits for its pause.
+pub(crate) fn due(home: &LauncherHome) -> Option<f64> {
+    matches!(home.page(), Some(Page::AddMod(_))).then_some(home.pages.add_mod.due).flatten()
+}
+
+/// Asks for what the field holds once its pause is over; true when it asked.
+pub(crate) fn poll(home: &mut LauncherHome, now: f64) -> bool {
+    if !due(home).is_some_and(|d| now >= d) {
+        return false;
+    }
+    let query = home.pages.add_mod.query.clone();
+    act(home, Ask::Search(query));
+    true
+}
+
 /// Does what the build asked, with the profile the page is about.
 pub fn act(home: &mut LauncherHome, ask: Ask) {
     let Some(profile) = home.current() else { return };
+    if matches!(ask, Ask::Search(_)) {
+        // Whatever the ask came from, the words are on their way: no key's pause is left to ask them again.
+        home.pages.add_mod.due = None;
+    }
     let (path, body) = match &ask {
         Ask::Search(query) => ("/api/mods/search", json!({"profile": profile, "query": query})),
         Ask::Add(id) => ("/api/mods/add", json!({"profile": profile, "mod": id})),
@@ -133,7 +161,7 @@ pub fn done(home: &mut LauncherHome, ask: Ask, d: &Done) {
         Ask::Search(query) => {
             let state = &mut home.pages.add_mod;
             // An answer to a query the field no longer holds is out of date.
-            if query.trim() != state.query.trim() {
+            if query.trim() != state.query.trim() || d.body["stale"].as_bool() == Some(true) {
                 return;
             }
             if ok {
@@ -196,12 +224,12 @@ pub fn build(home: &mut LauncherHome, ui: &mut Ui) {
 fn search_bar(home: &mut LauncherHome, ui: &mut Ui) {
     let bar = Style { align_items: Align::Center, gap: Vec2::new(GAP_WIDE, 0.0), pad: Edges::new(0.0, 0.0, GAP, 0.0), w: Dim::Pct(100.0), ..Style::default() };
     ui.node("bar", bar, |ui| {
+        let now = home.now();
         let state = &mut home.pages.add_mod;
         let opts = FieldOpts { placeholder: text::SEARCH_MODRINTH, width: Dim::Px(FIELD_W), focus: std::mem::take(&mut state.focus), ..FieldOpts::default() };
         let r = ui.text_field("search", &mut state.query, opts);
-        let query = state.query.clone();
         if r.changed {
-            home.ask_mods(Ask::Search(query));
+            state.due = Some(now + PAUSE);
         }
         ui.node("gap", Style { grow: 1.0, ..Style::default() }, |_| {});
         if ui.action("file", text::ADD_A_FILE, ActionLook::Underlined).clicked {

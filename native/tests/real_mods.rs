@@ -166,9 +166,14 @@ fn setup(name: &str, installed: &[&str], by_hand: bool, hits: &[&str]) -> Setup 
         .iter()
         .map(|slug| {
             let e = entry_of(slug);
-            json!({ "project_id": e.slug, "slug": e.slug, "title": e.title, "description": e.description, "client_side": "required", "server_side": "required" })
+            let newest = e.latest.unwrap_or(e.version);
+            json!({ "project_id": e.slug, "slug": e.slug, "title": e.title, "description": e.description, "client_side": "required", "server_side": "required",
+                    "latest_version": format!("v-{}-{newest}", e.slug) })
         })
         .collect();
+    // Each hit names its newest version; Modrinth answers them all in one call.
+    let newest: Vec<Value> = CATALOG.iter().map(|e| version_of(e.slug, e.latest.unwrap_or(e.version), "2026-11-01T00:00:00Z")).collect();
+    net.when_get("/versions?ids=", Value::Array(newest).to_string());
     net.when_get("/search", json!({ "hits": found, "total_hits": found.len() }).to_string());
 
     let api = Arc::new(Api::new(root.join("repo"), ORIGIN.to_string()));
@@ -312,10 +317,21 @@ fn typing_searches_modrinth_for_the_profiles_game() {
     rig.frame();
     rig.click(rig.home().pages.profile.ids.add_mod);
     rig.frame();
+    let before = world.net.requests().iter().filter(|r| r.contains("/search")).count();
     for ch in "map".chars() {
         rig.app.event(mere_base::Event::Char { ch });
+        rig.set_clock(rig.clock + 0.05);
         rig.frame();
     }
+    // Three keys in quick succession ask nothing; the pause after them asks once.
+    assert_eq!(world.net.requests().iter().filter(|r| r.contains("/search")).count(), before);
+    rig.set_clock(rig.clock + 0.4);
+    rig.frame();
+    let asked: Vec<String> = world.net.requests().into_iter().filter(|r| r.contains("/search")).collect();
+    assert_eq!(asked.len(), before + 1, "{asked:?}");
+    // The open of the page asked the list once and the pause asked "map" once: Modrinth had two calls and two for the rows.
+    assert_eq!(world.net.requests().iter().filter(|r| r.contains("/versions?ids=")).count(), 2);
+    assert!(!world.net.requests().iter().any(|r| r.contains("/project/")), "no request per mod");
     let search = world.net.requests().into_iter().rev().find(|r| r.contains("/search")).unwrap();
     assert!(search.contains("query=map") && search.contains("versions%3A26.3") && search.contains("categories%3Afabric"), "{search}");
 }
