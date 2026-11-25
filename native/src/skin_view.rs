@@ -51,23 +51,27 @@ pub fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// The skin the api answered (`{"png": base64, "slim": bool}`); None when it is not a skin.
+/// The skin the api answered (`{"width", "height", "rgba": base64}`: the pixels, which the api reads from the picture
+/// with a full inflate: mere-png only reads the blocks its own encoder writes, not the ones Mojang's pictures hold);
+/// None when it is not a skin.
 pub fn read(body: &Value) -> Option<SkinView> {
-    let png = base64_decode(body["png"].as_str()?)?;
-    view(&png, body["slim"].as_bool().unwrap_or(false))
+    let rgba = base64_decode(body["rgba"].as_str()?)?;
+    view(body["width"].as_u64()? as u32, body["height"].as_u64()? as u32, &rgba, body["slim"].as_bool().unwrap_or(false))
 }
 
-/// The head and the player of a skin picture; None for a picture that is not a skin's size.
-pub fn view(png: &[u8], slim: bool) -> Option<SkinView> {
-    let skin = mere_png::decode(png).ok()?;
-    let old = match (skin.width, skin.height) {
+/// The head and the player of a skin's pixels; None for a picture that is not a skin's size.
+pub fn view(width: u32, height: u32, rgba: &[u8], slim: bool) -> Option<SkinView> {
+    if rgba.len() as u64 != width as u64 * height as u64 * 4 {
+        return None;
+    }
+    let old = match (width, height) {
         (64, 64) => false,
         (64, 32) => true,
         _ => return None,
     };
     let at = |x: u32, y: u32| -> [u8; 4] {
-        let i = ((y * skin.width + x) * 4) as usize;
-        [skin.rgba[i], skin.rgba[i + 1], skin.rgba[i + 2], skin.rgba[i + 3]]
+        let i = ((y * width + x) * 4) as usize;
+        [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
     };
     // A part of the skin laid on `to` at (dx, dy): its base, then its outer layer over it, mirrored for an old skin's left limb.
     let part = |to: &mut Pixels, (dx, dy): (u32, u32), (sx, sy): (u32, u32), (w, h): (u32, u32), mirror: bool| {
@@ -136,5 +140,19 @@ mod tests {
         }
         assert_eq!(base64_encode(b"Man"), "TWFu");
         assert!(base64_decode("not base64!").is_none());
+    }
+
+    #[test]
+    fn a_skin_is_read_from_the_pixels_the_api_gives() {
+        let pixels = crate::fake::sample_skin(0x4a2f1d);
+        let body = serde_json::json!({"width": 64, "height": 64, "slim": false, "rgba": base64_encode(&pixels)});
+        let skin = read(&body).expect("a skin of 64 by 64");
+        assert_eq!((skin.face.w, skin.face.h), (8, 8));
+        assert!(skin.face.rgba.chunks(4).all(|p| p[3] == 255), "the head's front is opaque");
+        assert!(skin.figure.rgba.chunks(4).any(|p| p[3] == 255));
+        // Pixels that are not the size the picture says, and a picture that is not a skin's size, are no skin.
+        assert!(read(&serde_json::json!({"width": 64, "height": 64, "rgba": base64_encode(&pixels[..100])})).is_none());
+        assert!(read(&serde_json::json!({"width": 32, "height": 32, "rgba": base64_encode(&pixels[..32 * 32 * 4])})).is_none());
+        assert!(read(&serde_json::json!({"png": "iVBORw0KGgo="})).is_none(), "the old answer with no pixels");
     }
 }
