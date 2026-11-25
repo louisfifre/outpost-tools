@@ -935,6 +935,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         let at_home = self.state.mode == Mode::Home;
         if let Some(h) = self.home.as_mut() {
             home_wants = h.poll(clock, at_home);
+            self.state.bare = h.bare_bar() && at_home;
             self.state.account = h.account();
             self.state.account_menu = h.account_menu();
         }
@@ -977,6 +978,7 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                     home_wants |= h.poll(clock, true);
                     acted = true;
                 }
+                self.state.bare = h.bare_bar() && self.state.mode == Mode::Home;
                 self.state.account = h.account();
                 self.state.account_menu = h.account_menu();
             }

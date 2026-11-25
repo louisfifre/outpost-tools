@@ -6,6 +6,8 @@
 // `Outside`, so the tests answer from a table and nothing reaches the network.
 //
 // Routes (GET answers any origin, POST only the page's own, as in api.rs):
+//   GET  /api/profiles also says, for each profile, "mods" (the jars on disk) and "updates" (how many have a newer
+//        version as the last GET below found, null until one was made): Home's line reads them, nothing is asked of Modrinth.
 //   GET  /api/mods/<profile>                  -> {gameVersion, gameVersions, fabric: {version, latest} | null,
 //                                                 mods: [{id, slug, name, version, latest}]}
 //   POST /api/mods/<profile>/remove  {mod}    -> {}   the jar is kept aside, for `restore`, until another change
@@ -221,6 +223,11 @@ fn plain_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', ':', '\0']) && name.len() < 256
 }
 
+// How many jars a game folder's `mods` holds: names only, no file is read.
+pub(super) fn jar_count(dir: &Path) -> usize {
+    fs::read_dir(dir).map(|entries| entries.flatten().filter(|e| e.path().is_file() && e.file_name().to_string_lossy().to_lowercase().ends_with(".jar")).count()).unwrap_or(0)
+}
+
 fn is_jar(name: &str) -> bool {
     plain_name(name) && name.to_lowercase().ends_with(".jar")
 }
@@ -279,6 +286,11 @@ fn relocate(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 impl Api {
+    // What the last look at Modrinth found for a profile; None when none was made (or it could not be).
+    pub(super) fn updates_seen(&self, id: &str) -> Option<usize> {
+        self.updates_seen.lock().unwrap_or_else(PoisonError::into_inner).get(id).copied()
+    }
+
     fn mods_profile(&self, id: &str) -> Result<Option<Profile>, Failure> {
         // Without the pack's folders no instance is found: say why, rather than 404.
         self.config()?;
@@ -352,7 +364,14 @@ impl Api {
         let (_, game, fabric) = profile.pack()?;
         let on_disk = jars(&profile.mods);
         let known = match inspect(outside, &on_disk, &game) {
-            Ok(known) => known,
+            Ok(known) => {
+                // A look that worked is kept for Home; one that failed leaves the last one standing.
+                let newer = known.iter().filter(|k| matches!(k.state, UpdateState::Newer { .. })).count();
+                if let Some(id) = profile.dir.file_name() {
+                    self.updates_seen.lock().unwrap_or_else(PoisonError::into_inner).insert(id.to_string_lossy().to_string(), newer);
+                }
+                known
+            }
             Err(why) => {
                 self.write_log(&format!("The mods of {} could not be looked up: {why}", profile.dir.display()));
                 on_disk.into_iter().map(|jar| Known { jar, current: None, state: UpdateState::Unknown }).collect()

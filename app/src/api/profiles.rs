@@ -94,6 +94,10 @@ impl Api {
                 "running": state.games.iter().any(|(game, _)| *game == id),
                 "worlds": worlds(&game_dir),
                 "open": open,
+                // The mods on disk (a folder read, no network) and, when a look at Modrinth was made, how many have a newer
+                // version (null before the first look): what Home's line under the profile says.
+                "mods": super::mods::jar_count(&game_dir.join("mods")),
+                "updates": self.updates_seen(&id),
             }));
         }
         // locked: Prism keeps each instance's settings in memory and writes them back while it runs, so a setting

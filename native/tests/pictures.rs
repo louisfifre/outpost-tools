@@ -148,6 +148,10 @@ fn a1_home_full() {
     let mut rig = Rig::with_api(api, 1400, 940, true, true);
     rig.hover_at(Vec2::new(5.0, 930.0));
     assert!(rig.says("stopped \u{b7} joins at localhost:25565"));
+    // The profiles' lines end with what the profile holds (the board): the updates, else the mods.
+    for line in ["yesterday \u{b7} 1.7 h played \u{b7} 3 updates", "not played yet", "2 weeks ago \u{b7} no mods", "last month \u{b7} 41 mods"] {
+        assert!(rig.says(line), "{line}: {:?}", rig.texts().iter().map(|t| t.1.clone()).collect::<Vec<_>>());
+    }
     let long = rig.texts().into_iter().find(|t| t.1.starts_with("Friday server pack")).expect("the long name is drawn");
     assert!(long.1.ends_with('\u{2026}'), "the long name is cut with an ellipsis: {:?}", long.1);
     rig.write("home_a1_1400.png");

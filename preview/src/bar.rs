@@ -221,7 +221,7 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                 }
                 // `#account` (line 84): muted, cut with an ellipsis when the free space left of the tools is narrower
                 // than it, and gone whole when even a short stub no longer fits (`overflow.rs`).
-                if let (true, Some(a)) = (form.account, s.account.clone()) {
+                if let (true, Some(a)) = (form.account && !s.bare, s.account.clone()) {
                     if s.account_menu.accounts.is_empty() {
                         ui.ellipsis(&a, TextLook::body(Tone::Muted));
                     } else {
@@ -235,6 +235,10 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
         // when the bar cannot centre them.
         let strip = Style { justify_self: if form.centred { None } else { Some(Align::Start) }, ..strip_style() };
         ids.strip = ui.node("tools", strip, |ui| {
+            // Set-up: the cell stays, so that the buttons keep their column, and holds nothing.
+            if s.bare {
+                return;
+            }
             let tool = |ui: &mut Ui, ids: &mut ShellIds, s: &mut PreviewState, which: usize| {
                 let (mode, icon) = if which == 0 { (Mode::Home, &icons.home) } else { (Mode::Preview, &icons.preview) };
                 let word = if which == 1 { marker.map(|m| text::PREVIEW_STATE[m]) } else { None };

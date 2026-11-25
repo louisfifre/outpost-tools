@@ -552,3 +552,34 @@ fn the_least_memory_is_saved_with_the_most_and_kept_within_it() {
     }
     assert_eq!(super::super::key_value::Cfg::read(&cfg).number("MinMemAlloc"), least);
 }
+
+#[test]
+fn the_profiles_say_how_many_mods_they_hold_and_how_many_the_last_look_found_newer_without_asking_the_network() {
+    let w = World::new("summary");
+    board(&w);
+    // A file that is no jar is not a mod.
+    fs::write(w.mods().join("readme.txt"), "x").unwrap();
+    let profile = |w: &World| w.get("/api/profiles").1["profiles"][0].clone();
+    // Before any look: the mods are counted from the folder, the updates are not known.
+    let first = profile(&w);
+    assert_eq!((first["mods"].clone(), first["updates"].clone()), (json!(3), Value::Null));
+    assert!(w.net.requests().is_empty(), "Home's route never asks Modrinth");
+    // The profile's page looks; Home then reads what it found.
+    w.get("/api/mods/exploration");
+    let asked = w.net.requests().len();
+    let after = profile(&w);
+    assert_eq!(after["updates"], json!(1));
+    assert_eq!(w.net.requests().len(), asked, "reading the profiles asked nothing more");
+    // Updating the one brings the count down at the next look.
+    w.post("/api/mods/exploration/update", json!({ "mod": "sodium-0.7.1.jar" }));
+    w.get("/api/mods/exploration");
+    assert_eq!(profile(&w)["updates"], json!(0));
+}
+
+#[test]
+fn a_look_that_could_not_reach_modrinth_leaves_the_updates_unknown() {
+    let w = World::new("summary-offline");
+    w.jar("sodium-0.7.1.jar", SODIUM_OLD);
+    w.get("/api/mods/exploration");
+    assert_eq!(w.get("/api/profiles").1["profiles"][0]["updates"], Value::Null, "nothing found, nothing said");
+}

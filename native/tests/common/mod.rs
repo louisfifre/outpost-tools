@@ -203,11 +203,11 @@ pub fn board_api() -> Arc<FakeApi> {
     let api = Arc::new(fixture());
     let mut v = api_get(&api, "/api/profiles");
     let day = 86_400_000i64;
-    for (id, name, days) in [("plain", "Plain 26.3", 14), ("friday", "Friday server pack from L\u{e9}a, with shaders and a minimap", 31)] {
+    for (id, name, days, mods) in [("plain", "Plain 26.3", 14, 0), ("friday", "Friday server pack from L\u{e9}a, with shaders and a minimap", 31, 41)] {
         v["profiles"].as_array_mut().unwrap().push(json!({
             "id": id, "name": name, "memoryMb": 4096, "javaArgs": "", "gameDir": format!("C:/Code/{id}"),
             "lastPlayed": launcher_native::fake::FIXED_NOW_MS - days * day, "playedSeconds": 0, "running": false, "worlds": [],
-            "open": {"kind": "menu", "target": ""}
+            "open": {"kind": "menu", "target": ""}, "mods": mods, "updates": 0
         }));
     }
     api.set_get("/api/profiles", v);

@@ -38,7 +38,7 @@ fn h1_the_first_frame_asks_and_orders() {
 #[test]
 fn h2_the_lines() {
     let rig = Rig::new(1400, 940, true);
-    assert!(rig.says("yesterday \u{b7} 1.7 h played \u{b7} opens New World"));
+    assert!(rig.says("yesterday \u{b7} 1.7 h played \u{b7} 3 updates"));
     assert!(rig.says("not played yet"));
 }
 

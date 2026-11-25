@@ -23,6 +23,7 @@ pub mod servers;
 pub mod skin;
 
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     process::Child,
@@ -114,6 +115,9 @@ pub struct Api {
     live: Mutex<Live>,
     machine_mb: u64,
     log: PathBuf,
+    // How many mods have a newer version, per profile, as the last look at Modrinth found them (mods.rs). Home reads
+    // it with the profiles and never asks the network: a profile not looked at yet has no entry.
+    updates_seen: Mutex<HashMap<String, usize>>,
 }
 
 impl Api {
@@ -129,6 +133,7 @@ impl Api {
             live: Mutex::new(Live { launch: None, server: None, preview: None, system }),
             machine_mb,
             log,
+            updates_seen: Mutex::new(HashMap::new()),
         }
     }
 
@@ -210,6 +215,7 @@ impl Api {
                     Reply::json(200, self.server_info(&mut live)?)
                 }
                 "/api/java" => self.java_state(),
+                "/api/java/found" => self.java_found(),
                 "/api/ping" => Reply::empty(200),
                 // The mods of a profile (api/mods.rs).
                 mods if mods.starts_with("/api/mods/") => self.mods_get(mods)?,
