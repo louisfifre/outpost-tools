@@ -62,6 +62,8 @@ pub enum Tag {
     AccountSignOut,
     /// The first start's Java step: its state, the start of its download, its stop.
     Java,
+    /// Whether a Java 25 is on the PC, asked once at the start (files only): none opens the set-up before Home.
+    JavaFound,
     JavaStart,
     JavaStop,
 }

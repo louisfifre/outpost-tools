@@ -5,7 +5,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use launcher_native::fake::{FakeApi, fixture, java_downloading, java_missing};
+use launcher_native::fake::{FakeApi, fixture, java_downloading, java_missing, java_present};
 use launcher_native::pages::Page;
 use mere_base::{App, Event, Vec2};
 use mere_ui::Theme;
@@ -20,7 +20,10 @@ fn setup_rig(api: Arc<FakeApi>, w: u32, h: u32) -> Rig {
     let theme = Theme::dark();
     let mut home = home_over(api.clone());
     home.poll(0.0, true);
-    home.open(Page::Setup);
+    // With no Java the app opens on the set-up by itself; a fake that says nothing of it is put there by hand.
+    if home.page() != Some(&Page::Setup) {
+        home.open(Page::Setup);
+    }
     let mut r = Renderer::offscreen(w, h, 1.0).expect("offscreen renderer");
     let mut app = launcher_native::app(theme, true, Vec2::new(w as f32, h as f32), None::<World>, None, home, true);
     app.start(&mut r);
@@ -113,4 +116,68 @@ fn an_unreachable_adoptium_is_said() {
     api.set_get("/api/java", serde_json::json!({"state": "missing", "error": "Adoptium could not be reached: offline"}));
     let rig = setup_rig(api, 1400, 940);
     assert!(rig.says("Adoptium could not be reached: offline") && rig.says("Download Java 25"));
+}
+
+/// The words the top bar shows.
+fn bar_words(rig: &Rig) -> Vec<String> {
+    rig.texts().into_iter().filter(|(at, _, _)| at.y < 40.0).map(|t| t.1).collect()
+}
+
+/// The app opens on the set-up when no Java 25 is on the PC, and on Home when there is one; the answer is asked of the
+/// files alone, never the network (`/api/java/found`, not `/api/java`).
+#[test]
+fn the_app_opens_on_the_set_up_when_java_is_missing_and_on_home_otherwise() {
+    let api = Arc::new(fixture());
+    java_missing(&api, 51 * MB);
+    launcher_native::fake::with_accounts(&api);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    assert_eq!(rig.home().page(), Some(&Page::Setup), "no Java 25: the set-up first");
+    assert_eq!(rig.api.count("GET", "/api/java/found"), 1);
+    assert!(rig.says("Outpost Tools needs Java 25 to run the game."));
+
+    let api = Arc::new(fixture());
+    java_present(&api);
+    let rig = Rig::with_api(api, 1400, 940, true, true);
+    assert_eq!(rig.home().page(), None, "a Java 25 is there: Home");
+    assert!(rig.says("Exploration"));
+}
+
+/// An answer the app cannot read leaves Home, and the set-up opens once only: Later leaves it for good.
+#[test]
+fn an_unknown_answer_leaves_home_and_later_is_not_asked_again() {
+    let rig = Rig::with_api(Arc::new(fixture()), 1400, 940, true, true);
+    assert_eq!(rig.home().page(), None);
+    let api = Arc::new(fixture());
+    java_missing(&api, 51 * MB);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    let at = rig.texts().into_iter().find(|t| t.1 == "Later").unwrap().0;
+    rig.click_at(Vec2::new(at.x + 4.0, at.y + 4.0));
+    assert_eq!(rig.home().page(), None);
+    rig.wait(30.0);
+    assert_eq!(rig.home().page(), None, "the set-up is not pushed again");
+    assert_eq!(rig.api.count("GET", "/api/java/found"), 1);
+}
+
+/// E1 and E2: while the set-up shows, the bar holds the brand and the window's buttons only: no tools, no account.
+#[test]
+fn the_bar_has_no_tools_and_no_account_while_the_set_up_shows() {
+    let api = Arc::new(fixture());
+    java_missing(&api, 51 * MB);
+    launcher_native::fake::with_accounts(&api);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    assert_eq!(rig.home().page(), Some(&Page::Setup));
+    let words = bar_words(&rig);
+    assert!(words.contains(&"OUTPOST TOOLS".to_string()), "the brand stays: {words:?}");
+    for gone in ["Home", "Preview", "PlayerOne"] {
+        assert!(!words.contains(&gone.to_string()), "{gone} is not in the bar: {words:?}");
+    }
+    rig.hover_at(Vec2::new(5.0, 930.0));
+    rig.write("setup_e1_bare_bar_1400.png");
+    // Leaving the set-up brings them back.
+    let at = rig.texts().into_iter().find(|t| t.1 == "Later").unwrap().0;
+    rig.click_at(Vec2::new(at.x + 4.0, at.y + 4.0));
+    let words = bar_words(&rig);
+    for back in ["Home", "Preview", "PlayerOne"] {
+        assert!(words.contains(&back.to_string()), "{back} is back in the bar: {words:?}");
+    }
 }

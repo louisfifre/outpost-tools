@@ -678,6 +678,13 @@ impl LauncherHome {
                 self.send(Tag::Accounts, "GET", "/api/accounts", None);
             }
             Tag::Java | Tag::JavaStart | Tag::JavaStop => pages::setup::done(self, d),
+            // The first start: no Java 25 puts the set-up before Home (a person who got somewhere meanwhile is left
+            // where they are). An answer that is not understood leaves Home: the set-up is reachable by what it needs.
+            Tag::JavaFound => {
+                if d.status == 200 && d.body["found"] == json!(false) && self.stack.is_empty() {
+                    self.open(Page::Setup);
+                }
+            }
         }
     }
 
@@ -1186,6 +1193,7 @@ impl Home for LauncherHome {
         // The first look at both, whatever tool shows (the page's `Promise.all` of `load`, `loadServer` and `loadModes`).
         if !self.started {
             self.started = true;
+            self.send(Tag::JavaFound, "GET", "/api/java/found", None);
             self.load_profiles();
             self.load_server();
             wanted = true;
@@ -1249,6 +1257,11 @@ impl Home for LauncherHome {
 
     fn account(&self) -> Option<String> {
         self.account.clone()
+    }
+
+    /// The set-up stands before Home: no tools and no account in the bar (boards E1 and E2).
+    fn bare_bar(&self) -> bool {
+        self.page() == Some(&Page::Setup)
     }
 
     fn account_menu(&self) -> Arc<AccountMenu> {

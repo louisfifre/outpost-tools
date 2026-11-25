@@ -236,6 +236,9 @@ pub struct PreviewState {
     pub account_menu: Arc<crate::home::AccountMenu>,
     pub account_open: bool,
     pub account_ask: Option<crate::home::AccountAsk>,
+    /// Home shows its first-start set-up (`Home::bare_bar`): the bar keeps only the brand's cube and name and the window's
+    /// buttons, with no tools and no account.
+    pub bare: bool,
     /// The tools' options sliding open and shut (launcher line 124), 1 being open. Kept in step with `mode`: a
     /// state that names a mode without it is put right when the bar is built.
     pub options: Slide,
@@ -317,6 +320,7 @@ impl Default for PreviewState {
             account_menu: Arc::default(),
             account_open: false,
             account_ask: None,
+            bare: false,
             options: Slide::settled(true),
             options_w: 0.0,
             reduce_motion: false,

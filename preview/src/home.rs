@@ -64,5 +64,10 @@ pub trait Home {
     }
     /// What the person asked of the account menu; acted on by the next `act`.
     fn account_ask(&mut self, _ask: AccountAsk) {}
+    /// The first-start set-up shows (boards E1 and E2): the bar then holds only the brand and the window's buttons, no
+    /// tools and no account, since there is nothing yet to switch to or to sign in as.
+    fn bare_bar(&self) -> bool {
+        false
+    }
     fn as_any(&self) -> &dyn std::any::Any;
 }

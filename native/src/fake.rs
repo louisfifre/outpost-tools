@@ -238,8 +238,15 @@ pub fn board_servers(api: &FakeApi) {
 /// The Java step of the first start (`/api/java`): no Java on the PC, a download of `size` bytes on offer.
 pub fn java_missing(api: &FakeApi, size: u64) {
     api.set_get("/api/java", json!({"state": "missing", "size": size}));
+    // What the app reads at its start (`/api/java/found`): with none, it opens the set-up before Home.
+    api.set_get("/api/java/found", json!({"found": false}));
     api.set_post("/api/java/download", 200, json!({}));
     api.set_post("/api/java/stop", 200, json!({}));
+}
+
+/// A Java 25 is on the PC: the app opens on Home.
+pub fn java_present(api: &FakeApi) {
+    api.set_get("/api/java/found", json!({"found": true, "version": "25.0.5"}));
 }
 
 /// The same step while the download runs, `done` bytes of `total` in.

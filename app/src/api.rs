@@ -215,6 +215,7 @@ impl Api {
                     Reply::json(200, self.server_info(&mut live)?)
                 }
                 "/api/java" => self.java_state(),
+                "/api/java/found" => self.java_found(),
                 "/api/ping" => Reply::empty(200),
                 // The mods of a profile (api/mods.rs).
                 mods if mods.starts_with("/api/mods/") => self.mods_get(mods)?,
