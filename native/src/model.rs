@@ -286,14 +286,19 @@ pub fn folder_tail(dir: &str) -> String {
     if parts.len() > 2 { format!("\u{2026}\\{}", parts[parts.len() - 2..].join("\\")) } else { dir.to_string() }
 }
 
-/// `Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(days, 'day')`.
+/// When, the way the boards say it (A1): the days up to a week, then weeks ("last week", "2 weeks ago"), months ("last
+/// month") and years; what is to come stays in days. Each is `Intl.RelativeTimeFormat('en', { numeric: 'auto' })`'s way.
 pub fn relative_day(days: i64) -> String {
+    let ago = |n: i64, unit: &str| if n == 1 { format!("last {unit}") } else { format!("{n} {unit}s ago") };
     match days {
         0 => "today".into(),
         -1 => "yesterday".into(),
         1 => "tomorrow".into(),
-        d if d < 0 => format!("{} days ago", -d),
-        d => format!("in {d} days"),
+        d if d > 0 => format!("in {d} days"),
+        d if d > -7 => format!("{} days ago", -d),
+        d if d > -30 => ago((-d) / 7, "week"),
+        d if d > -365 => ago((-d) / 30, "month"),
+        d => ago((-d) / 365, "year"),
     }
 }
 
@@ -431,6 +436,10 @@ mod tests {
         assert_eq!(
             [0, -1, 1, -5, 7].map(relative_day),
             ["today", "yesterday", "tomorrow", "5 days ago", "in 7 days"].map(String::from)
+        );
+        assert_eq!(
+            [-6, -7, -13, -14, -29, -30, -31, -59, -60, -364, -365, -800].map(relative_day),
+            ["6 days ago", "last week", "last week", "2 weeks ago", "4 weeks ago", "last month", "last month", "last month", "2 months ago", "12 months ago", "last year", "2 years ago"].map(String::from)
         );
     }
 
