@@ -1003,7 +1003,7 @@ pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool 
 }
 
 /// What `#status` says (`showButton`, lines 799-802, and `tick`, 2610-2615): the clock while a run is followed, else
-/// the trouble, what was said, or that the map already shows these settings.
+/// the trouble, or what was said. Nothing when the map shows these settings: the Generate button is disabled then.
 fn status_words(s: &PreviewState) -> String {
     if let Some(f) = &s.follow {
         let elapsed = duration(f.seconds);
@@ -1020,7 +1020,7 @@ fn status_words(s: &PreviewState) -> String {
     if !s.said.is_empty() {
         return s.said.clone();
     }
-    if made_shows_form(s) { text::UP_TO_DATE.to_string() } else { String::new() }
+    String::new()
 }
 
 /// `sameAs(shown)`: the map on screen was made from what the form holds.

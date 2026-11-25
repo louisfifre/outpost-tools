@@ -33,8 +33,6 @@ pub const VIEW_ONLY_HINT: &str = "Lists only the settings that change what the p
 pub fn shown_of(shown: usize, all: usize) -> String {
     format!("{shown} of {all}")
 }
-/// Line 467.
-pub const UP_TO_DATE: &str = "The map shows these settings.";
 /// Line 464, `detailValue` of 64, 32 and 16.
 pub const DETAILS: [&str; 3] = ["64 blocks", "32 blocks", "16 blocks"];
 /// Line 462.
