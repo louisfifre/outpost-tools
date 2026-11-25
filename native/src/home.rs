@@ -209,6 +209,7 @@ enum Want {
     ServerStop,
     ServerSave,
     ServerFolder,
+    Mods(pages::add_mod::Ask),
 }
 
 pub struct LauncherHome {
@@ -308,7 +309,8 @@ impl LauncherHome {
     pub fn open(&mut self, page: Page) {
         match &page {
             Page::Profile(id) => pages::profile::open(self, id),
-            Page::AddMod(_) | Page::Server | Page::Setup => {}
+            Page::AddMod(_) => pages::add_mod::opened(self),
+            Page::Server | Page::Setup => {}
         }
         self.stack.push(page);
     }
@@ -332,6 +334,11 @@ impl LauncherHome {
     pub(crate) fn profile_name(&self) -> String {
         let id = self.current();
         self.profiles.iter().find(|p| Some(&p.id) == id.as_ref()).map(|p| p.name.clone()).unwrap_or_default()
+    }
+
+    /// What the page that adds a mod asks of the api, done after the build like the rest.
+    pub(crate) fn ask_mods(&mut self, ask: pages::add_mod::Ask) {
+        self.wants.push(Want::Mods(ask));
     }
 
     fn mem_max(&self) -> f64 {
@@ -475,6 +482,7 @@ impl LauncherHome {
                     self.say_server(&why);
                 }
             },
+            Tag::Mods(ref ask) => pages::add_mod::done(self, ask.clone(), &d),
             Tag::ServerFolder => {
                 if !ok {
                     let why = self.failure(&d);
@@ -952,6 +960,7 @@ impl Home for LauncherHome {
                 }
                 Want::ServerSave => self.save_server(),
                 Want::ServerFolder => self.send(Tag::ServerFolder, "POST", "/api/server/folder", None),
+                Want::Mods(ask) => pages::add_mod::act(self, ask),
             }
         }
         true

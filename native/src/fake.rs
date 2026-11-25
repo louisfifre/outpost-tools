@@ -113,3 +113,39 @@ pub fn exploration_mods() -> Value {
         "mods": mods
     })
 }
+
+/// One result of the search of Modrinth, as the page that adds a mod reads it.
+pub fn found(id: &str, title: &str, description: &str, version: &str, state: &str, new_version: &str) -> Value {
+    json!({"id": id, "title": title, "description": description, "version": version, "state": state, "newVersion": new_version,
+           "url": format!("https://modrinth.com/mod/{id}")})
+}
+
+/// The list the page that adds a mod shows before any search (board B4): Sodium and Lithium to update, Iris added,
+/// four to add. `mod_menu` is the state of Mod Menu; adding it brings Fabric API (`mod_menu_added`).
+pub fn mods_fixture(api: &FakeApi, mod_menu: &str) {
+    api.set_post(
+        "/api/mods/search",
+        200,
+        json!({"mods": [
+            found("sodium", "Sodium", "A faster renderer for the game.", "0.7.1", "update", "0.7.3"),
+            found("iris", "Iris Shaders", "Shaders, with Sodium.", "1.9.6", "added", ""),
+            found("modmenu", "Mod Menu", "A list of the mods in the game.", "15.0.0", mod_menu, ""),
+            found("journeymap", "JourneyMap", "A minimap and a full map of what you explored.", "6.0.0", "add", ""),
+            found("lithium", "Lithium", "Faster game logic, the same game.", "0.16.0", "update", "0.16.2"),
+            found("chatheads", "Chat Heads", "The face of each player beside their messages.", "0.13.9", "add", ""),
+            found("continuity", "Continuity", "Connected textures for glass and bookshelves.", "3.0.1", "add", ""),
+        ]}),
+    );
+}
+
+/// What adding Mod Menu answers: the mod, then Fabric API, which it needs.
+pub fn mod_menu_added(api: &FakeApi) {
+    api.set_post(
+        "/api/mods/add",
+        200,
+        json!({"added": [
+            {"id": "modmenu", "title": "Mod Menu", "version": "15.0.0", "neededBy": null},
+            {"id": "fabric-api", "title": "Fabric API", "version": "0.150.0", "neededBy": "Mod Menu"},
+        ]}),
+    );
+}

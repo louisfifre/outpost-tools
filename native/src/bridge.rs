@@ -46,6 +46,8 @@ pub enum Tag {
     /// A link opened in the browser.
     OpenUrl,
     ServerFolder,
+    /// A request of the page that adds a mod.
+    Mods(crate::pages::add_mod::Ask),
 }
 
 #[derive(Clone, Debug)]
