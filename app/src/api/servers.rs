@@ -404,13 +404,13 @@ pub fn launch_command(java: &Path, server_dir: &Path, memory_mb: u32, java_args:
 }
 
 // A running server, as far as starting and stopping need it.
-pub trait ServerProcess {
+pub trait ServerProcess: Send {
     fn send_line(&mut self, line: &str) -> io::Result<()>;
     fn has_exited(&mut self) -> io::Result<bool>;
     fn kill(&mut self) -> io::Result<()>;
 }
 
-pub trait Spawner {
+pub trait Spawner: Send + Sync {
     fn spawn(&self, command: &LaunchCommand) -> io::Result<Box<dyn ServerProcess>>;
 }
 
@@ -569,10 +569,9 @@ pub fn is_ready(server_dir: &Path, since: SystemTime) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        cell::RefCell,
-        rc::Rc,
-        sync::atomic::{AtomicU32, Ordering},
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, Ordering},
     };
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -797,15 +796,15 @@ mod tests {
 
     // A process that ends `after` polls after "stop" (never when None).
     struct Fake {
-        lines: Rc<RefCell<Vec<String>>>,
-        killed: Rc<RefCell<bool>>,
+        lines: Arc<Mutex<Vec<String>>>,
+        killed: Arc<Mutex<bool>>,
         after: Option<u32>,
         stopped_at: Option<u32>,
         polls: u32,
     }
     impl ServerProcess for Fake {
         fn send_line(&mut self, line: &str) -> io::Result<()> {
-            self.lines.borrow_mut().push(line.into());
+            self.lines.lock().unwrap().push(line.into());
             if line == "stop" {
                 self.stopped_at = Some(self.polls);
             }
@@ -813,16 +812,16 @@ mod tests {
         }
         fn has_exited(&mut self) -> io::Result<bool> {
             self.polls += 1;
-            Ok(*self.killed.borrow() || matches!((self.after, self.stopped_at), (Some(a), Some(s)) if self.polls >= s + a))
+            Ok(*self.killed.lock().unwrap() || matches!((self.after, self.stopped_at), (Some(a), Some(s)) if self.polls >= s + a))
         }
         fn kill(&mut self) -> io::Result<()> {
-            *self.killed.borrow_mut() = true;
+            *self.killed.lock().unwrap() = true;
             Ok(())
         }
     }
-    fn fake(after: Option<u32>) -> (Fake, Rc<RefCell<Vec<String>>>, Rc<RefCell<bool>>) {
-        let lines = Rc::new(RefCell::new(vec![]));
-        let killed = Rc::new(RefCell::new(false));
+    fn fake(after: Option<u32>) -> (Fake, Arc<Mutex<Vec<String>>>, Arc<Mutex<bool>>) {
+        let lines = Arc::new(Mutex::new(vec![]));
+        let killed = Arc::new(Mutex::new(false));
         (Fake { lines: lines.clone(), killed: killed.clone(), after, stopped_at: None, polls: 0 }, lines, killed)
     }
 
@@ -831,8 +830,8 @@ mod tests {
         let (mut p, lines, killed) = fake(Some(3));
         let out = stop_server(&mut p, Duration::from_secs(5), Duration::from_millis(1)).unwrap();
         assert_eq!(out, StopOutcome::Saved);
-        assert_eq!(*lines.borrow(), ["stop"]);
-        assert!(!*killed.borrow());
+        assert_eq!(*lines.lock().unwrap(), ["stop"]);
+        assert!(!*killed.lock().unwrap());
     }
 
     #[test]
@@ -841,7 +840,7 @@ mod tests {
         p.stopped_at = Some(0);
         let out = stop_server(&mut p, Duration::from_secs(1), Duration::from_millis(1)).unwrap();
         assert_eq!(out, StopOutcome::AlreadyExited);
-        assert!(lines.borrow().is_empty(), "no stop is sent to a process that is gone");
+        assert!(lines.lock().unwrap().is_empty(), "no stop is sent to a process that is gone");
     }
 
     #[test]
@@ -849,13 +848,13 @@ mod tests {
         let (mut p, _, killed) = fake(None);
         let out = stop_server(&mut p, Duration::from_millis(30), Duration::from_millis(5)).unwrap();
         assert_eq!(out, StopOutcome::Killed);
-        assert!(*killed.borrow());
+        assert!(*killed.lock().unwrap());
     }
 
-    struct FakeSpawner(Rc<RefCell<Vec<Vec<String>>>>);
+    struct FakeSpawner(Arc<Mutex<Vec<Vec<String>>>>);
     impl Spawner for FakeSpawner {
         fn spawn(&self, c: &LaunchCommand) -> io::Result<Box<dyn ServerProcess>> {
-            self.0.borrow_mut().push(c.args.clone());
+            self.0.lock().unwrap().push(c.args.clone());
             Ok(Box::new(fake(Some(1)).0))
         }
     }
@@ -864,7 +863,7 @@ mod tests {
     fn start_refuses_until_everything_is_settled() {
         let dir = temp_dir("start");
         let java = dir.join("java.exe");
-        let calls = Rc::new(RefCell::new(vec![]));
+        let calls = Arc::new(Mutex::new(vec![]));
         let spawner = FakeSpawner(calls.clone());
         // No eula.txt in the folder: the public start refuses.
         assert!(matches!(start_server(&spawner, &dir, &java, 2048, &[]).err(), Some(StartError::EulaNotAccepted)));
@@ -879,10 +878,10 @@ mod tests {
         let port = held.local_addr().unwrap().port();
         fs::write(props_file(&dir), format!("server-port={port}\n")).unwrap();
         assert!(matches!(go(&java), Some(StartError::PortTaken(p)) if p == port));
-        assert!(calls.borrow().is_empty());
+        assert!(calls.lock().unwrap().is_empty());
         drop(held);
         assert!(go(&java).is_none());
-        assert_eq!(calls.borrow().len(), 1);
+        assert_eq!(calls.lock().unwrap().len(), 1);
         let _ = fs::remove_dir_all(dir);
     }
 
