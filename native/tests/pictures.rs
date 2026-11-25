@@ -33,7 +33,8 @@ fn home_picture(w: u32, h: u32, dark: bool) -> Vec<u8> {
     let theme = if dark { Theme::dark() } else { Theme::light() };
     let mut home = loaded_home(Arc::new(fixture()));
     let account = preview::Home::account(&home);
-    let state = PreviewState { mode: Mode::Home, reduce_motion: true, account, ..PreviewState::default() };
+    let account_menu = preview::Home::account_menu(&home);
+    let state = PreviewState { mode: Mode::Home, reduce_motion: true, account, account_menu, ..PreviewState::default() };
     let (list, _, _) = picture_with_home(theme, Vec2::new(w as f32, h as f32), None, state, &mut home);
     draw(&list, theme, w, h)
 }

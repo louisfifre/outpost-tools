@@ -13,9 +13,13 @@
 use std::sync::OnceLock;
 
 use mere_base::{Cmd, Color, Rect, Vec2};
-use mere_layout::{Align, Dim, Display, Edges, Overflow, Position, Style, Track, Tracks};
-use mere_ui::{Icon, IconLook, IconOpts, TabMenuRow, Slide, TabLook, TabOpts, TextLook, Tone, Ui, strip_style};
+use std::sync::Arc;
 
+use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Overflow, Position, Side, Style, Track, Tracks};
+use mere_ui::tokens::{CONTROL, FRAME, GAP_TIGHT, INSET, INSET_TIGHT};
+use mere_ui::{Icon, IconLook, IconOpts, Rule, TabMenuRow, Slide, TabLook, TabOpts, TextLook, Tone, Ui, strip_style};
+
+use crate::home::{AccountAsk, AccountMenu, Pixels};
 use crate::overflow::{self, Form, VIEW_COUNT};
 use crate::run::Drawn;
 use crate::shell::{BAR_H, Mode, PreviewState, RunEnd, ShellIds, Want};
@@ -43,6 +47,10 @@ pub const VIEW_ICONS: [(&str, &str); 6] = [
     ("structures", "M4 2h4v2h2V2h4v2h2V2h4v6H4zM6 8h2v12H6zm10 0h2v12h-2zM10 14h4v6h-4zM2 20h20v2H2z"),
     ("section", "M2 4h20v2H2zM2 18h20v2H2zM2 6h2v12H2zm18 0h2v12h-2zM4 12h4v2H4zm4-2h4v2H8zm4 2h4v2h-4zm4-4h4v2h-4z"),
 ];
+/// The account button's chevron (an 8 by 5 grid), the check beside the account in use and the plus of "Add an account".
+pub const CHEVRON: &str = "M0 0h2v1H0zM6 0h2v1H6zM0 1h3v1H0zM5 1h3v1H5zM1 2h6v1H1zM2 3h4v1H2zM3 4h2v1H3z";
+pub const CHECK: &str = "M4 12h2v2H4zM6 14h2v2H6zM8 16h2v2H8zM10 14h2v2h-2zM12 12h2v2h-2zM14 10h2v2h-2zM16 8h2v2h-2zM18 6h2v2h-2z";
+pub const PLUS: &str = "M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z";
 /// Line 418.
 pub const PLAY: &str = "M15 11h-2V9h2zm0 4h-2v-2h2zm-2 2h-2v-2h2zm0-8h-2V7h2zm-2-2H9V5h2zM9 21H7V3h2zm6-8h2v-2h-2zm-6 4h2v2H9z";
 /// Line 419.
@@ -71,6 +79,9 @@ pub struct Icons {
     pub play: Icon,
     pub stop: Icon,
     pub settings: Icon,
+    pub chevron: Icon,
+    pub check: Icon,
+    pub plus: Icon,
     /// The buttons of the settings panel and of the figures panel, each hidden then shown.
     pub panels: [[Icon; 2]; 2],
     /// The three faces of the pack's cube with their colours.
@@ -99,6 +110,9 @@ pub fn icons() -> &'static Icons {
         play: parse(PLAY, 24.0),
         stop: parse(STOP, 24.0),
         settings: parse(SETTINGS, 24.0),
+        chevron: parse(CHEVRON, 8.0),
+        check: parse(CHECK, 24.0),
+        plus: parse(PLUS, 24.0),
         panels: [[parse(PANEL_LEFT, 24.0), parse(PANEL_LEFT_SHOWN, 24.0)], [parse(PANEL_RIGHT, 24.0), parse(PANEL_RIGHT_SHOWN, 24.0)]],
         pack: PACK.iter().map(|(d, c)| (parse(d, 32.0), Color::hex(*c))).collect(),
     })
@@ -145,7 +159,7 @@ fn pending(s: &PreviewState) -> bool {
 /// tool open, whatever tool is on, so the views do not shuffle while they slide; the brand's parts follow the
 /// tool on show, so Home, which has the room, keeps the account and the word.
 pub fn form_for(s: &PreviewState, world: Option<&World>, width: f32) -> (Form, Form) {
-    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != crate::paint::SECTION };
+    let inputs = |preview_open| overflow::Inputs { width, account: s.account.as_deref(), account_mark: if s.account_menu.accounts.is_empty() { 0.0 } else { overflow::ACCOUNT_MARK }, preview_open, pressed: s.view, disabled: greyed(s, world), shapes: s.view != crate::paint::SECTION };
     let open = overflow::plan(&inputs(true));
     let on_show = if s.mode == Mode::Preview { open.clone() } else { overflow::plan(&inputs(false)) };
     (open, on_show)
@@ -207,8 +221,12 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                 }
                 // `#account` (line 84): muted, cut with an ellipsis when the free space left of the tools is narrower
                 // than it, and gone whole when even a short stub no longer fits (`overflow.rs`).
-                if let (true, Some(a)) = (form.account, &s.account) {
-                    ui.ellipsis(a, TextLook::body(Tone::Muted));
+                if let (true, Some(a)) = (form.account, s.account.clone()) {
+                    if s.account_menu.accounts.is_empty() {
+                        ui.ellipsis(&a, TextLook::body(Tone::Muted));
+                    } else {
+                        account_button(ui, s, ids, &a);
+                    }
                 }
             });
         }
@@ -294,6 +312,163 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             });
         });
     });
+}
+
+/// The account menu's width: 232, on the 4 px grid.
+const ACCOUNT_MENU_W: f32 = 232.0;
+/// The player in the menu: the 24 by 40 picture, four times over.
+const FIGURE_SCALE: f32 = 4.0;
+
+/// The pixels of a picture as filled boxes, one per run of a colour in a row, `scale` times over.
+fn pixel_cmds(p: &Pixels, scale: f32) -> Vec<Cmd> {
+    let mut cmds = Vec::new();
+    let colour = |x: u32, y: u32| {
+        let at = ((y * p.w + x) * 4) as usize;
+        p.rgba.get(at..at + 4).filter(|px| px[3] > 0).map(|px| Color { r: px[0] as f32 / 255.0, g: px[1] as f32 / 255.0, b: px[2] as f32 / 255.0, a: px[3] as f32 / 255.0 })
+    };
+    for y in 0..p.h {
+        let mut x = 0;
+        while x < p.w {
+            let Some(c) = colour(x, y) else {
+                x += 1;
+                continue;
+            };
+            let mut end = x + 1;
+            while end < p.w && colour(end, y) == Some(c) {
+                end += 1;
+            }
+            cmds.push(Cmd::Fill { rect: Rect::new(x as f32 * scale, y as f32 * scale, (end - x) as f32 * scale, scale), color: c });
+            x = end;
+        }
+    }
+    cmds
+}
+
+/// A picture of pixels in a box of `w` by `h`: the face of an account, or the player.
+fn picture(ui: &mut Ui, key: &str, p: Option<&Pixels>, w: f32, h: f32, scale: f32) {
+    let style = Style { w: Dim::Px(w), h: Dim::Px(h), shrink: 0.0, ..Style::default() };
+    ui.canvas(key, style, |_, _| p.map(|p| pixel_cmds(p, scale)).unwrap_or_default());
+}
+
+/// A pixel icon in a box of `w` by `h`, `w` wide on its grid.
+fn glyph(ui: &mut Ui, key: &str, icon: &Icon, w: f32, h: f32, color: Color) {
+    let style = Style { w: Dim::Px(w), h: Dim::Px(h), shrink: 0.0, ..Style::default() };
+    ui.canvas(key, style, |_, _| vec![Cmd::Shape { rect: Rect::new(0.0, 0.0, w, w), grid: icon.grid, figures: icon.figures.clone(), color, crisp: true }]);
+}
+
+/// A line of the account menu: 32 px tall, its parts `GAP` apart.
+fn account_line() -> Style {
+    Style { align_items: Align::Center, gap: Vec2::new(mere_ui::tokens::GAP, 0.0), h: Dim::Px(32.0), pad: Edges::vh(0.0, INSET), ..Style::default() }
+}
+
+/// The account's button after the brand's name (board A2): the face, the name and a chevron. It opens the menu of the
+/// accounts, the player and the sign-out: a framed box under the button, drawn after the tree, that holds the kit's lines
+/// (`hover_action`). The application shuts it (a pick, Escape, a press outside: `account_closes`).
+fn account_button(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, name: &str) {
+    let t = *ui.theme();
+    let icons = icons();
+    let menu: Arc<AccountMenu> = s.account_menu.clone();
+    let open = s.account_open;
+    let face = menu.accounts.iter().find(|a| a.in_use).and_then(|a| a.face.as_ref());
+    let place = Style { position: Position::Relative, min_w: Dim::Px(0.0), ..Style::default() };
+    ui.node("accountPlace", place, |ui| {
+        let line = Style { align_items: Align::Center, gap: Vec2::new(mere_ui::tokens::GAP, 0.0), min_w: Dim::Px(0.0), h: Dim::Px(CONTROL), pad: Edges::vh(0.0, INSET), ..Style::default() };
+        let button = ui.hover_action("account", line, t.tint(), |ui| {
+            picture(ui, "face", face, 16.0, 16.0, 2.0);
+            ui.ellipsis(name, TextLook::body(if open { Tone::Text } else { Tone::Muted }));
+            glyph(ui, "chevron", &icons.chevron, 8.0, 5.0, if open { t.text } else { t.muted });
+        });
+        ids.account = button.id;
+        ids.bar_buttons.push(button.id);
+        ui.title(button.id, text::ACCOUNT_MENU);
+        if button.clicked {
+            s.account_open = !open;
+            if s.account_open {
+                s.account_ask = Some(AccountAsk::Opened);
+            }
+        }
+        if !s.account_open {
+            return;
+        }
+        let zero = Dim::Px(0.0);
+        let style = Style {
+            position: Position::Absolute,
+            inset: Insets { left: zero, top: Dim::Pct(100.0), ..Insets::default() },
+            margin: Margin { left: Side::Px(-INSET), top: Side::Px(GAP_TIGHT), ..Margin::default() },
+            w: Dim::Px(ACCOUNT_MENU_W),
+            column: true,
+            pad: Edges::vh(FRAME + INSET_TIGHT, FRAME),
+            ..Style::default()
+        };
+        let mut ask = None;
+        let mut close = false;
+        ids.account_list = ui.overlay("accountList", style, |ui| {
+            for (i, a) in menu.accounts.iter().enumerate() {
+                let r = ui.hover_action(&format!("account{i}"), account_line(), t.tint(), |ui| {
+                    picture(ui, "face", a.face.as_ref(), 16.0, 16.0, 2.0);
+                    ui.node("name", Style { grow: 1.0, min_w: Dim::Px(0.0), ..Style::default() }, |ui| ui.ellipsis(&a.name, TextLook::body(Tone::Text)));
+                    if a.in_use {
+                        let mark = ui.icon("inUse", &icons.check, 16.0, t.text, true);
+                        ui.title(mark, text::IN_USE);
+                    }
+                });
+                if r.clicked {
+                    close = true;
+                    if !a.in_use {
+                        ask = Some(AccountAsk::Use(a.name.clone()));
+                    }
+                }
+            }
+            ui.rule(Rule::Separator, Edges::vh(INSET_TIGHT, 0.0));
+            let r = ui.hover_action("add", account_line(), t.tint(), |ui| {
+                ui.icon("plus", &icons.plus, 16.0, t.text, true);
+                ui.text(text::ADD_ACCOUNT, TextLook::body(Tone::Text));
+            });
+            if r.clicked {
+                close = true;
+                ask = Some(AccountAsk::Add);
+            }
+            ui.rule(Rule::Separator, Edges::vh(INSET_TIGHT, 0.0));
+            if let Some(figure) = &menu.figure {
+                let (w, h) = (figure.w as f32 * FIGURE_SCALE, figure.h as f32 * FIGURE_SCALE);
+                let around = Style { justify: Justify::Center, pad: Edges::vh(mere_ui::tokens::GAP_WIDE, 0.0), ..Style::default() };
+                ui.node("player", around, |ui| picture(ui, "figure", Some(figure), w, h, FIGURE_SCALE));
+                ui.rule(Rule::Separator, Edges::vh(0.0, INSET_TIGHT));
+            }
+            if let Some(a) = menu.accounts.iter().find(|a| a.in_use) {
+                let r = ui.hover_action("signOut", account_line(), t.tint(), |ui| ui.text(&text::sign_out(&a.name), TextLook::body(Tone::Muted)));
+                if r.clicked {
+                    close = true;
+                    ask = Some(AccountAsk::SignOut(a.name.clone()));
+                }
+            }
+        });
+        ids.bar_buttons.push(ids.account_list);
+        if close {
+            s.account_open = false;
+        }
+        if ask.is_some() {
+            s.account_ask = ask;
+        }
+    });
+}
+
+/// The account menu shuts on Escape and on a press outside it and its button, which reaches nothing else, as an open
+/// list of the kit does. True when the press or the key was taken.
+pub fn account_closes(s: &mut PreviewState, ui: &Ui, ids: &ShellIds, e: &mere_base::Event) -> bool {
+    if !s.account_open {
+        return false;
+    }
+    let outside = |pos: Vec2| ![ids.account, ids.account_list].iter().any(|&id| ui.rect(id).is_some_and(|r| r.contains(pos)));
+    let shut = match e {
+        mere_base::Event::Key { key: mere_base::Key::Escape, .. } => true,
+        mere_base::Event::PointerDown { pos, .. } => outside(*pos),
+        _ => false,
+    };
+    if shut {
+        s.account_open = false;
+    }
+    shut
 }
 
 /// The button that opens and closes a side panel (0: settings, 1: figures): pressed while its panel is open, and

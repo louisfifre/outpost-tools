@@ -7,6 +7,7 @@ pub mod home;
 pub mod icons;
 pub mod model;
 pub mod pages;
+pub mod skin_view;
 pub mod text;
 
 use mere_base::Vec2;

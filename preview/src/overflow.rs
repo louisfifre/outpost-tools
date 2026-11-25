@@ -53,6 +53,8 @@ const SEP: f32 = 12.0;
 /// The chevron of the "More" tab, and the space before it.
 const CHEVRON: f32 = 8.0;
 const CHEVRON_GAP: f32 = GAP;
+/// What the account's button holds besides its name: the face, the chevron and the gaps between the three.
+pub const ACCOUNT_MARK: f32 = 16.0 + GAP + GAP + CHEVRON;
 /// An account cut shorter than this many letters (and the ellipsis) is not worth showing: it goes whole.
 pub const ACCOUNT_STUB: usize = 3;
 
@@ -122,6 +124,8 @@ pub struct Inputs<'a> {
     /// The window's width.
     pub width: f32,
     pub account: Option<&'a str>,
+    /// What the account's button holds besides its name (`ACCOUNT_MARK`), or 0 for a name alone.
+    pub account_mark: f32,
     /// The preview tool is the one on show: its views take room in the strip, and its panel buttons are on the
     /// bar's ends instead of the brand.
     pub preview_open: bool,
@@ -192,7 +196,7 @@ pub fn brand_need(i: &Inputs, form: &Form) -> f32 {
         w += BRAND_GAP + brand_look().width(&text::BAR_TITLE.to_uppercase());
     }
     if let (true, Some(a)) = (form.account, i.account) {
-        w += BRAND_GAP + account_stub_width(a);
+        w += BRAND_GAP + account_stub_width(a) + i.account_mark;
     }
     w
 }

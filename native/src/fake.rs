@@ -149,3 +149,62 @@ pub fn mod_menu_added(api: &FakeApi) {
         ]}),
     );
 }
+
+/// A skin picture (64 x 64) in the manner of the boards' player: `hair` over a plain face, a teal shirt, blue trousers.
+/// The head's front is the 8 x 8 of board A2's face; the hat and the outer layers are clear.
+pub fn sample_skin(hair: u32) -> Vec<u8> {
+    let rgb = |c: u32| [(c >> 16) as u8, (c >> 8) as u8, c as u8, 255];
+    let mut px = vec![0u8; 64 * 64 * 4];
+    let mut fill = |x: u32, y: u32, w: u32, h: u32, c: [u8; 4]| {
+        for yy in y..y + h {
+            for xx in x..x + w {
+                let i = ((yy * 64 + xx) * 4) as usize;
+                px[i..i + 4].copy_from_slice(&c);
+            }
+        }
+    };
+    let (skin, shirt, blue, shoe) = (rgb(0xc69a73), rgb(0x2b8a9a), rgb(0x32349a), rgb(0x4b4b4b));
+    // The head's front: hair over the top two rows and the sides of the third, eyes, nose and mouth.
+    fill(8, 8, 8, 8, skin);
+    fill(8, 8, 8, 2, rgb(hair));
+    fill(8, 10, 1, 1, rgb(hair));
+    fill(15, 10, 1, 1, rgb(hair));
+    for (x, c) in [(9, 0xffffff), (10, 0x3a5bb0), (13, 0x3a5bb0), (14, 0xffffff)] {
+        fill(x, 12, 1, 1, rgb(c));
+    }
+    fill(11, 13, 2, 1, rgb(0x9c6e4f));
+    fill(10, 14, 4, 1, rgb(0x7a4a33));
+    // The body's front, the two arms' (shirt to the wrist, then the hand) and the two legs' (trousers, then the shoe).
+    fill(20, 20, 8, 12, shirt);
+    for (x, y) in [(44, 20), (36, 52)] {
+        fill(x, y, 4, 9, shirt);
+        fill(x, y + 9, 4, 3, skin);
+    }
+    for (x, y) in [(4, 20), (20, 52)] {
+        fill(x, y, 4, 10, blue);
+        fill(x, y + 10, 4, 2, shoe);
+    }
+    mere_png::encode(64, 64, &px)
+}
+
+/// The two accounts of board A2 with their skins, for the bar's menu.
+pub fn with_accounts(api: &FakeApi) {
+    use crate::skin_view::base64_encode;
+    api.set_get("/api/accounts", json!({"accounts": [{"name": "PlayerOne", "inUse": true}, {"name": "SecondAccount", "inUse": false}]}));
+    for (name, hair) in [("PlayerOne", 0x4a2f1d), ("SecondAccount", 0xc8a04a)] {
+        api.set_get(&format!("/api/skin?name={name}"), json!({"name": name, "slim": false, "png": base64_encode(&sample_skin(hair))}));
+    }
+}
+
+/// The server of board C1: Test server, made from Exploration (three of its mods left out) and the world project
+/// Tectonic islands, its EULA not accepted yet.
+pub fn board_server(api: &FakeApi) {
+    api.set_get(
+        "/api/server",
+        json!({
+            "name": "Test server", "dir": "C:\\Code\\servers\\Test server", "state": "stopped", "eula": false, "memoryMb": 6144, "javaArgs": "-XX:+UseZGC",
+            "props": null,
+            "madeFrom": {"profile": "exploration", "leftOut": 3, "world": "Tectonic islands", "seed": 48213}
+        }),
+    );
+}
