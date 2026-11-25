@@ -12,7 +12,8 @@ pub mod java;
 mod java_setup;
 mod key_value;
 mod memory;
-mod modrinth;
+pub mod modrinth;
+pub mod mods;
 pub mod mrpack;
 mod preview;
 mod prism_portable;
@@ -205,6 +206,8 @@ impl Api {
                 }
                 "/api/java" => self.java_state(),
                 "/api/ping" => Reply::empty(200),
+                // The mods of a profile (api/mods.rs).
+                mods if mods.starts_with("/api/mods/") => self.mods_get(mods)?,
                 "/api/preview" => Reply::json(200, json!({ "available": self.preview_serve().exists(), "url": PREVIEW_URL })),
                 _ => Reply::empty(404),
             });
@@ -234,6 +237,8 @@ impl Api {
                 Ok(Reply::empty(200))
             }
             "/api/server/settings" => self.server_settings(&body),
+            // The mods of a profile, and a page opened in the browser (api/mods.rs).
+            mods if mods.starts_with("/api/mods/") || mods == "/api/open-url" => self.mods_post(mods, &body),
             _ => {
                 let mut parts = path.trim_start_matches("/api/").splitn(2, '/');
                 let (action, id) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
