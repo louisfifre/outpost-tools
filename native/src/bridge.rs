@@ -40,6 +40,8 @@ pub enum Tag {
     SaveServer,
     Folder,
     ServerFolder,
+    /// A request of the page that adds a mod.
+    Mods(crate::pages::add_mod::Ask),
 }
 
 #[derive(Clone, Debug)]

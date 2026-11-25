@@ -12,6 +12,24 @@ pub const NEW_SERVER: &str = "New server";
 pub fn add_mod_title(profile: &str) -> String {
     format!("Add a mod to {profile}")
 }
+/// The search field, the file action and the words of a result line (board B4).
+pub const SEARCH_MODRINTH: &str = "Search Modrinth";
+pub const ADD_A_FILE: &str = "Add a file";
+pub const ADD: &str = "Add";
+pub const ADDING: &str = "Adding\u{2026}";
+pub const UPDATE: &str = "Update";
+pub const UPDATING: &str = "Updating\u{2026}";
+pub const ADDED: &str = "Added";
+pub const OPEN_ON_MODRINTH: &str = "Open on Modrinth";
+pub const NO_MODS: &str = "No mod matches.";
+/// The version a mod would be updated to: an arrow and the version.
+pub fn new_version(version: &str) -> String {
+    format!("\u{2192} {version}")
+}
+/// Under the line of a mod that was added: what came with it.
+pub fn came_with(dependency: &str, by: &str) -> String {
+    format!("{dependency} came with it: {by} needs it.")
+}
 /// `play`.
 pub fn play(name: &str) -> String {
     format!("Play {name}")
