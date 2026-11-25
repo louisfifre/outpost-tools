@@ -8,6 +8,7 @@
 
 mod dev_server;
 pub mod instance;
+pub mod mrpack;
 mod key_value;
 mod preview;
 mod profiles;
