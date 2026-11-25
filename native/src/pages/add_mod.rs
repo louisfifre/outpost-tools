@@ -4,14 +4,13 @@
 //! updated to with Update, a muted check with Added for a mod the profile has, Add for the others, and an icon that
 //! opens its page on Modrinth. A mod added with another says so under the line of the mod that was asked for.
 //!
-//! What the page asks of the api (the fake in `fake.rs` answers the same, for the tests). Nothing answers them in the
-//! real api yet: `app` has the Modrinth client (`api/modrinth.rs`) but no route, so on it the page shows the api's
-//! failure sentence.
+//! What the page asks of the api (the real one answers in `app/src/api/mods.rs`, the fake in `fake.rs` answers the same
+//! for the tests).
 //!   POST /api/mods/search {profile, query}  -> {mods: [{id, title, description, version, url, state, newVersion}]}
 //!        `state` is "add", "added" or "update"; `version` is the profile's when it has the mod, else the one to add.
 //!   POST /api/mods/add {profile, mod}       -> {added: [{id, title, version, neededBy}]}  (the mod, then what it needs)
 //!   POST /api/mods/update {profile, mod}    -> {}
-//!   POST /api/mods/file {profile}           -> {}  (the api asks for the file, adds it as it is)
+//!   POST /api/mods/file {profile}           -> {}  (the api asks for the file, adds it as it is; {} too when none is chosen)
 //!   POST /api/mods/open {url}               -> {}  (opens a page of Modrinth in the browser)
 //! A failure is an `error` sentence with its status, shown under the search.
 

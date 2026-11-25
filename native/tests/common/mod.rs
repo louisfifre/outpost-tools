@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use launcher_native::bridge::Bridge;
+use launcher_native::bridge::{Backend, Bridge};
 use launcher_native::fake::{FakeApi, fixture};
 use launcher_native::home::{Calendar, LauncherHome};
 use mere_base::{App, Button, Cmd, Color, Event, Key, Mods, Rect, Vec2};
@@ -62,10 +62,15 @@ impl Rig {
     }
 
     pub fn with_api(api: Arc<FakeApi>, w: u32, h: u32, dark: bool, frames: bool) -> Rig {
+        Rig::with_backend(api.clone(), api, w, h, dark, frames)
+    }
+
+    /// The same over any backend, the real api for one: `api` is then only what the rig's fake-reading helpers see.
+    pub fn with_backend(backend: Arc<dyn Backend>, api: Arc<FakeApi>, w: u32, h: u32, dark: bool, frames: bool) -> Rig {
         let theme = if dark { Theme::dark() } else { Theme::light() };
         let (pw, ph) = preview::min_size_px((w, h));
         let mut r = Renderer::offscreen(pw, ph, 1.0).expect("offscreen renderer");
-        let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, home_over(api.clone()), true);
+        let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, LauncherHome::new(Bridge::inline(backend), Calendar::fixed()), true);
         app.start(&mut r);
         app.event(Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
         app.event(Event::Window { maximized: false });

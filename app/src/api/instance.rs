@@ -240,29 +240,9 @@ impl NewInstance {
             "version": game,
         })];
         if let Some(loader) = &self.fabric_loader {
-            components.push(json!({
-                "cachedName": "Intermediary Mappings",
-                "cachedRequires": [{ "equals": game, "uid": MINECRAFT }],
-                "cachedVersion": game,
-                "dependencyOnly": true,
-                "uid": INTERMEDIARY,
-                "version": game,
-            }));
-            components.push(json!({
-                "cachedName": "Fabric Loader",
-                "cachedRequires": [{ "uid": INTERMEDIARY }],
-                "cachedVersion": loader,
-                "uid": FABRIC_LOADER,
-                "version": loader,
-            }));
+            components.extend(fabric_components(game, loader));
         }
-        let pack = json!({ "components": components, "formatVersion": 1 });
-        let mut out = Vec::new();
-        let format = serde_json::ser::PrettyFormatter::with_indent(b"    ");
-        pack.serialize(&mut serde_json::Serializer::with_formatter(&mut out, format)).expect("a Value always serializes");
-        let mut text = String::from_utf8(out).expect("JSON is UTF-8");
-        text.push('\n');
-        text
+        pretty(&json!({ "components": components, "formatVersion": 1 }))
     }
 
     /// The settings of `instance.cfg`, written by the same `Cfg` that changes them later, so the quoting is one.
@@ -277,6 +257,63 @@ impl NewInstance {
         cfg.set("MaxMemAlloc", &self.memory.max_mb.to_string());
         cfg
     }
+}
+
+// The two components Prism keeps for Fabric: the intermediary mappings of the game version, and the loader.
+fn fabric_components(game: &str, loader: &str) -> [Value; 2] {
+    [
+        json!({
+            "cachedName": "Intermediary Mappings",
+            "cachedRequires": [{ "equals": game, "uid": MINECRAFT }],
+            "cachedVersion": game,
+            "dependencyOnly": true,
+            "uid": INTERMEDIARY,
+            "version": game,
+        }),
+        json!({
+            "cachedName": "Fabric Loader",
+            "cachedRequires": [{ "uid": INTERMEDIARY }],
+            "cachedVersion": loader,
+            "uid": FABRIC_LOADER,
+            "version": loader,
+        }),
+    ]
+}
+
+// Prism's own layout of `mmc-pack.json`: 4 spaces, keys sorted, a final newline.
+fn pretty(pack: &Value) -> String {
+    let mut out = Vec::new();
+    let format = serde_json::ser::PrettyFormatter::with_indent(b"    ");
+    pack.serialize(&mut serde_json::Serializer::with_formatter(&mut out, format)).expect("a Value always serializes");
+    let mut text = String::from_utf8(out).expect("JSON is UTF-8");
+    text.push('\n');
+    text
+}
+
+/// What a profile's `mmc-pack.json` says: its game version and, when Fabric is installed, the loader's version.
+/// None when the text is no such file or names no game.
+pub fn pack_versions(text: &str) -> Option<(String, Option<String>)> {
+    let pack: Value = serde_json::from_str(text).ok()?;
+    let version = |uid: &str| {
+        pack["components"].as_array()?.iter().find(|c| c["uid"] == uid).and_then(|c| c["version"].as_str()).map(String::from)
+    };
+    Some((version(MINECRAFT)?, version(FABRIC_LOADER)))
+}
+
+/// The same `mmc-pack.json` with Fabric's loader at `loader`: the loader is changed where it stands, or its two
+/// components are added when the profile has none. What Prism added to the file (LWJGL and the rest) is kept.
+pub fn with_fabric_loader(text: &str, loader: &str) -> Result<String, InstanceError> {
+    check_version_id(loader)?;
+    let mut pack: Value = serde_json::from_str(text).map_err(|e| InstanceError::Invalid(format!("mmc-pack.json is not JSON: {e}")))?;
+    let (game, _) = pack_versions(text).ok_or_else(|| InstanceError::Invalid("mmc-pack.json names no game version.".into()))?;
+    let components = pack["components"].as_array_mut().ok_or_else(|| InstanceError::Invalid("mmc-pack.json has no components.".into()))?;
+    let at = components.iter().position(|c| c["uid"] == FABRIC_LOADER);
+    components.retain(|c| c["uid"] != FABRIC_LOADER && c["uid"] != INTERMEDIARY);
+    let at = at.map_or(components.len(), |at| at.min(components.len()));
+    for (i, component) in fabric_components(&game, loader).into_iter().enumerate() {
+        components.insert((at + i).min(components.len()), component);
+    }
+    Ok(pretty(&pack))
 }
 
 /// A profile written to the disk.
@@ -576,6 +613,43 @@ mod tests {
         assert!(matches!(create_instance(&Fixtures, &dir, "  ", "26.3", false), Err(InstanceError::Invalid(_))));
         assert!(!dir.exists() || fs::read_dir(&dir).unwrap().next().is_none());
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_pack_file_says_its_game_and_its_loader() {
+        let (game, loader) = pack_versions(PRISM_PACK).unwrap();
+        assert_eq!(game, "26.3");
+        assert!(loader.is_some());
+        let plain = NewInstance::new("Plain", "26.2", None).mmc_pack_json();
+        assert_eq!(pack_versions(&plain), Some(("26.2".to_string(), None)));
+        assert_eq!(pack_versions("not json"), None);
+        assert_eq!(pack_versions(r#"{"components":[]}"#), None);
+    }
+
+    #[test]
+    fn the_loader_of_a_pack_file_is_changed_where_it_stands_and_what_prism_wrote_is_kept() {
+        let moved = with_fabric_loader(PRISM_PACK, "0.99.0").unwrap();
+        assert_eq!(pack_versions(&moved), Some(("26.3".to_string(), Some("0.99.0".to_string()))));
+        let (before, after): (Value, Value) = (serde_json::from_str(PRISM_PACK).unwrap(), serde_json::from_str(&moved).unwrap());
+        let uids = |pack: &Value| {
+            let mut uids: Vec<String> = pack["components"].as_array().unwrap().iter().map(|c| c["uid"].as_str().unwrap().to_string()).collect();
+            uids.sort();
+            uids
+        };
+        assert_eq!(uids(&before), uids(&after));
+        // The same layout Prism writes, so it rewrites nothing on its next start.
+        assert!(moved.ends_with("}
+") && moved.contains("
+    \"components\""));
+    }
+
+    #[test]
+    fn a_loader_is_added_to_a_pack_file_that_has_none_and_a_bad_one_is_refused() {
+        let plain = NewInstance::new("Plain", "26.2", None).mmc_pack_json();
+        let with = with_fabric_loader(&plain, "0.18.4").unwrap();
+        assert_eq!(with, NewInstance::new("Plain", "26.2", Some("0.18.4")).mmc_pack_json());
+        assert!(matches!(with_fabric_loader(&plain, "../x"), Err(InstanceError::Invalid(_))));
+        assert!(matches!(with_fabric_loader("{}", "0.18.4"), Err(InstanceError::Invalid(_))));
     }
 
     // The real network: Mojang's and Fabric's public lists, no account, nothing downloaded. Run on request.

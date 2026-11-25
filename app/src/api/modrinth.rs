@@ -4,9 +4,6 @@
 // on fixtures (tests/fixtures/modrinth, real answers of 2026-11-25, trimmed) and the live call is #[ignore].
 // Docs: https://docs.modrinth.com/api/
 
-// Not called by the page or native yet: the interface is designed apart.
-#![allow(dead_code)]
-
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt,
@@ -288,6 +285,8 @@ pub enum UpdateState {
 pub struct UpdateCheck {
     pub sha1: String,
     pub state: UpdateState,
+    // The version of the installed file when Modrinth knows it, whatever the state: its mod, its number.
+    pub current: Option<ModVersion>,
 }
 
 // The SHA-1 of a file, in lower-case hex, which is how Modrinth looks a file up.
@@ -508,7 +507,7 @@ impl<H: Http> Modrinth<H> {
                 }
                 _ => UpdateState::UpToDate,
             };
-            checks.push(UpdateCheck { sha1: hash.clone(), state });
+            checks.push(UpdateCheck { sha1: hash.clone(), state, current: current.get(key).cloned() });
         }
         Ok(checks)
     }
@@ -904,6 +903,9 @@ mod tests {
     fn an_installed_mod_that_is_the_latest_is_up_to_date() {
         let checks = updates_with(fixture("current.json"));
         assert_eq!(checks[0].state, UpdateState::UpToDate);
+        // Whatever the state, the version Modrinth knows the file as comes with it; a file it does not know has none.
+        assert_eq!(checks[0].current.as_ref().unwrap().project_id, "AANobbMI");
+        assert_eq!(checks[1].current, None);
     }
 
     #[test]

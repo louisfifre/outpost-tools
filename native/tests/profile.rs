@@ -175,6 +175,22 @@ fn b6_play() {
     assert_eq!(rig.api.count("POST", "/api/launch/exploration"), 1);
 }
 
+/// On a PC with 32 GB the grips of 2 and 6 GB are close: their words stand side by side, never over each other.
+#[test]
+fn m2_the_words_of_a_big_pc_keep_clear() {
+    let api = board_pc();
+    let mut v = api_get(&api, "/api/profiles");
+    v["machineMb"] = json!(32768);
+    api.set_get("/api/profiles", v);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    open_profile(&mut rig, "exploration");
+    rig.frame();
+    let at = |words: &str| rig.texts().into_iter().find(|t| t.1 == words).unwrap_or_else(|| panic!("{words:?}: {:?}", said(&rig))).0;
+    let (min, max) = (at("min 2 GB"), at("max 6 GB"));
+    assert!(min.x + mere_ui::text_width("min 2 GB", 11.0) < max.x, "the words stand clear: {min:?} {max:?}");
+    rig.write("profile_m2_32gb_1400.png");
+}
+
 /// The memory bar: either end is carried in whole gigabytes and saved when let go; the maximum stops where the PC's
 /// own use begins, the minimum never passes the maximum.
 #[test]
