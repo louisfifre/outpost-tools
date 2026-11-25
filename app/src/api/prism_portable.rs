@@ -200,7 +200,9 @@ pub fn install(root: &Path, version: &str, zip: &[u8], sha256: Option<&str>) -> 
         if updater.exists() {
             fs::remove_file(&updater).map_err(|e| format!("{}: {e}", updater.display()))?;
         }
-        fs::write(staging.join(VERSION_FILE), version).map_err(|e| e.to_string())
+        fs::write(staging.join(VERSION_FILE), version).map_err(|e| e.to_string())?;
+        // Before the swap: if the setting cannot be written, the previous program is still in place.
+        turn_updater_off(&layout.data_dir)
     });
     if let Err(why) = staged {
         let _ = fs::remove_dir_all(&staging);
@@ -223,7 +225,7 @@ pub fn install(root: &Path, version: &str, zip: &[u8], sha256: Option<&str>) -> 
         return Err(format!("the new Prism cannot be put in place: {e}"));
     }
     let _ = fs::remove_dir_all(&old);
-    turn_updater_off(&layout.data_dir)
+    Ok(())
 }
 
 /// Writes `auto_check=false` in the updater's settings file of the data folder, keeping any other line.
@@ -317,9 +319,9 @@ pub fn sign_in(root: &Path) -> Command {
     base(root)
 }
 
-/// Launches an instance by its id (its folder name in `prism-data/instances`). Prism stays hidden.
+/// Launches an instance by its id (its folder name in `prism-data/instances`).
 pub fn launch(root: &Path, instance: &str) -> Result<Command, String> {
-    if instance.is_empty() || instance.starts_with('-') || instance.contains(['/', '\\']) {
+    if instance.is_empty() || instance.starts_with('-') || instance.contains("..") || instance.contains(['/', '\\']) {
         return Err(format!("not an instance id: {instance:?}"));
     }
     let mut command = base(root);
@@ -449,6 +451,21 @@ mod tests {
     }
 
     #[test]
+    fn an_updater_setting_that_cannot_be_written_leaves_the_previous_program() {
+        let root = scratch("updater");
+        install(&root, "1", &make_zip(&[(PROGRAM, "v1")]), None).unwrap();
+        // A file where the data folder should be: the setting cannot be written.
+        let data = Layout::new(&root).data_dir;
+        fs::remove_dir_all(&data).unwrap();
+        fs::write(&data, "in the way").unwrap();
+        assert!(install(&root, "2", &make_zip(&[(PROGRAM, "v2")]), None).is_err());
+        assert_eq!(fs::read_to_string(Layout::new(&root).program()).unwrap(), "v1");
+        assert_eq!(installed_version(&root).as_deref(), Some("1"));
+        assert!(!root.join("prism.new").exists() && !root.join("prism.old").exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn the_updater_setting_keeps_other_lines() {
         let before = "[General]\r\nupdate_interval=0\r\nauto_check=true\r\n\r\n[Other]\r\nauto_check=true\r\n";
         let after = set_ini_value(before, "General", "auto_check", "false");
@@ -469,6 +486,7 @@ mod tests {
         assert!(launch(root, "--import").is_err());
         assert!(launch(root, "").is_err());
         assert!(launch(root, "a/b").is_err());
+        assert!(launch(root, "..").is_err() && launch(root, "a..b").is_err());
     }
 
     // Reads GitHub's public API: run on purpose with `cargo test -- --ignored`.
