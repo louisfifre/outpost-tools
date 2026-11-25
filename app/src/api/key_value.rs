@@ -9,6 +9,10 @@ pub(super) struct Cfg {
 }
 
 impl Cfg {
+    // An empty file: just the [General] section Prism keeps its settings in.
+    pub(super) fn new() -> Cfg {
+        Cfg { lines: vec!["[General]".to_string()] }
+    }
     pub(super) fn read(file: &Path) -> Cfg {
         Cfg { lines: read_lines(file) }
     }

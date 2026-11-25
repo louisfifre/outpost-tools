@@ -7,9 +7,11 @@
 // repository in `repo`.
 
 mod dev_server;
+pub mod instance;
 mod key_value;
 mod memory;
 mod modrinth;
+pub mod mrpack;
 mod preview;
 mod profiles;
 pub mod servers;
