@@ -290,18 +290,60 @@ pub struct WrittenInstance {
 }
 
 /// A folder name for a profile: lowercase letters, digits and dashes, the characters the rest of the api accepts as
-/// an instance id.
+/// an instance id. Common Latin accents are written without them (é as e, ß as ss), and a name Windows keeps for
+/// devices (con, nul, com1...) gets "-profile" after it.
 pub fn slug(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars().flat_map(char::to_lowercase) {
-        if c.is_ascii_alphanumeric() {
-            out.push(c);
-        } else if !out.is_empty() && !out.ends_with('-') {
-            out.push('-');
+        match unaccent(c) {
+            Some(plain) => out.push_str(plain),
+            None if c.is_ascii_alphanumeric() => out.push(c),
+            // A combining accent of a decomposed letter: the letter before it is already written.
+            None if ('\u{300}'..='\u{36f}').contains(&c) => {}
+            None => {
+                if !out.is_empty() && !out.ends_with('-') {
+                    out.push('-');
+                }
+            }
         }
     }
     let out = out.trim_end_matches('-');
-    if out.is_empty() { "profile".to_string() } else { out.to_string() }
+    if out.is_empty() {
+        return "profile".to_string();
+    }
+    let device = matches!(out, "con" | "prn" | "aux" | "nul")
+        || (out.len() == 4 && (out.starts_with("com") || out.starts_with("lpt")) && matches!(out.as_bytes()[3], b'1'..=b'9'));
+    if device { format!("{out}-profile") } else { out.to_string() }
+}
+
+/// The plain letters of a lowercase Latin letter with an accent or a ligature; None for anything else.
+fn unaccent(c: char) -> Option<&'static str> {
+    Some(match c {
+        'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => "a",
+        'ç' | 'ć' | 'ĉ' | 'ċ' | 'č' => "c",
+        'ď' | 'đ' | 'ð' => "d",
+        'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ĕ' | 'ė' | 'ę' | 'ě' => "e",
+        'ĝ' | 'ğ' | 'ġ' | 'ģ' => "g",
+        'ĥ' | 'ħ' => "h",
+        'ì' | 'í' | 'î' | 'ï' | 'ĩ' | 'ī' | 'ĭ' | 'į' | 'ı' => "i",
+        'ĵ' => "j",
+        'ķ' => "k",
+        'ĺ' | 'ļ' | 'ľ' | 'ł' => "l",
+        'ñ' | 'ń' | 'ņ' | 'ň' => "n",
+        'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ŏ' | 'ő' => "o",
+        'ŕ' | 'ŗ' | 'ř' => "r",
+        'ś' | 'ŝ' | 'ş' | 'š' => "s",
+        'ţ' | 'ť' | 'ŧ' => "t",
+        'ù' | 'ú' | 'û' | 'ü' | 'ũ' | 'ū' | 'ŭ' | 'ů' | 'ű' | 'ų' => "u",
+        'ŵ' => "w",
+        'ý' | 'ÿ' | 'ŷ' => "y",
+        'ź' | 'ż' | 'ž' => "z",
+        'ß' => "ss",
+        'æ' => "ae",
+        'œ' => "oe",
+        'þ' => "th",
+        _ => return None,
+    })
 }
 
 fn check_version_id(id: &str) -> Result<(), InstanceError> {
@@ -470,10 +512,28 @@ mod tests {
     }
 
     #[test]
+    fn a_name_windows_keeps_for_devices_is_suffixed() {
+        for name in ["CON", "nul", "Aux", "prn", "COM1", "lpt9"] {
+            let id = slug(name);
+            assert!(id.ends_with("-profile"), "{name} gave {id}");
+        }
+        assert_eq!(slug("com10"), "com10");
+        assert_eq!(slug("console"), "console");
+        assert_eq!(slug("com0"), "com0");
+        // Trailing dots and spaces cannot reach a slug.
+        assert_eq!(slug("pack. "), "pack");
+    }
+
+    #[test]
     fn slugs_are_instance_ids_the_api_accepts() {
         assert_eq!(slug("My Pack!"), "my-pack");
         assert_eq!(slug("  --  "), "profile");
-        assert_eq!(slug("Été 2026"), "t-2026");
+        assert_eq!(slug("Été 2026"), "ete-2026");
+        assert_eq!(slug("Crème brûlée à l'ail"), "creme-brulee-a-l-ail");
+        assert_eq!(slug("Straße Œuvre Ñandú Çà"), "strasse-oeuvre-nandu-ca");
+        // A decomposed é (e and a combining accent) is an e as well.
+        assert_eq!(slug("Cafe\u{301}"), "cafe");
+        assert_eq!(slug("日本語"), "profile");
         assert!(slug("../x").chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     }
 
