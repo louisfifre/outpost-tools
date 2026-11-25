@@ -1,6 +1,6 @@
 //! The launcher's `#titlebar` (launcher/index.html lines 75-129 and 221-245), built by the preview as the
 //! window's host: the game's name on the left, the tools in the middle with the preview's own tabs after
-//! the preview tool, the account and the window's buttons on the right. Step 21 moves this to the launcher; until then the
+//! the preview tool, the account, the figures panel's button and the window's buttons on the right. Step 21 moves this to the launcher; until then the
 //! preview is the only application, so it hosts its own bar.
 //!
 //! The icon paths below come from the launcher page (the line numbers are its), which draws them after
@@ -275,14 +275,11 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             });
         });
 
-        // The right cell: in the preview tool the figures panel's button, then the account, each 8 px before what follows,
+        // The right cell: the account, then in the preview tool the figures panel's button, each 8 px before what follows,
         // and last the window's buttons, which are `.ends` (line 89), as tall as the bar and flush with its corner.
         // Like the brand's, its width is its own, capped at the column's, so that a long account name is cut.
         let right = Style { justify_self: Some(Align::End), align_self: Some(Align::Stretch), align_items: Align::Center, gap: Vec2::new(overflow::TOGGLE_GAP, 0.0), min_w: Dim::Px(0.0), max_w: Dim::Pct(100.0), ..Style::default() };
         ui.node("right", right, |ui| {
-            if preview {
-                panel_toggle(ui, s, ids, 1);
-            }
             // `#account` (line 84): muted, cut with an ellipsis when the free space beside the tools is narrower than it,
             // and gone whole when even a short stub no longer fits (`overflow.rs`). Set-up shows none.
             if let (true, Some(a)) = (form.account && !s.bare, s.account.clone()) {
@@ -291,6 +288,10 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                 } else {
                     account_button(ui, s, ids, &a);
                 }
+            }
+            // Then, in the preview tool, the figures panel's button: right beside Minimise.
+            if preview {
+                panel_toggle(ui, s, ids, 1);
             }
             let ends = Style { align_items: Align::Center, pad: Edges::new(0.0, overflow::EDGE, 0.0, 0.0), ..Style::default() };
             ui.node("ends", ends, |ui| {

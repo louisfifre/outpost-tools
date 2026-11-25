@@ -4,7 +4,7 @@
 //! word, another account name or one more view moves them by itself.
 //!
 //! The bar is a grid of three cells. In the preview tool the left cell holds the settings panel's button and the
-//! right cell the figures panel's button, the account and the window's buttons; in Home the left cell holds the
+//! right cell the account, the figures panel's button and the window's buttons; in Home the left cell holds the
 //! brand and the right one the account and the window's buttons. While the bar is centred the side cells are equal,
 //! `(width - tools) / 2`, so the tools stay in the middle, and each side has to hold what its cell holds. The bar
 //! gives way in this order, taking the first step that fits:

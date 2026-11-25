@@ -609,7 +609,15 @@ fn a4_the_account_sits_before_the_window_buttons() {
             assert_eq!(text, "PlayerOne", "whole whenever the free space beside the tools holds it: {mode:?} {w}");
             let ends = rig.rect(rig.app.ids().ends[0]);
             let right = at.x + text.chars().count() as f32 * 7.2;
-            assert!(right < ends.x && ends.x - right < 60.0, "{mode:?} {w}: the name ends {right} and the window's buttons start {}", ends.x);
+            // In the preview tool the figures panel's button is between the account and the window's buttons, right beside Minimise.
+            let next = if mode == Mode::Preview {
+                let toggle = rig.rect(rig.app.ids().toggles[1]);
+                assert!(toggle.x < ends.x && ends.x - (toggle.x + toggle.w) < 12.0, "{w}: the panel's button is right beside Minimise");
+                toggle
+            } else {
+                ends
+            };
+            assert!(right < next.x && next.x - right < 60.0, "{mode:?} {w}: the name ends {right} and what follows starts {}", next.x);
             let strip = rig.rect(rig.app.ids().strip);
             assert!(at.x >= strip.x + strip.w, "{mode:?} {w}: after the tools");
             if mode == Mode::Home {
