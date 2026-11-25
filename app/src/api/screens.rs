@@ -215,11 +215,6 @@ pub fn skin_reply(root: &Path, name: &str, fetch: &dyn Fetch, client_jar: Option
     }
 }
 
-/// A link the person may open in the browser: web addresses only, on one line.
-pub fn link_ok(url: &str) -> bool {
-    (url.starts_with("https://") || url.starts_with("http://")) && url.len() <= 2048 && !url.chars().any(|c| c.is_control() || c.is_whitespace())
-}
-
 // ---------- the routes ----------
 
 fn not_built(sentence: &str) -> Reply {
@@ -384,7 +379,7 @@ impl Api {
         let id = parsed["id"].as_str().unwrap_or_default();
         let folder_request = matches!(path, "/api/server/start" | "/api/server/stop" | "/api/server/folder" | "/api/server/settings");
         let mine = match path {
-            "/api/server/eula" | "/api/open-link" | "/api/open-url" | "/api/accounts/use" | "/api/accounts/add" | "/api/accounts/sign-out" => true,
+            "/api/server/eula" | "/api/open-link" | "/api/accounts/use" | "/api/accounts/add" | "/api/accounts/sign-out" => true,
             _ => folder_request && !id.is_empty() && id != DEV,
         };
         if !mine {
@@ -396,14 +391,8 @@ impl Api {
         }
         Ok(Some(match path {
             "/api/server/eula" => self.accept_eula(id)?,
-            "/api/open-link" | "/api/open-url" => {
-                let url = parsed["url"].as_str().unwrap_or_default();
-                if !link_ok(url) {
-                    return Ok(Some(Reply::empty(400)));
-                }
-                system::start("explorer.exe", &[url]).map_err(|e| e.to_string())?;
-                Reply::empty(200)
-            }
+            // The same opening as the mods page's (api/mods.rs): web addresses only, through `Outside`.
+            "/api/open-link" => self.mods_post("/api/open-url", &parsed)?,
             "/api/accounts/use" => self.use_account(parsed["name"].as_str().unwrap_or_default()),
             "/api/accounts/add" => not_built("Adding an account needs the Microsoft sign-in, which is not built yet."),
             "/api/accounts/sign-out" => not_built("Signing out would delete the sign-in Prism keeps, which is not built yet."),
@@ -580,15 +569,6 @@ mod tests {
         assert_eq!(offline.status, 502);
         assert_eq!(serde_json::from_slice::<Value>(&offline.body).unwrap()["error"], "Mojang could not be reached.");
         let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn only_web_addresses_on_one_line_are_opened() {
-        assert!(link_ok("https://aka.ms/MinecraftEULA"));
-        assert!(link_ok("http://localhost:8080/x?a=1&b=2"));
-        for bad in ["file:///C:/Windows/System32/calc.exe", "calc.exe", "javascript:alert(1)", "https://a b", "https://a\nb", "", "ms-settings:"] {
-            assert!(!link_ok(bad), "{bad}");
-        }
     }
 
     fn api_over(repo: &Path) -> Api {
