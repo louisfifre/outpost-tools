@@ -11,17 +11,19 @@ use std::sync::OnceLock;
 
 use mere_base::{Cmd, Cursor, Key, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Margin, Side, Style, Track, Tracks};
-use mere_ui::tokens::{CONTROL, GAP, GAP_TIGHT, GAP_WIDE};
+use mere_ui::tokens::{CONTROL, GAP, GAP_WIDE};
 use mere_ui::{ActionLook, ActionOpts, FieldOpts, Icon, Id, LineAction, LineEnd, ListLine, SelectOpts, TextLook, Tone, Ui, text_width};
 use serde_json::json;
 
 use super::Page;
 use crate::bridge::{Done, Tag};
-use crate::home::{COLUMNS_GAP, COLUMNS_MAX, LauncherHome, STACK_BELOW, left};
+use crate::home::{COLUMNS_GAP, LauncherHome, STACK_BELOW, left};
 use crate::model::{Details, ModLine, Open, memory_limit_gb};
 use crate::text;
 use preview::bar::icons;
 
+/// The page's width (boards B1 and B3: 140 to 1260 in a 1400 window), the server page's too.
+pub const WIDTH: f32 = 1120.0;
 /// The width of the labels' column (15 characters of the body, on the 4 px grid).
 pub const LABEL_W: f32 = 108.0;
 /// The memory bar's height: the bar (20), the gap (4) and its words (16).
@@ -30,7 +32,7 @@ pub const BAR_H: f32 = 40.0;
 const GRIP_W: f32 = 12.0;
 const GRIP_H: f32 = 16.0;
 /// The words under the bar keep this much between them.
-const WORDS_GAP: f32 = GAP_TIGHT;
+const WORDS_GAP: f32 = GAP;
 /// The keyboard and the pointer move an end by this much, in MB: half a gigabyte.
 pub const STEP_MB: i64 = 512;
 /// The least either end holds (memory.rs: a profile asks for 1 GB at the least).
@@ -293,7 +295,7 @@ pub fn build(home: &mut LauncherHome, ui: &mut Ui) {
     let mut play = None;
     home.page_frame(
         ui,
-        COLUMNS_MAX,
+        WIDTH,
         &name,
         |ui| {
             let r = ui.action_icon("play", &icons().play, text::PLAY, ActionLook::Primary, ActionOpts { disabled: blocked, ..ActionOpts::default() });
