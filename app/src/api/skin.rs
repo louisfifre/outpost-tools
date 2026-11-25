@@ -109,18 +109,21 @@ pub fn load(root: &Path, name: &str, fetch: &dyn Fetch, client_jar: Option<&Path
     if !valid_name(name) {
         return Err(SkinError::InvalidName);
     }
-    match fetch_profile(name, fetch) {
-        Ok(profile) => {
-            let png = match &profile.skin_url {
-                Some(url) => Some(fetch.get(url).map_err(|e| match e {
-                    FetchError::NotFound => SkinError::BadData("the skin's address leads nowhere".into()),
-                    FetchError::Unreachable(why) => SkinError::Offline(why),
-                })?),
-                None => None,
-            };
-            if let Some(png) = &png {
-                png_size(png)?;
-            }
+    // Any "unreachable" answer, the skin's own download included, falls back to the kept copy.
+    match fetch_profile(name, fetch).and_then(|profile| {
+        let png = match &profile.skin_url {
+            Some(url) => Some(fetch.get(url).map_err(|e| match e {
+                FetchError::NotFound => SkinError::BadData("the skin's address leads nowhere".into()),
+                FetchError::Unreachable(why) => SkinError::Offline(why),
+            })?),
+            None => None,
+        };
+        if let Some(png) = &png {
+            png_size(png)?;
+        }
+        Ok((profile, png))
+    }) {
+        Ok((profile, png)) => {
             store(root, &profile, png.as_deref())?;
             assemble(profile, png, client_jar)
         }
@@ -141,7 +144,16 @@ pub fn cached(root: &Path, name: &str, client_jar: Option<&Path>) -> Option<Skin
         slim: meta["slim"].as_bool()?,
         skin_url: None,
     };
-    let png = if meta["own_skin"].as_bool()? { Some(fs::read(cache_file(root, name, "png")).ok()?) } else { None };
+    let png = if meta["own_skin"].as_bool()? {
+        let png = fs::read(cache_file(root, name, "png")).ok()?;
+        // A pair torn by a crash between the two renames does not match: nothing is kept, rather than a wrong skin.
+        if meta["png_sum"].as_str()? != checksum(&png) {
+            return None;
+        }
+        Some(png)
+    } else {
+        None
+    };
     assemble(profile, png, client_jar).ok()
 }
 
@@ -206,18 +218,46 @@ fn cache_file(root: &Path, name: &str, ext: &str) -> PathBuf {
     root.join("cache").join("skins").join(format!("{}.{ext}", name.to_ascii_lowercase()))
 }
 
+/// FNV-1a, enough to tell a PNG from the one the metadata was written for.
+fn checksum(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        hash = (hash ^ *b as u64).wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Both files are written under temporary names, then renamed in; the metadata holds the PNG's checksum, so a crash
+/// between the two renames is noticed by `cached` and never gives a skin with the wrong arms.
 fn store(root: &Path, profile: &Profile, png: Option<&[u8]>) -> Result<(), SkinError> {
     let io = |e: io::Error| SkinError::Io(e.to_string());
     fs::create_dir_all(root.join("cache").join("skins")).map_err(io)?;
     let png_file = cache_file(root, &profile.name, "png");
-    match png {
-        Some(bytes) => fs::write(&png_file, bytes).map_err(io)?,
-        None => {
-            let _ = fs::remove_file(&png_file);
+    let json_file = cache_file(root, &profile.name, "json");
+    let png_tmp = png_file.with_extension("png.tmp");
+    let json_tmp = json_file.with_extension("json.tmp");
+    let meta = json!({
+        "name": profile.name, "uuid": profile.uuid, "slim": profile.slim, "own_skin": png.is_some(),
+        "png_sum": png.map(checksum),
+    });
+    let result = (|| {
+        if let Some(bytes) = png {
+            fs::write(&png_tmp, bytes)?;
         }
+        fs::write(&json_tmp, meta.to_string())?;
+        match png {
+            Some(_) => fs::rename(&png_tmp, &png_file)?,
+            None => {
+                let _ = fs::remove_file(&png_file);
+            }
+        }
+        fs::rename(&json_tmp, &json_file)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&png_tmp);
+        let _ = fs::remove_file(&json_tmp);
     }
-    let meta = json!({ "name": profile.name, "uuid": profile.uuid, "slim": profile.slim, "own_skin": png.is_some() });
-    fs::write(cache_file(root, &profile.name, "json"), meta.to_string()).map_err(io)
+    result.map_err(io)
 }
 
 /// (width, height) of a PNG, read from its header alone. A skin is 64x64 or the old 64x32.

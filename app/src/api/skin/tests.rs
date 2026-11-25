@@ -21,6 +21,8 @@ struct Fake {
     answers: HashMap<String, Vec<u8>>,
     online: RefCell<bool>,
     asked: RefCell<Vec<String>>,
+    /// Requests to this one address fail like a lost connection, the others answer.
+    down_url: RefCell<Option<String>>,
 }
 
 impl Fake {
@@ -35,14 +37,14 @@ impl Fake {
             JEB_PROFILE.as_bytes().to_vec(),
         );
         answers.insert(JEB_SKIN_URL.into(), fake_png(64, 64, 1));
-        Fake { answers, online: RefCell::new(true), asked: RefCell::new(Vec::new()) }
+        Fake { answers, online: RefCell::new(true), asked: RefCell::new(Vec::new()), down_url: RefCell::new(None) }
     }
 }
 
 impl Fetch for Fake {
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
         self.asked.borrow_mut().push(url.to_string());
-        if !*self.online.borrow() {
+        if !*self.online.borrow() || self.down_url.borrow().as_deref() == Some(url) {
             return Err(FetchError::Unreachable("offline".into()));
         }
         self.answers.get(url).cloned().ok_or(FetchError::NotFound)
@@ -92,6 +94,30 @@ fn a_second_read_works_offline() {
     *fake.online.borrow_mut() = false;
     assert_eq!(load(&root, "JEB_", &fake, None).unwrap(), first);
     assert_eq!(cached(&root, "jeb_", None).unwrap(), first);
+}
+
+#[test]
+fn a_failed_png_download_falls_back_to_the_kept_copy() {
+    let root = temp("png-down");
+    let fake = Fake::jeb();
+    let first = load(&root, "jeb_", &fake, None).unwrap();
+    *fake.down_url.borrow_mut() = Some(JEB_SKIN_URL.into());
+    assert_eq!(load(&root, "jeb_", &fake, None).unwrap(), first);
+    let empty = temp("png-down-empty");
+    assert!(matches!(load(&empty, "jeb_", &fake, None), Err(SkinError::Offline(_))));
+}
+
+#[test]
+fn a_torn_pair_is_not_kept_and_no_temporary_file_stays() {
+    let root = temp("torn");
+    let fake = Fake::jeb();
+    load(&root, "jeb_", &fake, None).unwrap();
+    let dir = root.join("cache").join("skins");
+    let leftovers = fs::read_dir(&dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().is_some_and(|x| x == "tmp"));
+    assert_eq!(leftovers.count(), 0);
+    // A crash between the two renames: a new PNG next to the old metadata.
+    fs::write(dir.join("jeb_.png"), fake_png(64, 64, 9)).unwrap();
+    assert_eq!(cached(&root, "jeb_", None), None);
 }
 
 #[test]
