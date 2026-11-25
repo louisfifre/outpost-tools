@@ -7,7 +7,7 @@
 
 Outpost Tools is one Windows application that holds Minecraft Java Edition tools in one window:
 
-- **Home**: your profiles, each with its Play button, and your servers, each with Start or Stop. The account you play with is shown in the bar;
+- **Home**: your profiles, each with its Play button, and your servers, each with Start or Stop. The account you play with is shown at the right of the bar;
 - a **profile's page**: its mods (updates, remove with Undo, add one from Modrinth or from a file), Fabric, the game version, memory and Java arguments;
 - a **server's page**: the profile and world it was made from, and the Minecraft EULA, accepted by you;
 - the **Java set-up** at the first start, when the game's Java is missing;
@@ -74,7 +74,7 @@ On Home and a profile's page:
 
 On servers:
 
-- **Never run for real.** Start, Stop and the folder dialog are tested with a fake runner only. They need one real try.
+- **Never run for real.** Start and Stop are tested with a fake runner only. They need one real try.
 - **A server started elsewhere** (an earlier run, or by hand) shows as running but cannot be stopped from the window. Closing Outpost Tools leaves a running server running.
 - **Failed starts.** Only refusals before the process starts are said (EULA, Java missing, port taken). A server that dies after starting goes back to stopped, with no sentence and no log link.
 - **Java missing** is said, but does not lead to the set-up yet.
