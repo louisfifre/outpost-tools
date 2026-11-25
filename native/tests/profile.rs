@@ -7,7 +7,7 @@ use std::sync::Arc;
 use common::*;
 use launcher_native::fake::{FakeApi, fixture};
 use launcher_native::pages::Page;
-use mere_base::{App, Button, Cmd, Event, Vec2};
+use mere_base::{App, Button, Cmd, Event, Key, Vec2};
 use serde_json::{Value, json};
 
 /// The board's PC: 16 GB with a third used, and Exploration at 2 to 6 GB.
@@ -245,4 +245,129 @@ fn f1_no_fabric() {
     open_profile(&mut rig, "atelier");
     rig.frame();
     assert!(rig.says("not installed") && rig.says("Install") && has(&rig, "MODS \u{b7} 0"));
+}
+
+/// Where the bar's own words stand, in the window's pixels with their widths: only what is drawn under the bar.
+fn bar_words(rig: &Rig) -> Vec<(f32, f32, String)> {
+    let r = rig.rect(ids(rig).memory);
+    rig.texts().into_iter().filter(|(at, _, _)| at.y >= r.y + 20.0 && at.y <= r.y + r.h && at.x >= r.x - 1.0 && at.x <= r.x + r.w).map(|(at, t, _)| (at.x, at.x + mere_ui::text_width(&t, 11.0), t)).collect()
+}
+
+fn assert_clear(rig: &Rig, what: &str) {
+    let mut words = bar_words(rig);
+    words.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let bar = rig.rect(ids(rig).memory);
+    assert!(words.len() >= 2, "{what}: the ends' words are drawn: {words:?}");
+    for pair in words.windows(2) {
+        assert!(pair[0].1 < pair[1].0, "{what}: {:?} runs into {:?}", pair[0], pair[1]);
+    }
+    if let Some(last) = words.last() {
+        assert!(last.1 <= bar.x + bar.w + 0.5, "{what}: {:?} leaves the bar", last);
+    }
+}
+
+/// The words under the bar never overlap, at any amount and at every width of the window.
+#[test]
+fn m3_the_words_never_overlap() {
+    for width in [1400u32, 1000, 760, 600] {
+        let mut rig = page(width, 940);
+        if rig.home().pages.profile.ids.memory == mere_ui::Id::ROOT {
+            // A narrow window starts the game's settings folded.
+            let game = ids(&rig).game;
+            rig.click(game);
+        }
+        assert_clear(&rig, &format!("{width} px, the board's amounts"));
+        for (from, to) in [(6.0, 10.0), (6.0, 2.5), (2.0, 5.0), (2.0, 1.0), (2.0, 10.0), (10.0, 1.0)] {
+            drag(&mut rig, from, to);
+            assert_clear(&rig, &format!("{width} px, {from} to {to}"));
+        }
+        for key in [Key::End, Key::Home, Key::Down, Key::Home, Key::End] {
+            rig.key(key);
+            assert_clear(&rig, &format!("{width} px, {key:?}"));
+        }
+    }
+}
+
+/// The sizes are read in gigabytes with one decimal at most: half gigabytes show their half, whole ones show no decimal.
+#[test]
+fn m4_sizes_read_in_gigabytes_with_one_decimal() {
+    assert_eq!(launcher_native::text::gb(2048), "2");
+    assert_eq!(launcher_native::text::gb(2560), "2.5");
+    assert_eq!(launcher_native::text::gb(6656), "6.5");
+    assert_eq!(launcher_native::text::gb(1536), "1.5");
+    assert_eq!(launcher_native::text::gb(1000), "1");
+    assert_eq!(launcher_native::text::gb(5222), "5.1");
+    let mut rig = page(1400, 940);
+    drag(&mut rig, 6.0, 6.5);
+    assert!(rig.says("max 6.5 GB"), "{:?}", said(&rig));
+    assert_eq!(saved(&rig)["memoryMb"], json!(6656));
+}
+
+/// The bar takes the keyboard: a press or Tab focuses it, Left and Right move the end it holds by half a gigabyte,
+/// Home and End take it to its least and most, Up and Down switch the end; the kit's ring shows the focus.
+#[test]
+fn m5_the_bar_takes_the_keyboard() {
+    let mut rig = page(1400, 940);
+    let ring = |rig: &Rig| rig.app.list().cmds.iter().filter(|c| matches!(c, Cmd::Frame { color, .. } if *color == rig.theme.text)).count();
+    let before = ring(&rig);
+    // Keys reach nothing before the bar has the focus.
+    rig.key(Key::Right);
+    assert_eq!(rig.api.count("POST", "/api/settings/exploration"), 0);
+    // A press on the maximum's grip, then let go where it was: the bar is focused and nothing is saved.
+    drag(&mut rig, 6.0, 6.0);
+    assert_eq!(rig.api.count("POST", "/api/settings/exploration"), 0);
+    assert!(ring(&rig) > before, "the ring is drawn around the focused bar");
+    rig.write("profile_memory_focus_1400.png");
+    rig.key(Key::Right);
+    assert_eq!(saved(&rig)["memoryMb"], json!(6656));
+    assert!(rig.says("max 6.5 GB"));
+    rig.key(Key::Left);
+    rig.key(Key::Left);
+    assert_eq!(saved(&rig)["memoryMb"], json!(5632));
+    rig.key(Key::End);
+    assert_eq!(saved(&rig)["memoryMb"], json!(10 * 1024), "the most is what the PC leaves free");
+    rig.key(Key::Home);
+    assert_eq!(saved(&rig)["memoryMb"], json!(2048), "the maximum stops at the minimum");
+    // Down switches to the minimum, which then moves.
+    rig.key(Key::Down);
+    rig.key(Key::Right);
+    assert_eq!(saved(&rig)["minMemoryMb"], json!(2048), "held under the maximum");
+    rig.key(Key::Up);
+    rig.key(Key::Right);
+    rig.key(Key::Down);
+    rig.key(Key::Left);
+    rig.key(Key::Left);
+    assert_eq!(saved(&rig)["minMemoryMb"], json!(1024));
+    rig.key(Key::Left);
+    assert_eq!(saved(&rig)["minMemoryMb"], json!(1024), "at least a gigabyte");
+    rig.key(Key::End);
+    assert_eq!(saved(&rig)["minMemoryMb"], saved(&rig)["memoryMb"]);
+}
+
+/// Tab reaches the bar, and a locked page takes no focus on it.
+#[test]
+fn m6_tab_reaches_the_bar_and_a_locked_bar_takes_none() {
+    let mut rig = page(1400, 940);
+    let java = rig.home().ids().java;
+    rig.click(java);
+    for _ in 0..12 {
+        rig.key(Key::Tab);
+        if rig.app.ui().focused() == Some(ids(&rig).memory) {
+            break;
+        }
+    }
+    assert_eq!(rig.app.ui().focused(), Some(ids(&rig).memory), "Tab walks to the bar");
+    rig.key(Key::Right);
+    assert_eq!(saved(&rig)["memoryMb"], json!(6656));
+    let api = board_pc();
+    let mut v = api_get(&api, "/api/profiles");
+    v["locked"] = json!(true);
+    api.set_get("/api/profiles", v);
+    let mut rig = Rig::with_api(api, 1400, 940, true, true);
+    open_profile(&mut rig, "exploration");
+    rig.frame();
+    for _ in 0..12 {
+        rig.key(Key::Tab);
+        assert_ne!(rig.app.ui().focused(), Some(ids(&rig).memory));
+    }
 }

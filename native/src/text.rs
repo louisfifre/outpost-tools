@@ -168,11 +168,22 @@ pub fn open_on_modrinth(name: &str) -> String {
 pub fn newer(version: &str) -> String {
     format!("\u{2192} {version}")
 }
-pub fn memory_min(gb: i64) -> String {
-    format!("min {gb} GB")
+/// A memory amount the way the user reads it: gigabytes with one decimal at most ("2", "2.5"); the api's MB are whole
+/// half gigabytes or anything a Prism file holds.
+pub fn gb(mb: i64) -> String {
+    let tenths = (mb as f64 / 1024.0 * 10.0).round() as i64;
+    if tenths % 10 == 0 { format!("{}", tenths / 10) } else { format!("{}.{}", tenths / 10, tenths % 10) }
 }
-pub fn memory_max(gb: i64) -> String {
-    format!("max {gb} GB")
+/// The minimum's word: "min 2 GB", "min 2" when the room is short (`unit` false), the bare "2" (`words` false).
+pub fn memory_min(mb: i64, unit: bool, words: bool) -> String {
+    match (words, unit) {
+        (false, _) => gb(mb),
+        (true, true) => format!("min {} GB", gb(mb)),
+        (true, false) => format!("min {}", gb(mb)),
+    }
+}
+pub fn memory_max(mb: i64, words: bool) -> String {
+    if words { format!("max {} GB", gb(mb)) } else { gb(mb) }
 }
 pub const USED_BY_PC: &str = "used by the PC";
 pub fn memory_total(gb: i64) -> String {

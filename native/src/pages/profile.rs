@@ -9,7 +9,7 @@
 
 use std::sync::OnceLock;
 
-use mere_base::{Cmd, Cursor, Rect, Vec2, Weight};
+use mere_base::{Cmd, Cursor, Key, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Margin, Side, Style, Track, Tracks};
 use mere_ui::tokens::{CONTROL, GAP, GAP_TIGHT, GAP_WIDE};
 use mere_ui::{ActionLook, ActionOpts, FieldOpts, Icon, Id, LineAction, LineEnd, ListLine, SelectOpts, TextLook, Tone, Ui, text_width};
@@ -31,6 +31,11 @@ const GRIP_W: f32 = 12.0;
 const GRIP_H: f32 = 16.0;
 /// The words under the bar keep this much between them.
 const WORDS_GAP: f32 = GAP_TIGHT;
+/// The keyboard and the pointer move an end by this much, in MB: half a gigabyte.
+pub const STEP_MB: i64 = 512;
+/// The least either end holds (memory.rs: a profile asks for 1 GB at the least).
+const MIN_MB: i64 = 1024;
+const WORD_SIZE: f32 = 11.0;
 const TRASH: &str = "M9 2h6v2h5v2H4V4h5zM5 8h2v12h10V8h2v14H5zm4 2h2v8H9zm4 0h2v8h-2z";
 
 fn trash() -> &'static Icon {
@@ -44,9 +49,10 @@ fn trash() -> &'static Icon {
 }
 
 /// Which end of the memory bar is carried.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 enum End {
     Min,
+    #[default]
     Max,
 }
 
@@ -113,11 +119,14 @@ pub struct State {
     address: String,
     java: String,
     focus_address: bool,
-    min_gb: i64,
-    max_gb: i64,
+    /// The memory the bar holds, in MB (the api's unit), always a whole step of `STEP_MB`.
+    min_mb: i64,
+    max_mb: i64,
     /// The amounts last sent, so that a drag that ends where it began sends nothing.
-    saved_gb: (i64, i64),
+    saved_mb: (i64, i64),
     drag: Option<End>,
+    /// The end the keyboard moves: the one last carried, the maximum at first. Up and Down switch it.
+    end: End,
     /// What a field held when it got the keyboard (`left`).
     address_was: Option<String>,
     java_was: Option<String>,
@@ -134,16 +143,16 @@ pub fn open(home: &mut LauncherHome, id: &str) {
     options.extend(p.worlds.iter().map(|w| (Open::World(w.clone()), text::on_world(w))));
     options.push((Open::Server(String::new()), text::ON_SERVER.to_string()));
     let open_on = options.iter().position(|(o, _)| o.kind() == p.open.kind() && (p.open.kind() != "world" || o.target() == p.open.target())).unwrap_or(0);
-    let (min_gb, max_gb) = ((p.min_memory_mb as f64 / 1024.0).round() as i64, (p.memory_mb as f64 / 1024.0).round() as i64);
+    let (min_mb, max_mb) = (snap(p.min_memory_mb).max(MIN_MB), snap(p.memory_mb).max(MIN_MB));
     home.pages.profile = State {
         id: id.to_string(),
         options,
         open_on,
         address: if let Open::Server(a) = &p.open { a.clone() } else { String::new() },
         java: p.java_args.clone(),
-        min_gb,
-        max_gb,
-        saved_gb: (min_gb, max_gb),
+        min_mb,
+        max_mb,
+        saved_mb: (min_mb, max_mb),
         ..State::default()
     };
     home.say("");
@@ -166,14 +175,14 @@ pub fn done(home: &mut LauncherHome, d: Done) {
         Tag::SaveProfile => match d.status {
             200 => {
                 let st = &home.pages.profile;
-                let (id, min, max, java) = (st.id.clone(), st.min_gb, st.max_gb, st.java.trim().to_string());
+                let (id, min, max, java) = (st.id.clone(), st.min_mb, st.max_mb, st.java.trim().to_string());
                 let open = st.options.get(st.open_on).map(|(o, _)| match o {
                     Open::Server(_) => Open::Server(st.address.trim().to_string()),
                     other => other.clone(),
                 });
                 if let Some(p) = home.profiles.iter_mut().find(|p| p.id == id) {
-                    p.min_memory_mb = min * 1024;
-                    p.memory_mb = max * 1024;
+                    p.min_memory_mb = min;
+                    p.memory_mb = max;
                     p.java_args = java;
                     if let Some(open) = open {
                         p.open = open;
@@ -265,10 +274,10 @@ fn save(home: &mut LauncherHome) {
         }
         other => other,
     };
-    st.saved_gb = (st.min_gb, st.max_gb);
+    st.saved_mb = (st.min_mb, st.max_mb);
     let body = json!({
-        "memoryMb": st.max_gb * 1024,
-        "minMemoryMb": st.min_gb * 1024,
+        "memoryMb": st.max_mb,
+        "minMemoryMb": st.min_mb,
         "javaArgs": st.java.trim(),
         "open": { "kind": open.kind(), "target": open.target() },
     });
@@ -483,45 +492,132 @@ fn java_and_folder(home: &mut LauncherHome, ui: &mut Ui, locked: bool, dir: &str
     }
 }
 
+/// An amount of memory held to a whole step of `STEP_MB`.
+fn snap(mb: i64) -> i64 {
+    (mb as f64 / STEP_MB as f64).round() as i64 * STEP_MB
+}
+
+/// Where the words under the bar start (x, from the bar's left) and what they say; None for a word left out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Words {
+    pub min: (f32, String),
+    pub max: (f32, String),
+    pub used: Option<f32>,
+    pub total: Option<(f32, String)>,
+}
+
+/// The words under a bar `w` long, whose ends stand at `min_x` and `max_x` and whose used part starts at `used_x`
+/// (None when the PC's use is not known). No two words ever overlap, at any amount and any width: the ends' words come
+/// first and keep each other clear (the minimum's slides left of its grip, then the maximum's right of it), then the
+/// whole at the bar's end, then the PC's use where the hatching starts. When they cannot all stand, the least needed
+/// goes first: the PC's use, then the unit of the minimum, then the whole's, then the words "min" and "max".
+pub fn memory_words(w: f32, min_mb: i64, max_mb: i64, total_gb: i64, min_x: f32, max_x: f32, used_x: Option<f32>) -> Words {
+    let width = |s: &str| text_width(s, WORD_SIZE);
+    let total_s = text::memory_total(total_gb);
+    let total_w = width(&total_s);
+    // From the fullest reading to the barest; the first that fits is the one shown. (the whole's word, the minimum's
+    // unit, the words "min" and "max")
+    let forms: [(bool, bool, bool); 5] = [(true, true, true), (true, false, true), (false, true, true), (false, false, true), (false, false, false)];
+    let mut last = None;
+    for (level, &(with_total, with_unit, with_words)) in forms.iter().enumerate() {
+        let (min_s, max_s) = (text::memory_min(min_mb, with_unit, with_words), text::memory_max(max_mb, with_words));
+        let (min_w, max_w) = (width(&min_s), width(&max_s));
+        let right = if with_total { w - total_w - WORDS_GAP } else { w };
+        let mut max_at = (max_x - 4.0).max(0.0);
+        let mut min_at = (min_x - 12.0).max(0.0);
+        // The minimum's word slides left to stay clear of the maximum's; at the bar's start the maximum's goes right.
+        if min_at + min_w + WORDS_GAP > max_at {
+            min_at = (max_at - WORDS_GAP - min_w).max(0.0);
+            max_at = max_at.max(min_at + min_w + WORDS_GAP);
+        }
+        // Near the bar's end the maximum's word slides left, and the minimum's with it.
+        if max_at + max_w > right {
+            max_at = right - max_w;
+            min_at = min_at.min(max_at - WORDS_GAP - min_w);
+        }
+        let mut words = Words { min: (min_at, min_s), max: (max_at, max_s), used: None, total: with_total.then(|| (w - total_w, total_s.clone())) };
+        if min_at < 0.0 || max_at < 0.0 {
+            last = Some(words);
+            continue;
+        }
+        if level == 0 {
+            if let Some(x) = used_x {
+                let used_w = width(text::USED_BY_PC);
+                let (lo, hi) = (max_at + max_w + WORDS_GAP, right - used_w);
+                if lo <= hi {
+                    words.used = Some(x.clamp(lo, hi));
+                }
+            }
+        }
+        return words;
+    }
+    // Nothing stands clear: the bar is narrower than two bare amounts. The maximum's alone is the one kept.
+    let mut words = last.unwrap_or(Words { min: (0.0, String::new()), max: (0.0, String::new()), used: None, total: None });
+    words.min.1.clear();
+    words.max.0 = 0.0;
+    words
+}
+
 /// The memory bar (B1): as long as the PC's memory, the part the PC uses now hatched at its right end, and over the
-/// bar the profile's minimum and maximum, each an end the user carries in whole gigabytes. The maximum never reaches into
-/// the hatched part. Under it, the words: each end's amount, what the PC uses, the whole.
+/// bar the profile's minimum and maximum, each an end the user carries in half gigabytes. The maximum never reaches into
+/// the hatched part. Under it, the words (`memory_words`): each end's amount, what the PC uses, the whole. The bar takes
+/// the keyboard like a field: Left and Right move the end it holds by `STEP_MB`, Home and End take it to its least and
+/// its most, Up and Down switch the end.
 fn memory_bar(home: &mut LauncherHome, ui: &mut Ui, machine_mb: i64, used_mb: i64, locked: bool) {
-    let total = ((machine_mb as f64 / 1024.0).round() as i64).max(1);
-    let limit = memory_limit_gb(machine_mb, used_mb).min(total);
+    let total_gb = ((machine_mb as f64 / 1024.0).round() as i64).max(1);
+    let total_mb = total_gb * 1024;
+    let limit_mb = (memory_limit_gb(machine_mb, used_mb).min(total_gb) * 1024).max(MIN_MB);
     let st = &mut home.pages.profile;
     let free = if used_mb > 0 { ((machine_mb - used_mb).max(0) as f32 / machine_mb.max(1) as f32).clamp(0.0, 1.0) } else { 1.0 };
-    let resp = ui.canvas("bar", Style { grow: 1.0, h: Dim::Px(BAR_H), min_w: Dim::Px(0.0), ..Style::default() }, |ui, resp| {
+    let resp = ui.canvas_focus("bar", Style { grow: 1.0, h: Dim::Px(BAR_H), min_w: Dim::Px(0.0), ..Style::default() }, locked, |ui, resp, keys| {
         let t = *ui.theme();
         let off = |c| t.disabled_if(c, locked);
         let w = resp.rect.map_or(0.0, |r| r.w);
+        // An end holds from 1 GB to the maximum's limit; the minimum stops where the maximum is.
+        let place = |st: &mut State, end: End, mb: i64| match end {
+            End::Min => st.min_mb = snap(mb).clamp(MIN_MB, st.max_mb),
+            End::Max => st.max_mb = snap(mb).clamp(st.min_mb, limit_mb.max(st.min_mb)),
+        };
         if let (Some(rect), false) = (resp.rect, locked) {
             let pointer = ui.pointer();
-            let value = |p: Vec2| (p.x - rect.x) / rect.w * total as f32;
+            let value = |p: Vec2| ((p.x - rect.x) / rect.w.max(1.0) * total_mb as f32) as i64;
             if let (true, Some(p)) = (resp.pressed, pointer) {
                 // A press on the bar itself (not on its words) takes the nearer end; on a tie, the one the press is on the side of.
                 if p.y - rect.y < GRIP_H + 4.0 {
                     let v = value(p);
-                    let (to_min, to_max) = ((v - st.min_gb as f32).abs(), (v - st.max_gb as f32).abs());
-                    st.drag = Some(if to_min < to_max || (to_min == to_max && v < st.min_gb as f32) { End::Min } else { End::Max });
+                    let (to_min, to_max) = ((v - st.min_mb).abs(), (v - st.max_mb).abs());
+                    st.drag = Some(if to_min < to_max || (to_min == to_max && v < st.min_mb) { End::Min } else { End::Max });
                 }
             }
             if let (Some(end), Some(p)) = (st.drag, pointer) {
-                let gb = value(p).round() as i64;
-                match end {
-                    End::Min => st.min_gb = gb.clamp(1, st.max_gb),
-                    End::Max => st.max_gb = gb.clamp(st.min_gb, limit.max(st.min_gb)),
-                }
+                st.end = end;
+                place(st, end, value(p));
             }
-            if !resp.held && st.drag.take().is_some() && (st.min_gb, st.max_gb) != st.saved_gb {
+            if !resp.held && st.drag.take().is_some() && (st.min_mb, st.max_mb) != st.saved_mb {
                 st.asks.push(Ask::Save);
             }
             if resp.hovered || resp.held {
                 ui.want_cursor(Cursor::ResizeEW);
             }
         }
-        let at = |gb: i64| gb as f32 / total as f32 * w;
-        let (min_x, max_x) = (at(st.min_gb), at(st.max_gb));
+        // The keyboard: each key that moves an end is saved at once, as a drag is when it is let go.
+        for (key, _) in &keys.keys {
+            let end = st.end;
+            let at = if end == End::Min { st.min_mb } else { st.max_mb };
+            let (least, most) = if end == End::Min { (MIN_MB, st.max_mb) } else { (st.min_mb, limit_mb.max(st.min_mb)) };
+            match key {
+                Key::Left => place(st, end, at - STEP_MB),
+                Key::Right => place(st, end, at + STEP_MB),
+                Key::Home => place(st, end, least),
+                Key::End => place(st, end, most),
+                _ => st.end = if end == End::Min { End::Max } else { End::Min },
+            }
+        }
+        if !keys.keys.is_empty() && (st.min_mb, st.max_mb) != st.saved_mb {
+            st.asks.push(Ask::Save);
+        }
+        let at = |mb: i64| mb as f32 / total_mb as f32 * w;
+        let (min_x, max_x) = (at(st.min_mb), at(st.max_mb));
         let mut cmds = vec![Cmd::Fill { rect: Rect::new(0.0, 8.0, w, 4.0), color: off(t.line) }];
         // The part the PC uses: faint diagonal stripes, from where the free memory ends to the bar's end.
         let used_x = free * w;
@@ -539,27 +635,23 @@ fn memory_bar(home: &mut LauncherHome, ui: &mut Ui, machine_mb: i64, used_mb: i6
         cmds.push(Cmd::Fill { rect: grip(min_x), color: off(t.ground) });
         cmds.push(Cmd::Frame { rect: grip(min_x), width_px: 1.0, color: off(t.text) });
         cmds.push(Cmd::Fill { rect: grip(max_x), color: off(t.fill) });
-        // The words: 11 px, under the bar. Both ends' words keep clear of each other.
-        let word = |x: f32, s: &str, color| Cmd::Text { at: Vec2::new(x, 25.0), text: s.to_string(), size: 11.0, color: off(color), weight: Weight::Regular };
-        let (min_s, max_s, total_s) = (text::memory_min(st.min_gb), text::memory_max(st.max_gb), text::memory_total(total));
-        let w_of = |s: &str| text_width(s, 11.0);
-        let max_at = (max_x - 4.0).max(0.0);
-        let mut min_at = (min_x - 12.0).max(0.0);
-        if min_at + w_of(&min_s) + WORDS_GAP > max_at {
-            min_at = (max_at - WORDS_GAP - w_of(&min_s)).max(0.0);
+        if keys.focused {
+            // The kit's ring around the bar, and a second around the end the keys move.
+            cmds.push(ui.focus_ring(Rect::new(0.0, 0.0, w, GRIP_H + 4.0)));
+            let g = grip(if st.end == End::Min { min_x } else { max_x });
+            cmds.push(ui.focus_ring(Rect::new(g.x - 2.0, g.y - 2.0, g.w + 4.0, g.h + 4.0)));
         }
-        // On a bar as long as a big PC's memory the grips are close: the least's word cannot go further left than the
-        // bar's start, so the most's word goes right of it rather than over it.
-        let max_at = max_at.max(min_at + w_of(&min_s) + WORDS_GAP);
-        let total_at = w - w_of(&total_s);
-        cmds.push(word(min_at, &min_s, t.text));
-        cmds.push(word(max_at, &max_s, t.text));
-        // What the PC uses starts where its hatching does, or ends where the whole's word begins when that is nearer.
-        let used_at = used_x.min(total_at - WORDS_GAP - w_of(text::USED_BY_PC));
-        if used_mb > 0 && used_at > max_at + w_of(&max_s) + WORDS_GAP {
-            cmds.push(word(used_at, text::USED_BY_PC, t.muted));
+        // The words: 11 px, under the bar, none over another.
+        let word = |x: f32, s: &str, color| Cmd::Text { at: Vec2::new(x, 25.0), text: s.to_string(), size: WORD_SIZE, color: off(color), weight: Weight::Regular };
+        let words = memory_words(w, st.min_mb, st.max_mb, total_gb, min_x, max_x, (used_mb > 0 && used_x < w).then_some(used_x));
+        cmds.push(word(words.min.0, &words.min.1, t.text));
+        cmds.push(word(words.max.0, &words.max.1, t.text));
+        if let Some(x) = words.used {
+            cmds.push(word(x, text::USED_BY_PC, t.muted));
         }
-        cmds.push(word(total_at, &total_s, t.muted));
+        if let Some((x, s)) = &words.total {
+            cmds.push(word(*x, s, t.muted));
+        }
         cmds
     });
     st.ids.memory = resp.id;
@@ -643,4 +735,66 @@ fn mods_part(home: &mut LauncherHome, ui: &mut Ui) {
     let st = &mut home.pages.profile;
     st.ids = ids;
     st.asks.extend(asks);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every word the layout returns, with its start and end.
+    fn spans(words: &Words) -> Vec<(f32, f32)> {
+        let w = |s: &str| text_width(s, WORD_SIZE);
+        let mut v = vec![(words.min.0, words.min.0 + w(&words.min.1)), (words.max.0, words.max.0 + w(&words.max.1))];
+        if let Some(x) = words.used {
+            v.push((x, x + w(text::USED_BY_PC)));
+        }
+        if let Some((x, s)) = &words.total {
+            v.push((*x, x + w(s)));
+        }
+        v.retain(|s| s.1 > s.0);
+        v.sort_by(|a, b| a.0.total_cmp(&b.0));
+        v
+    }
+
+    /// At every width from a narrow bar to a wide one, every PC from 4 to 128 GB, every pair of ends (in half gigabytes)
+    /// and every use, no word overlaps another or leaves the bar.
+    #[test]
+    fn the_words_never_overlap_at_any_amount_or_width() {
+        for w in (160..=900).step_by(20) {
+            for total_gb in [4i64, 8, 16, 32, 64, 128] {
+                let total_mb = total_gb * 1024;
+                for min_mb in (1024..=total_mb).step_by(512 * 3) {
+                    for max_mb in (min_mb..=total_mb).step_by(512 * 5) {
+                        for used in [None, Some(0.9f32), Some(0.5), Some(0.1)] {
+                            let at = |mb: i64| mb as f32 / total_mb as f32 * w as f32;
+                            let words = memory_words(w as f32, min_mb, max_mb, total_gb, at(min_mb), at(max_mb), used.map(|u| u * w as f32));
+                            let s = spans(&words);
+                            for pair in s.windows(2) {
+                                assert!(pair[0].1 < pair[1].0, "w {w}, {total_gb} GB, {min_mb}..{max_mb}, used {used:?}: {words:?}");
+                            }
+                            assert!(s.first().is_none_or(|f| f.0 >= -0.01) && s.last().is_none_or(|l| l.1 <= w as f32 + 0.01), "w {w}: {words:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The board's bar keeps its reading: the ends' words, the PC's use at its hatching, the whole at the end.
+    #[test]
+    fn the_boards_words_keep_their_reading() {
+        let w = 420.0;
+        let at = |mb: i64| mb as f32 / 16384.0 * w;
+        let words = memory_words(w, 2048, 6144, 16, at(2048), at(6144), Some(0.68 * w));
+        assert_eq!((words.min.1.as_str(), words.max.1.as_str()), ("min 2 GB", "max 6 GB"));
+        assert!(words.used.is_some() && words.total.as_ref().is_some_and(|t| t.1 == "16 GB"));
+    }
+
+    #[test]
+    fn steps_are_half_gigabytes() {
+        assert_eq!(snap(6144), 6144);
+        assert_eq!(snap(6400), 6656);
+        assert_eq!(snap(6300), 6144);
+        assert_eq!(snap(0), 0);
+    }
 }
