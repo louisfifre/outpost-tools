@@ -133,8 +133,6 @@ fn preview_rig(w: u32, h: u32, dark: bool) -> Option<Rig> {
 fn the_preview_tool_in_the_launcher() {
     for (w, name, dark) in [(1000, "launcher_preview_1000.png", true), (1400, "launcher_preview_1400.png", true), (1920, "launcher_preview_1920.png", true), (1400, "launcher_preview_1400_light.png", false)] {
         let Some(mut rig) = preview_rig(w, 940, dark) else { return };
-        // The preview tool's bar holds the panels' buttons where Home has the brand and the account (preview overflow.rs).
-        assert!(!rig.texts().iter().any(|t| t.1.starts_with("Player")), "the account is Home's only, at {w}");
         rig.write(name);
     }
 }

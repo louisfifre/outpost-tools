@@ -221,7 +221,10 @@ pub fn base64_encode(bytes: &[u8]) -> String {
 /// The answer for the skin of `name`, read through `fetch` and kept under `root`.
 pub fn skin_reply(root: &Path, name: &str, fetch: &dyn Fetch, client_jar: Option<&Path>) -> Reply {
     match skin::load(root, name, fetch, client_jar) {
-        Ok(s) => Reply::json(200, json!({ "name": s.name, "slim": s.slim, "png": base64_encode(&s.png), "default": s.is_default })),
+        Ok(s) => match skin::rgba(&s.png) {
+            Ok((width, height, pixels)) => Reply::json(200, json!({ "name": s.name, "slim": s.slim, "png": base64_encode(&s.png), "width": width, "height": height, "rgba": base64_encode(&pixels), "default": s.is_default })),
+            Err(e) => Reply::error(500, e.to_string()),
+        },
         Err(skin::SkinError::InvalidName) => Reply::error(400, "That is not an account name."),
         Err(skin::SkinError::NoSuchAccount) => Reply::error(404, "No account has this name."),
         Err(skin::SkinError::Offline(_)) => Reply::error(502, "Mojang could not be reached."),
@@ -613,6 +616,50 @@ mod tests {
         let offline = skin_reply(&root, "PlayerOne", &Offline, None);
         assert_eq!(offline.status, 502);
         assert_eq!(serde_json::from_slice::<Value>(&offline.body).unwrap()["error"], "Mojang could not be reached.");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// Answers the three requests of a skin's read from fixtures: the name's id, the profile, the picture.
+    struct Mojang(Vec<u8>);
+    impl Fetch for Mojang {
+        fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
+            let id = "69189d787e9d41edb7d30b4fd54f21f3";
+            let textures = |u: &str| base64_encode(json!({"textures": {"SKIN": {"url": u}}}).to_string().as_bytes());
+            if url.ends_with("/minecraft/PlayerOne") {
+                Ok(json!({"id": id, "name": "PlayerOne"}).to_string().into_bytes())
+            } else if url.ends_with(id) {
+                Ok(json!({"id": id, "name": "PlayerOne", "properties": [{"name": "textures", "value": textures("http://textures.example/skin")}]}).to_string().into_bytes())
+            } else if url == "https://textures.example/skin" {
+                Ok(self.0.clone())
+            } else {
+                Err(FetchError::NotFound)
+            }
+        }
+    }
+
+    #[test]
+    fn a_skin_is_answered_with_its_pixels_whatever_the_picture_is_compressed_with() {
+        // A picture the native side's own reader cannot open (dynamic blocks), as Mojang's are.
+        let pixels: Vec<u8> = (0..64 * 64 * 4).map(|i: usize| ((i / 4) % 7 * 31 + i % 4 * 13) as u8).collect();
+        let mut rows = Vec::new();
+        for y in 0..64 {
+            rows.push(0u8);
+            rows.extend_from_slice(&pixels[y * 256..(y + 1) * 256]);
+        }
+        let idat = miniz_oxide::deflate::compress_to_vec_zlib(&rows, 9);
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        for (kind, body) in [(&b"IHDR"[..], [&64u32.to_be_bytes()[..], &64u32.to_be_bytes(), &[8, 6, 0, 0, 0]].concat()), (b"IDAT", idat), (b"IEND", Vec::new())] {
+            png.extend((body.len() as u32).to_be_bytes());
+            png.extend(kind);
+            png.extend(&body);
+            png.extend([0; 4]);
+        }
+        let root = temp_dir("skin-pixels");
+        let reply = skin_reply(&root, "PlayerOne", &Mojang(png), None);
+        assert_eq!(reply.status, 200);
+        let body: Value = serde_json::from_slice(&reply.body).unwrap();
+        assert_eq!((body["width"].as_u64(), body["height"].as_u64()), (Some(64), Some(64)));
+        assert_eq!(body["rgba"].as_str().unwrap(), base64_encode(&pixels));
         let _ = fs::remove_dir_all(root);
     }
 

@@ -4,18 +4,18 @@
 //! word, another account name or one more view moves them by itself.
 //!
 //! The bar is a grid of three cells. In the preview tool the left cell holds the settings panel's button and the
-//! right cell the figures panel's button and the window's buttons; in Home the left cell holds the brand and the
-//! right one the window's buttons. While the bar is centred the side cells are equal, `(width - tools) / 2`, so
-//! the tools stay in the middle, and each side has to hold what its cell holds. The bar gives way in this order,
-//! taking the first step that fits:
+//! right cell the figures panel's button, the account and the window's buttons; in Home the left cell holds the
+//! brand and the right one the account and the window's buttons. While the bar is centred the side cells are equal,
+//! `(width - tools) / 2`, so the tools stay in the middle, and each side has to hold what its cell holds. The bar
+//! gives way in this order, taking the first step that fits:
 //!
-//! 1. in Home, the account name (cut with an ellipsis down to a short stub, then gone whole), then the word
-//!    the brand's name if that buys room;
-//! 2. in the preview tool, the views that are greyed (they need the 16-block detail) move into "More", then the
+//! 1. the account name (cut with an ellipsis down to a short stub, then gone whole);
+//! 2. in Home, the word the brand's name if that buys room;
+//! 3. in the preview tool, the views that are greyed (they need the 16-block detail) move into "More", then the
 //!    other views, one at a time from the strip's end, the pressed one staying;
-//! 3. in the preview tool, when even that bar cannot be centred, the tools stop being centred and sit left after
+//! 4. in the preview tool, when even that bar cannot be centred, the tools stop being centred and sit left after
 //!    the settings button;
-//! 4. then 2D and 3D move into "More" with the views.
+//! 5. then 2D and 3D move into "More" with the views.
 //!
 //! The two tools keep their names, always.
 
@@ -93,7 +93,7 @@ pub const NARROW_BAR: f32 = LEFT_NEED + TOOLS_GAP + NARROW_STRIP + RIGHT_NEED;
 /// What the bar shows, as worked out for one width.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Form {
-    /// The account name is shown (cut with an ellipsis if need be). Home only.
+    /// The account name is shown (cut with an ellipsis if need be), before the window's buttons.
     pub account: bool,
     /// The brand's name (OUTPOST TOOLS) is shown. Home only.
     pub word: bool,
@@ -198,20 +198,27 @@ pub fn account_stub_width(account: &str) -> f32 {
 }
 
 /// What the brand needs in its cell for a form (Home).
-pub fn brand_need(i: &Inputs, form: &Form) -> f32 {
+pub fn brand_need(form: &Form) -> f32 {
     let mut w = BRAND_PAD + CUBE;
     if form.word {
         w += BRAND_GAP + brand_look().width(&text::BAR_TITLE.to_uppercase());
     }
-    if let (true, Some(a)) = (form.account, i.account) {
-        w += BRAND_GAP + account_stub_width(a) + i.account_mark;
-    }
     w
+}
+
+/// What the account takes in the right cell for a form: its narrowest showing and the gap that keeps it off its
+/// neighbour.
+pub fn account_need(i: &Inputs, form: &Form) -> f32 {
+    match (form.account, i.account) {
+        (true, Some(a)) => TOGGLE_GAP + account_stub_width(a) + i.account_mark,
+        _ => 0.0,
+    }
 }
 
 /// What the left and the right cell hold at least, in a form.
 pub fn sides(i: &Inputs, form: &Form) -> (f32, f32) {
-    if i.preview_open { (LEFT_NEED, RIGHT_NEED) } else { (brand_need(i, form), ENDS_W) }
+    let account = account_need(i, form);
+    if i.preview_open { (LEFT_NEED, RIGHT_NEED + account) } else { (brand_need(form), ENDS_W + account) }
 }
 
 /// Whether the form fits: centred, each side cell `(width - strip) / 2` holds what it must; otherwise the left
@@ -230,7 +237,7 @@ pub fn fits(i: &Inputs, form: &Form) -> bool {
 pub fn plan(i: &Inputs) -> Form {
     let mut steps: Vec<Form> = Vec::new();
     if !i.preview_open {
-        // Home: the brand gives way, and nothing else is in the bar to move.
+        // Home: the account gives way, then the brand, and nothing else is in the bar to move.
         steps.push(Form::default());
         if i.account.is_some() {
             steps.push(Form { account: false, ..Form::default() });
@@ -246,8 +253,11 @@ pub fn plan(i: &Inputs) -> Form {
             m.sort_unstable();
             m
         };
-        // The brand is not in the bar of this tool: its parts are off.
+        // The brand is not in the bar of this tool: its word is off. The account gives way before any view does.
         let base = Form { account: false, word: false, ..Form::default() };
+        if i.account.is_some() {
+            steps.push(Form { account: true, ..base.clone() });
+        }
         steps.push(Form { more: Vec::new(), ..base.clone() });
         if !greyed.is_empty() {
             steps.push(Form { more: held(0), ..base.clone() });

@@ -1,6 +1,6 @@
 //! The launcher's `#titlebar` (launcher/index.html lines 75-129 and 221-245), built by the preview as the
 //! window's host: the game's name on the left, the tools in the middle with the preview's own tabs after
-//! the preview tool, the window's buttons on the right. Step 21 moves this to the launcher; until then the
+//! the preview tool, the account and the window's buttons on the right. Step 21 moves this to the launcher; until then the
 //! preview is the only application, so it hosts its own bar.
 //!
 //! The icon paths below come from the launcher page (the line numbers are its), which draws them after
@@ -8,7 +8,8 @@
 //!
 //! The bar has no fixed breakpoint, and it never turns a word into an icon (the page's `condense()` is not built).
 //! When it lacks room it gives parts up in a set order, worked out from the real widths in `overflow.rs`: the
-//! account name, the greyed views (into "More"), the brand's name, then the other views one by one.
+//! account name, the greyed views (into "More"), the brand's name, then the other views one by one. The account is
+//! given up before the views in the preview tool.
 
 use std::sync::OnceLock;
 
@@ -218,15 +219,6 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                 if form.word {
                     ui.text(&text::BAR_TITLE.to_uppercase(), overflow::brand_look());
                 }
-                // `#account` (line 84): muted, cut with an ellipsis when the free space left of the tools is narrower
-                // than it, and gone whole when even a short stub no longer fits (`overflow.rs`).
-                if let (true, Some(a)) = (form.account && !s.bare, s.account.clone()) {
-                    if s.account_menu.accounts.is_empty() {
-                        ui.ellipsis(&a, TextLook::body(Tone::Muted));
-                    } else {
-                        account_button(ui, s, ids, &a);
-                    }
-                }
             });
         }
 
@@ -283,12 +275,22 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
             });
         });
 
-        // The right cell: in the preview tool the figures panel's button, 8 px before the window's buttons, which are
-        // `.ends` (line 89), as tall as the bar and flush with its corner.
-        let right = Style { justify_self: Some(Align::End), align_self: Some(Align::Stretch), align_items: Align::Center, gap: Vec2::new(overflow::TOGGLE_GAP, 0.0), ..Style::default() };
+        // The right cell: in the preview tool the figures panel's button, then the account, each 8 px before what follows,
+        // and last the window's buttons, which are `.ends` (line 89), as tall as the bar and flush with its corner.
+        // Like the brand's, its width is its own, capped at the column's, so that a long account name is cut.
+        let right = Style { justify_self: Some(Align::End), align_self: Some(Align::Stretch), align_items: Align::Center, gap: Vec2::new(overflow::TOGGLE_GAP, 0.0), min_w: Dim::Px(0.0), max_w: Dim::Pct(100.0), ..Style::default() };
         ui.node("right", right, |ui| {
             if preview {
                 panel_toggle(ui, s, ids, 1);
+            }
+            // `#account` (line 84): muted, cut with an ellipsis when the free space beside the tools is narrower than it,
+            // and gone whole when even a short stub no longer fits (`overflow.rs`). Set-up shows none.
+            if let (true, Some(a)) = (form.account && !s.bare, s.account.clone()) {
+                if s.account_menu.accounts.is_empty() {
+                    ui.node("accountName", Style { min_w: Dim::Px(0.0), ..Style::default() }, |ui| ui.ellipsis(&a, TextLook::body(Tone::Muted)));
+                } else {
+                    account_button(ui, s, ids, &a);
+                }
             }
             let ends = Style { align_items: Align::Center, pad: Edges::new(0.0, overflow::EDGE, 0.0, 0.0), ..Style::default() };
             ui.node("ends", ends, |ui| {
@@ -364,8 +366,9 @@ fn account_line() -> Style {
     Style { align_items: Align::Center, gap: Vec2::new(mere_ui::tokens::GAP, 0.0), h: Dim::Px(32.0), pad: Edges::vh(0.0, INSET), ..Style::default() }
 }
 
-/// The account's button after the brand's name (board A2): the face, the name and a chevron. It opens the menu of the
-/// accounts, the player and the sign-out: a framed box under the button, drawn after the tree, that holds the kit's lines
+/// The account's button before the window's buttons (board A2): the face, the name and a chevron. It opens the menu of
+/// the accounts, the player and the sign-out: a framed box under the button, aligned to its right edge, drawn after the
+/// tree, that holds the kit's lines
 /// (`hover_action`). The application shuts it (a pick, Escape, a press outside: `account_closes`).
 fn account_button(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, name: &str) {
     let t = *ui.theme();
@@ -396,8 +399,8 @@ fn account_button(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, name: &
         let zero = Dim::Px(0.0);
         let style = Style {
             position: Position::Absolute,
-            inset: Insets { left: zero, top: Dim::Pct(100.0), ..Insets::default() },
-            margin: Margin { left: Side::Px(-INSET), top: Side::Px(GAP_TIGHT), ..Margin::default() },
+            inset: Insets { right: zero, top: Dim::Pct(100.0), ..Insets::default() },
+            margin: Margin { top: Side::Px(GAP_TIGHT), ..Margin::default() },
             w: Dim::Px(ACCOUNT_MENU_W),
             column: true,
             pad: Edges::vh(FRAME + INSET_TIGHT, FRAME),

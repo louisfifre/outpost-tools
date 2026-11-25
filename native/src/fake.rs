@@ -150,7 +150,7 @@ pub fn mod_menu_added(api: &FakeApi) {
     );
 }
 
-/// A skin picture (64 x 64) in the manner of the boards' player: `hair` over a plain face, a teal shirt, blue trousers.
+/// A skin's pixels (64 x 64, RGBA rows) in the manner of the boards' player: `hair` over a plain face, a teal shirt, blue trousers.
 /// The head's front is the 8 x 8 of board A2's face; the hat and the outer layers are clear.
 pub fn sample_skin(hair: u32) -> Vec<u8> {
     let rgb = |c: u32| [(c >> 16) as u8, (c >> 8) as u8, c as u8, 255];
@@ -184,7 +184,7 @@ pub fn sample_skin(hair: u32) -> Vec<u8> {
         fill(x, y, 4, 10, blue);
         fill(x, y + 10, 4, 2, shoe);
     }
-    mere_png::encode(64, 64, &px)
+    px
 }
 
 /// The two accounts of board A2 with their skins, for the bar's menu.
@@ -192,7 +192,7 @@ pub fn with_accounts(api: &FakeApi) {
     use crate::skin_view::base64_encode;
     api.set_get("/api/accounts", json!({"accounts": [{"name": "PlayerOne", "inUse": true}, {"name": "SecondAccount", "inUse": false}]}));
     for (name, hair) in [("PlayerOne", 0x4a2f1d), ("SecondAccount", 0xc8a04a)] {
-        api.set_get(&format!("/api/skin?name={name}"), json!({"name": name, "slim": false, "png": base64_encode(&sample_skin(hair))}));
+        api.set_get(&format!("/api/skin?name={name}"), json!({"name": name, "slim": false, "width": 64, "height": 64, "rgba": base64_encode(&sample_skin(hair))}));
     }
 }
 
