@@ -1,0 +1,236 @@
+[
+ {
+  "client_side": "required",
+  "server_side": "unsupported",
+  "game_versions": [
+   "26.3",
+   "26.3-rc-1",
+   "26.3-rc-2"
+  ],
+  "environment": [
+   "client_only"
+  ],
+  "id": "AANobbMI",
+  "slug": "sodium",
+  "project_type": "mod",
+  "team": "4reLOAKe",
+  "organization": "LjcZDkRW",
+  "title": "Sodium",
+  "description": "A high-performance rendering engine replacement for Minecraft, which greatly improves frame rates and reduces micro-stutter.",
+  "body": "",
+  "body_url": null,
+  "published": "2021-01-03T00:53:34.185936Z",
+  "updated": "2026-11-25T02:40:53.132546Z",
+  "approved": "2021-01-03T00:53:34.185936Z",
+  "queued": null,
+  "status": "approved",
+  "requested_status": "approved",
+  "moderator_message": null,
+  "license": {
+   "id": "LicenseRef-Polyform-Shield-1.0.0",
+   "name": "",
+   "url": "https://github.com/CaffeineMC/sodium/blob/dev/LICENSE.md"
+  },
+  "downloads": 256583096,
+  "followers": 43095,
+  "categories": [
+   "optimization"
+  ],
+  "additional_categories": [],
+  "loaders": [
+   "fabric",
+   "neoforge",
+   "quilt"
+  ],
+  "versions": [
+   "q3ztYQfO",
+   "bTgVRS6I",
+   "S7r4WOXY"
+  ],
+  "icon_url": "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp",
+  "raw_icon_url": "https://cdn.modrinth.com/data/AANobbMI/icon.png",
+  "issues_url": "https://github.com/CaffeineMC/sodium/issues",
+  "source_url": "https://github.com/CaffeineMC/sodium",
+  "wiki_url": "https://github.com/CaffeineMC/sodium/wiki",
+  "discord_url": "https://caffeinemc.net/discord",
+  "gallery": [],
+  "color": 8703084,
+  "thread_id": "AANobbMI",
+  "monetization_status": "monetized"
+ },
+ {
+  "client_side": "optional",
+  "server_side": "optional",
+  "game_versions": [
+   "26.3",
+   "26.3-pre-3",
+   "26w14a"
+  ],
+  "environment": [
+   "client_or_server"
+  ],
+  "id": "eXts2L7r",
+  "slug": "placeholder-api",
+  "project_type": "mod",
+  "team": "tA4rMuIL",
+  "organization": null,
+  "title": "Text Placeholder API",
+  "description": "Placeholder and Text manipulation library for your Minecraft mods.",
+  "body": "",
+  "body_url": null,
+  "published": "2023-05-07T07:16:09.821727Z",
+  "updated": "2026-09-09T09:23:44.714312Z",
+  "approved": "2023-05-07T21:31:58.154280Z",
+  "queued": "2023-05-07T07:55:46.627995Z",
+  "status": "approved",
+  "requested_status": "approved",
+  "moderator_message": null,
+  "license": {
+   "id": "LGPL-3.0-only",
+   "name": "GNU Lesser General Public License v3.0 only",
+   "url": null
+  },
+  "downloads": 77018230,
+  "followers": 1934,
+  "categories": [
+   "library"
+  ],
+  "additional_categories": [
+   "management"
+  ],
+  "loaders": [
+   "fabric",
+   "quilt"
+  ],
+  "versions": [
+   "tvuIahw6",
+   "NDqH16LT",
+   "lXytLqWj"
+  ],
+  "icon_url": "https://cdn.modrinth.com/data/eXts2L7r/e9c9990896e6422bffc5f73d2c41b8f077348f83.png",
+  "raw_icon_url": "https://cdn.modrinth.com/data/eXts2L7r/e9c9990896e6422bffc5f73d2c41b8f077348f83.png",
+  "issues_url": "https://github.com/Patbox/TextPlaceholderAPI/issues",
+  "source_url": "https://github.com/Patbox/TextPlaceholderAPI",
+  "wiki_url": "https://placeholders.pb4.eu/",
+  "discord_url": "https://pb4.eu/discord",
+  "gallery": [],
+  "color": 1842204,
+  "thread_id": "eXts2L7r",
+  "monetization_status": "monetized"
+ },
+ {
+  "client_side": "required",
+  "server_side": "unsupported",
+  "game_versions": [
+   "26.4-snapshot-6",
+   "26.4-snapshot-8",
+   "26.4-snapshot-9"
+  ],
+  "environment": [
+   "client_only"
+  ],
+  "id": "mOgUt4GM",
+  "slug": "modmenu",
+  "project_type": "mod",
+  "team": "VMz4FpgB",
+  "organization": "ASjenmjH",
+  "title": "Mod Menu",
+  "description": "Adds a mod menu to view the list of mods you have installed.",
+  "body": "",
+  "body_url": null,
+  "published": "2020-11-06T05:11:04.725058Z",
+  "updated": "2026-11-18T06:15:49.391983Z",
+  "approved": "2020-11-06T05:11:04.725058Z",
+  "queued": null,
+  "status": "approved",
+  "requested_status": "approved",
+  "moderator_message": null,
+  "license": {
+   "id": "MIT",
+   "name": "MIT License",
+   "url": null
+  },
+  "downloads": 163885610,
+  "followers": 28382,
+  "categories": [
+   "utility"
+  ],
+  "additional_categories": [],
+  "loaders": [
+   "fabric",
+   "quilt"
+  ],
+  "versions": [
+   "Et3yic6q",
+   "mGUdgq3l",
+   "8weQilqP"
+  ],
+  "icon_url": "https://cdn.modrinth.com/data/mOgUt4GM/5a20ed1450a0e1e79a1fe04e61bb4e5878bf1d20.png",
+  "raw_icon_url": "https://cdn.modrinth.com/data/mOgUt4GM/5a20ed1450a0e1e79a1fe04e61bb4e5878bf1d20.png",
+  "issues_url": "https://github.com/TerraformersMC/ModMenu/issues",
+  "source_url": "https://github.com/TerraformersMC/ModMenu",
+  "wiki_url": "https://github.com/TerraformersMC/ModMenu/wiki",
+  "discord_url": "https://discord.gg/jEGF5fb",
+  "gallery": [],
+  "color": 1330428,
+  "thread_id": "mOgUt4GM",
+  "monetization_status": "monetized"
+ },
+ {
+  "client_side": "optional",
+  "server_side": "optional",
+  "game_versions": [
+   "26.4-snapshot-7",
+   "26.4-snapshot-8",
+   "26w14a"
+  ],
+  "environment": [
+   "client_or_server_prefers_both"
+  ],
+  "id": "P7dR8mSH",
+  "slug": "fabric-api",
+  "project_type": "mod",
+  "team": "BZoBsPo6",
+  "organization": null,
+  "title": "Fabric API",
+  "description": "Lightweight and modular API providing common hooks and intercompatibility measures utilized by mods using the Fabric toolchain.",
+  "body": "",
+  "body_url": null,
+  "published": "2021-01-22T11:04:41.419169Z",
+  "updated": "2026-11-24T15:28:46.210106Z",
+  "approved": "2021-01-22T11:04:41.419169Z",
+  "queued": null,
+  "status": "approved",
+  "requested_status": "approved",
+  "moderator_message": null,
+  "license": {
+   "id": "Apache-2.0",
+   "name": "Apache License 2.0",
+   "url": null
+  },
+  "downloads": 292029748,
+  "followers": 38078,
+  "categories": [
+   "library"
+  ],
+  "additional_categories": [],
+  "loaders": [
+   "fabric"
+  ],
+  "versions": [
+   "lPHkrIVF",
+   "ByORZFQ8",
+   "e3fLe6Cu"
+  ],
+  "icon_url": "https://cdn.modrinth.com/data/P7dR8mSH/icon.png",
+  "raw_icon_url": "https://cdn.modrinth.com/data/P7dR8mSH/icon.png",
+  "issues_url": "https://github.com/FabricMC/fabric-api/issues",
+  "source_url": "https://github.com/FabricMC/fabric-api",
+  "wiki_url": "https://docs.fabricmc.net/",
+  "discord_url": "https://discord.gg/v6v4pMv",
+  "gallery": [],
+  "color": 12367004,
+  "thread_id": "P7dR8mSH",
+  "monetization_status": "monetized"
+ }
+]

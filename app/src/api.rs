@@ -9,6 +9,7 @@
 mod dev_server;
 mod key_value;
 mod memory;
+mod modrinth;
 mod preview;
 mod profiles;
 pub mod servers;

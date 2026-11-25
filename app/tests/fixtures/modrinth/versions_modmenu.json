@@ -1,0 +1,106 @@
+[
+ {
+  "game_versions": [
+   "1.21",
+   "1.21.1"
+  ],
+  "loaders": [
+   "fabric",
+   "quilt"
+  ],
+  "environment": "client_only",
+  "id": "6lgOkclV",
+  "project_id": "mOgUt4GM",
+  "author_id": "uF4fzWRt",
+  "featured": false,
+  "name": "v11.0.5 for 1.21",
+  "version_number": "11.0.5",
+  "changelog": "",
+  "changelog_url": null,
+  "date_published": "2026-09-24T19:00:03.395718Z",
+  "downloads": 1105405,
+  "version_type": "release",
+  "status": "listed",
+  "requested_status": null,
+  "files": [
+   {
+    "id": "nSLST56z",
+    "hashes": {
+     "sha512": "92e8e96267ff18d320903090f2ad9b32408a218919f5a0d578e232ad774c89d49a34a8271806652be7d6283f24e98432bc4af7f95855e78b843f9100d68696c7",
+     "sha1": "2321d890a25b5985eba576d7cd8fe9a9c136e33d"
+    },
+    "url": "https://cdn.modrinth.com/data/mOgUt4GM/versions/6lgOkclV/modmenu-11.0.5.jar",
+    "filename": "modmenu-11.0.5.jar",
+    "primary": true,
+    "size": 975846,
+    "file_type": null
+   }
+  ],
+  "dependencies": [
+   {
+    "version_id": null,
+    "project_id": "P7dR8mSH",
+    "file_name": null,
+    "dependency_type": "required"
+   },
+   {
+    "version_id": null,
+    "project_id": "eXts2L7r",
+    "file_name": null,
+    "dependency_type": "required"
+   }
+  ]
+ },
+ {
+  "game_versions": [
+   "1.21",
+   "1.21.1"
+  ],
+  "loaders": [
+   "fabric",
+   "quilt"
+  ],
+  "environment": "client_only",
+  "id": "v6Xx3fbU",
+  "project_id": "mOgUt4GM",
+  "author_id": "uF4fzWRt",
+  "featured": false,
+  "name": "v11.0.4 for 1.21",
+  "version_number": "11.0.4",
+  "changelog": "",
+  "changelog_url": null,
+  "date_published": "2026-03-25T00:45:03.878787Z",
+  "downloads": 5525394,
+  "version_type": "release",
+  "status": "listed",
+  "requested_status": null,
+  "files": [
+   {
+    "id": "dUoRkqI7",
+    "hashes": {
+     "sha512": "45ea8f7e0749bc0eb98900f94486e323f153b199617fa43977b46472e4196ee5a6739f41a1e7f68e270f84a367df5f7f53c2a1f46145ad7d349ede4297895396",
+     "sha1": "8af1b0b9ee18eab5cd5e5c97c497f0e473c49e9a"
+    },
+    "url": "https://cdn.modrinth.com/data/mOgUt4GM/versions/v6Xx3fbU/modmenu-11.0.4.jar",
+    "filename": "modmenu-11.0.4.jar",
+    "primary": true,
+    "size": 973059,
+    "file_type": null
+   }
+  ],
+  "dependencies": [
+   {
+    "version_id": null,
+    "project_id": "eXts2L7r",
+    "file_name": null,
+    "dependency_type": "required"
+   },
+   {
+    "version_id": null,
+    "project_id": "P7dR8mSH",
+    "file_name": null,
+    "dependency_type": "required"
+   }
+  ]
+ }
+]
