@@ -83,3 +83,25 @@ pub const OFF: &str = "off";
 pub const FIRST_START: &str = "Distances, players, port and line appear after the first start.";
 pub const SERVER_LOCKED: &str = "The server is running: settings can change once it is stopped.";
 pub const SERVER_SETTINGS: &str = "Settings of the server";
+/// The first start's guide (boards E1 and E2): its three steps, then the Java step's sentences.
+pub const SETUP_STEPS: [&str; 3] = ["Java", "Prism", "Sign in"];
+pub const JAVA_NEEDED: &str = "Outpost Tools needs Java 25 to run the game.";
+pub fn java_download(mb: Option<u64>) -> String {
+    match mb {
+        Some(mb) => format!("Download Java 25 \u{b7} {mb} MB"),
+        None => "Download Java 25".into(),
+    }
+}
+pub const JAVA_FROM: &str = "from Adoptium, into Outpost Tools' folder";
+pub const JAVA_LATER: &str = "Later";
+pub const JAVA_DOWNLOADING: &str = "Downloading Java 25.";
+pub fn java_progress(done_mb: u64, size_mb: u64) -> String {
+    format!("{done_mb} of {size_mb} MB")
+}
+pub const JAVA_CHECKING: &str = "Checking the download";
+pub const JAVA_UNPACKING: &str = "Unpacking Java 25";
+pub const JAVA_STOP: &str = "Stop";
+pub const JAVA_NOTHING_KEPT: &str = "Nothing is kept.";
+pub fn java_ready(version: &str) -> String {
+    format!("Java {version} is ready.")
+}

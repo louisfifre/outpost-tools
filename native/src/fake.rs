@@ -84,3 +84,15 @@ pub fn fixture() -> FakeApi {
     api.set_get("/api/launch", json!({"id": null, "state": "none"}));
     api
 }
+
+/// The Java step of the first start (`/api/java`): no Java on the PC, a download of `size` bytes on offer.
+pub fn java_missing(api: &FakeApi, size: u64) {
+    api.set_get("/api/java", json!({"state": "missing", "size": size}));
+    api.set_post("/api/java/download", 200, json!({}));
+    api.set_post("/api/java/stop", 200, json!({}));
+}
+
+/// The same step while the download runs, `done` bytes of `total` in.
+pub fn java_downloading(api: &FakeApi, done: u64, total: u64) {
+    api.set_get("/api/java", json!({"state": "downloading", "stage": "downloading", "done": done, "total": total}));
+}

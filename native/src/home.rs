@@ -356,7 +356,7 @@ impl LauncherHome {
 
     // ---------- what the api said ----------
 
-    fn send(&mut self, tag: Tag, method: &str, path: &str, body: Option<Value>) {
+    pub(crate) fn send(&mut self, tag: Tag, method: &str, path: &str, body: Option<Value>) {
         if matches!(tag, Tag::Profiles | Tag::Server | Tag::Launch) {
             self.in_flight.push(tag.clone());
         }
@@ -523,6 +523,7 @@ impl LauncherHome {
                     self.say_server(&why);
                 }
             }
+            Tag::Java | Tag::JavaStart | Tag::JavaStop => pages::setup::done(self, d),
         }
     }
 
@@ -1143,6 +1144,7 @@ impl Home for LauncherHome {
                 self.load_server();
                 wanted = true;
             }
+            wanted |= pages::setup::poll(self, now);
             // A stand-in for the page's reload on window focus (its `focus` listener): mere_base has no such event.
             if now >= self.next_profiles && !self.asking(&Tag::Profiles) {
                 self.load_profiles();
@@ -1171,6 +1173,7 @@ impl Home for LauncherHome {
         if self.on_screen {
             due.push(self.next_server);
             due.push(self.next_profiles);
+            due.extend(pages::setup::due(self));
         }
         if self.launching.as_ref().is_some_and(|l| !l.over) {
             if self.next_launch.is_finite() {
