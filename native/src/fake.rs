@@ -209,6 +209,32 @@ pub fn board_server(api: &FakeApi) {
     );
 }
 
+/// Home's servers of board A1: Friday world running with two players, Test server stopped and made from Exploration. Each
+/// one's own description answers where the api answers it, by its id in the query (`%20` for a space).
+pub fn board_servers(api: &FakeApi) {
+    api.set_get(
+        "/api/servers",
+        json!({"servers": [
+            {"id": "Friday world", "name": "Friday world", "state": "running", "eula": true, "players": 2, "port": 25565,
+             "madeFrom": {"profile": "exploration", "leftOut": 0, "world": null, "seed": null}},
+            {"id": "Test server", "name": "Test server", "state": "stopped", "eula": false, "players": null, "port": 25565,
+             "madeFrom": {"profile": "exploration", "leftOut": 3, "world": "Tectonic islands", "seed": 48213}},
+        ], "broken": []}),
+    );
+    api.set_get(
+        "/api/server?id=Friday%20world",
+        json!({"id": "Friday world", "name": "Friday world", "dir": "C:\\Code\\servers\\Friday world", "state": "running", "eula": true, "memoryMb": 6144,
+               "javaArgs": "-XX:+UseZGC", "props": {"motd": "Friday", "whitelist": true, "viewDistance": 12, "simulationDistance": 8, "maxPlayers": 20, "port": 25565},
+               "madeFrom": {"profile": "exploration", "leftOut": 0, "world": null, "seed": null}}),
+    );
+    api.set_get(
+        "/api/server?id=Test%20server",
+        json!({"id": "Test server", "name": "Test server", "dir": "C:\\Code\\servers\\Test server", "state": "stopped", "eula": false, "memoryMb": 6144,
+               "javaArgs": "-XX:+UseZGC", "props": null,
+               "madeFrom": {"profile": "exploration", "leftOut": 3, "world": "Tectonic islands", "seed": 48213}}),
+    );
+}
+
 /// The Java step of the first start (`/api/java`): no Java on the PC, a download of `size` bytes on offer.
 pub fn java_missing(api: &FakeApi, size: u64) {
     api.set_get("/api/java", json!({"state": "missing", "size": size}));

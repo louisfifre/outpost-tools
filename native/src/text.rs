@@ -89,6 +89,19 @@ pub fn server(state: &str, port: i64) -> Option<String> {
         _ => return None,
     })
 }
+/// How many play on a server now.
+pub fn players(n: i64) -> String {
+    if n == 1 { "1 player".into() } else { format!("{n} players") }
+}
+/// A server's line on Home (board A1): `server`'s sentence, with the players when it runs and the profile it was made
+/// from when it is stopped.
+pub fn server_line(state: &str, port: i64, players_now: Option<i64>, made_from: Option<&str>) -> Option<String> {
+    match (state, players_now, made_from) {
+        ("running", Some(n), _) => Some(format!("running \u{b7} {} \u{b7} localhost:{port}", players(n))),
+        ("stopped", _, Some(profile)) => Some(format!("stopped \u{b7} made from {profile}")),
+        _ => server(state, port),
+    }
+}
 pub const NO_EULA: &str = "EULA not accepted yet";
 /// The server's page before its first start (board C1). The sentence is said in four pieces, the link between them.
 pub const START: &str = "Start";
