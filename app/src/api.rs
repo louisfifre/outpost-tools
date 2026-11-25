@@ -18,6 +18,7 @@ pub mod mrpack;
 mod preview;
 mod prism_portable;
 mod profiles;
+mod screens;
 pub mod servers;
 pub mod skin;
 
@@ -186,6 +187,10 @@ impl Api {
     }
 
     fn route(&self, method: &str, path: &str, origin: Option<&str>, body: &[u8]) -> Result<Reply, Failure> {
+        // The routes of the native screens (servers, accounts, skin, links) answer first, from api/screens.rs.
+        if let Some(reply) = self.screens_route(method, path, origin, body)? {
+            return Ok(reply);
+        }
         let path = path.split('?').next().unwrap_or(path);
         if method == "GET" {
             return Ok(match path {

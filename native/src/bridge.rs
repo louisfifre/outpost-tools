@@ -32,6 +32,8 @@ impl Backend for launcher::api::Api {
 pub enum Tag {
     Profiles,
     Server,
+    /// Every server Home lists: the servers folder's and the dev server.
+    Servers,
     Launch,
     Play(String),
     ServerStart,

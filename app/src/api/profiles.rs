@@ -108,16 +108,6 @@ impl Api {
         })))
     }
 
-    // Only the player name of the account Prism will use. The file also holds the sign-in tokens: they are never
-    // kept nor sent.
-    fn account(&self) -> Option<String> {
-        let file = self.prism().ok()?.parent()?.join("accounts.json");
-        let value: Value = serde_json::from_slice(&fs::read(file).ok()?).ok()?;
-        let accounts = value["accounts"].as_array()?;
-        let active = accounts.iter().find(|a| a["active"].as_bool() == Some(true)).or(accounts.first())?;
-        active["profile"]["name"].as_str().map(String::from)
-    }
-
     pub(super) fn launch(&self, id: &str) -> Result<Reply, Failure> {
         let prism = self.prism()?.clone();
         let mut live = self.live();
@@ -125,7 +115,8 @@ impl Api {
             return Ok(Reply::empty(409));
         }
         // Starting Prism says nothing about the game: the page then asks /api/launch how it goes.
-        system::start(&prism, &["--launch", id]).map_err(|e| e.to_string())?;
+        let account = self.launch_account();
+        system::start(&prism, &super::screens::launch_args(id, account.as_deref())).map_err(|e| e.to_string())?;
         live.launch = Some(Launch { id: id.to_string(), at: Instant::now(), saw_game: false, prepared: None });
         Ok(Reply::empty(200))
     }

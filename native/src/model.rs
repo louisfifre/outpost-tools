@@ -143,6 +143,52 @@ pub struct Server {
     pub props: Option<Props>,
 }
 
+/// One line of Home's SERVERS section, as `/api/servers` gives it (board A1).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ServerLine {
+    /// What the api names the server by; `dev` for the dev server.
+    pub id: String,
+    /// Empty for the dev server, which has none.
+    pub name: String,
+    pub state: String,
+    pub eula: bool,
+    /// How many play now, when it runs and the api could count them.
+    pub players: Option<i64>,
+    pub port: i64,
+    /// The profile's id the server was made from; None for the dev server.
+    pub made_from: Option<String>,
+}
+
+impl ServerLine {
+    /// The id the server's own requests carry: none for the dev server, whose routes are the plain ones.
+    pub fn request_id(&self) -> String {
+        if self.id == "dev" { String::new() } else { self.id.clone() }
+    }
+
+    pub fn busy(&self) -> bool {
+        matches!(self.state.as_str(), "preparing" | "starting" | "running")
+    }
+}
+
+/// The servers `/api/servers` listed; None when it listed none at all (an api that does not know the route).
+pub fn parse_servers(v: &Value) -> Option<Vec<ServerLine>> {
+    Some(
+        v["servers"]
+            .as_array()?
+            .iter()
+            .map(|l| ServerLine {
+                id: s(l, "id"),
+                name: s(l, "name"),
+                state: s(l, "state"),
+                eula: l["eula"].as_bool().unwrap_or(false),
+                players: l["players"].as_i64(),
+                port: l["port"].as_i64().filter(|p| *p > 0).unwrap_or(25565),
+                made_from: l["madeFrom"]["profile"].as_str().filter(|p| !p.is_empty()).map(String::from),
+            })
+            .collect(),
+    )
+}
+
 fn s(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
 }

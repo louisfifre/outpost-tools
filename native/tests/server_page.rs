@@ -4,7 +4,7 @@
 mod common;
 
 use common::*;
-use launcher_native::fake::{board_server, with_accounts};
+use launcher_native::fake::{board_server, board_servers, with_accounts};
 use launcher_native::pages::Page;
 use mere_base::{Cmd, Key, Vec2};
 use mere_ui::Id;
@@ -120,7 +120,7 @@ fn c1_picture() {
 
 fn with_menu(w: u32, h: u32) -> Rig {
     let api = board_api();
-    board_server(&api);
+    board_servers(&api);
     with_accounts(&api);
     Rig::with_api(api, w, h, true, true)
 }
