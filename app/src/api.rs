@@ -7,6 +7,7 @@
 // repository in `repo`.
 
 mod dev_server;
+pub mod java;
 mod key_value;
 mod preview;
 mod profiles;
