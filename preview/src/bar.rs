@@ -203,7 +203,7 @@ pub fn build(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Optio
                     icons.pack.iter().map(|(i, c)| Cmd::Shape { rect: Rect::new(0.0, 0.0, 16.0, 16.0), grid: i.grid, figures: i.figures.clone(), color: *c, crisp: false }).collect()
                 });
                 if form.word {
-                    ui.text(&text::BAR_TITLE.to_uppercase(), TextLook::heading());
+                    ui.text(&text::BAR_TITLE.to_uppercase(), overflow::brand_look());
                 }
                 // `#account` (line 84): muted, cut with an ellipsis when the free space left of the tools is narrower
                 // than it, and gone whole when even a short stub no longer fits (`overflow.rs`).
