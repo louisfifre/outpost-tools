@@ -13,6 +13,8 @@
 //! build, so that a build never waits on the api. Answers are taken by `poll`.
 
 use std::any::Any;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use mere_base::Vec2;
 use mere_layout::{Align, Dim, Display, Edges, Margin, Overflow, Side, Style, Track, Tracks};
@@ -37,7 +39,7 @@ const PAD_V: f32 = FRAME + INSET_TIGHT;
 const _: () = assert!(18.0 + 2.0 * PAD_V == CONTROL);
 /// How long a server still running after its stop was taken holds the stop button, in seconds.
 const STOP_WAIT: f64 = 30.0;
-use preview::Home;
+use preview::{AccountAsk, AccountEntry, AccountMenu, Home};
 use preview::PAGE;
 use preview::bar::icons;
 use serde_json::{Value, json};
@@ -46,6 +48,7 @@ use crate::bridge::{Bridge, Done, Tag};
 use crate::icons as own_icons;
 use crate::model::{Open, Profile, Profiles, Server, about, memory_max, ordered, round_clamp};
 use crate::pages::{self, Page};
+use crate::skin_view::{self, SkinView};
 use crate::text;
 
 /// What time is, for the line under a profile: the real one, or a fixed one for pictures.
@@ -213,7 +216,7 @@ fn said(d: &Done) -> String {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Want {
+pub(crate) enum Want {
     Play(String),
     OpenProfile(String),
     OpenServer,
@@ -224,6 +227,13 @@ enum Want {
     ServerStop,
     ServerSave,
     ServerFolder,
+    /// Accept the Minecraft EULA: the api writes it, on the person's press.
+    Eula,
+    OpenLink(String),
+    Accounts,
+    AccountUse(String),
+    AccountAdd,
+    AccountSignOut(String),
 }
 
 pub struct LauncherHome {
@@ -233,6 +243,13 @@ pub struct LauncherHome {
     profiles: Vec<Profile>,
     locked: bool,
     account: Option<String>,
+    /// The account the api named, when it did: `account` says "No account" otherwise, for the bar.
+    signed: Option<String>,
+    /// The accounts the api listed, with the one in use; the skins read for them, and the menu drawn from both.
+    accounts: Vec<(String, bool)>,
+    skins: BTreeMap<String, Option<SkinView>>,
+    skin_asked: BTreeSet<String>,
+    menu: Arc<AccountMenu>,
     machine_mb: i64,
     server: Option<Server>,
     launching: Option<Launching>,
@@ -276,6 +293,11 @@ impl LauncherHome {
             profiles: Vec::new(),
             locked: false,
             account: None,
+            signed: None,
+            accounts: Vec::new(),
+            skins: BTreeMap::new(),
+            skin_asked: BTreeSet::new(),
+            menu: Arc::default(),
             machine_mb: 0,
             server: None,
             launching: None,
@@ -350,6 +372,48 @@ impl LauncherHome {
         self.profiles.iter().find(|p| Some(&p.id) == id.as_ref()).map(|p| p.name.clone()).unwrap_or_default()
     }
 
+    /// What a page asks of Home: done after its build, as Home's own presses are.
+    pub(crate) fn want(&mut self, want: Want) {
+        self.wants.push(want);
+    }
+
+    /// The server as the api last described it; None until it has.
+    pub(crate) fn server_data(&self) -> Option<&Server> {
+        self.server.as_ref()
+    }
+
+    /// A start or a stop is asked and not over: the server takes no other.
+    pub(crate) fn server_working(&self) -> bool {
+        self.stopping || self.server.as_ref().is_some_and(Server::busy)
+    }
+
+    /// A profile's name by its id; the id itself when the profile is gone.
+    pub(crate) fn profile_label(&self, id: &str) -> String {
+        self.profiles.iter().find(|p| p.id == id).map_or_else(|| id.to_string(), |p| p.name.clone())
+    }
+
+    /// Asks the skin of an account, once for a name: a face does not change while the launcher runs. The name goes into the
+    /// request's path, so only what Mojang allows in one is asked.
+    fn ask_skin(&mut self, name: &str) {
+        if name.len() <= 16 && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') && self.skin_asked.insert(name.to_string()) {
+            self.send(Tag::Skin(name.to_string()), "GET", &format!("/api/skin?name={name}"), None);
+        }
+    }
+
+    /// The menu of the accounts: the ones the api listed, or the one the profiles named while it has not listed.
+    fn rebuild_menu(&mut self) {
+        let listed: Vec<(String, bool)> = if self.accounts.is_empty() { self.signed.iter().map(|a| (a.clone(), true)).collect() } else { self.accounts.clone() };
+        let accounts: Vec<AccountEntry> = listed
+            .iter()
+            .map(|(name, in_use)| AccountEntry { name: name.clone(), in_use: *in_use, face: self.skins.get(name).and_then(|s| s.as_ref()).map(|s| s.face.clone()) })
+            .collect();
+        let figure = listed.iter().find(|(_, in_use)| *in_use).and_then(|(name, _)| self.skins.get(name)).and_then(|s| s.as_ref()).map(|s| s.figure.clone());
+        let menu = AccountMenu { accounts, figure };
+        if *self.menu != menu {
+            self.menu = Arc::new(menu);
+        }
+    }
+
     fn mem_max(&self) -> f64 {
         memory_max(self.machine_mb)
     }
@@ -405,7 +469,13 @@ impl LauncherHome {
                 self.profiles = p.profiles;
                 self.locked = p.locked;
                 self.machine_mb = p.machine_mb;
+                self.signed = p.account.clone();
+                if let Some(name) = p.account.clone() {
+                    // The bar's face: read once, with the first answer that names the account.
+                    self.ask_skin(&name);
+                }
                 self.account = Some(p.account.unwrap_or_else(|| text::NO_ACCOUNT.to_string()));
+                self.rebuild_menu();
                 if matches!(self.stack.last(), Some(Page::Profile(_))) {
                     self.lock();
                 }
@@ -522,6 +592,44 @@ impl LauncherHome {
                     let why = self.failure(&d);
                     self.say_server(&why);
                 }
+            }
+            // Accept: the api wrote the line, or says why not; either way the server is read again.
+            Tag::Eula => {
+                if !ok {
+                    self.say_server(&said(&d));
+                }
+                self.load_server();
+            }
+            Tag::OpenLink => {
+                if !ok {
+                    self.say_server(&said(&d));
+                }
+            }
+            Tag::Accounts => {
+                if !ok {
+                    return;
+                }
+                self.accounts = crate::model::parse_accounts(&d.body);
+                let names: Vec<String> = self.accounts.iter().map(|(n, _)| n.clone()).collect();
+                for name in names {
+                    self.ask_skin(&name);
+                }
+                self.rebuild_menu();
+            }
+            Tag::Skin(name) => {
+                if ok {
+                    self.skins.insert(name, skin_view::read(&d.body));
+                    self.rebuild_menu();
+                }
+            }
+            // A change of account: the profiles and the list are read again, whose answers redraw the bar.
+            Tag::AccountUse | Tag::AccountAdd | Tag::AccountSignOut => {
+                if !ok {
+                    let why = self.failure(&d);
+                    self.say(&why);
+                }
+                self.load_profiles();
+                self.send(Tag::Accounts, "GET", "/api/accounts", None);
             }
         }
     }
@@ -934,7 +1042,7 @@ impl LauncherHome {
     }
 
     /// What the server's last request said, under its part.
-    fn server_note_under(&mut self, ui: &mut Ui) {
+    pub(crate) fn server_note_under(&mut self, ui: &mut Ui) {
         if !self.server_note.is_empty() {
             let note = self.server_note.clone();
             self.ids.server_note = ui.node("note", Style { margin: Margin { top: Side::Px(GAP_WIDE), ..Margin::default() }, ..Style::default() }, |ui| ui.paragraph(&note, TextLook::small(Tone::Muted)));
@@ -1113,6 +1221,12 @@ impl Home for LauncherHome {
                 }
                 Want::ServerSave => self.save_server(),
                 Want::ServerFolder => self.send(Tag::ServerFolder, "POST", "/api/server/folder", None),
+                Want::Eula => self.send(Tag::Eula, "POST", "/api/server/eula", None),
+                Want::OpenLink(url) => self.send(Tag::OpenLink, "POST", "/api/open-link", Some(json!({ "url": url }))),
+                Want::Accounts => self.send(Tag::Accounts, "GET", "/api/accounts", None),
+                Want::AccountUse(name) => self.send(Tag::AccountUse, "POST", "/api/accounts/use", Some(json!({ "name": name }))),
+                Want::AccountAdd => self.send(Tag::AccountAdd, "POST", "/api/accounts/add", None),
+                Want::AccountSignOut(name) => self.send(Tag::AccountSignOut, "POST", "/api/accounts/sign-out", Some(json!({ "name": name }))),
             }
         }
         true
@@ -1186,6 +1300,19 @@ impl Home for LauncherHome {
 
     fn account(&self) -> Option<String> {
         self.account.clone()
+    }
+
+    fn account_menu(&self) -> Arc<AccountMenu> {
+        self.menu.clone()
+    }
+
+    fn account_ask(&mut self, ask: AccountAsk) {
+        self.wants.push(match ask {
+            AccountAsk::Opened => Want::Accounts,
+            AccountAsk::Use(name) => Want::AccountUse(name),
+            AccountAsk::Add => Want::AccountAdd,
+            AccountAsk::SignOut(name) => Want::AccountSignOut(name),
+        });
     }
 
     fn as_any(&self) -> &dyn Any {

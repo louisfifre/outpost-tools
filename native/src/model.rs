@@ -65,8 +65,21 @@ pub struct Props {
     pub port: i64,
 }
 
+/// What a server was made from (board C1): a profile, the mods of it a server leaves out, a world project.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MadeFrom {
+    /// The profile's id.
+    pub profile: String,
+    pub left_out: i64,
+    pub world: Option<String>,
+    pub seed: Option<i64>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Server {
+    /// The server's name, as the api gives it; empty for the one dev server, which has none.
+    pub name: String,
+    pub made: Option<MadeFrom>,
     pub dir: String,
     pub state: String,
     pub eula: bool,
@@ -125,7 +138,16 @@ impl Server {
             players: n(p, "maxPlayers"),
             port: n(p, "port"),
         });
+        let m = &v["madeFrom"];
+        let made = m.is_object().then(|| MadeFrom {
+            profile: s(m, "profile"),
+            left_out: n(m, "leftOut"),
+            world: m["world"].as_str().filter(|w| !w.is_empty()).map(String::from),
+            seed: m["seed"].as_i64(),
+        });
         Server {
+            name: s(v, "name"),
+            made,
             dir: s(v, "dir"),
             state: s(v, "state"),
             eula: v["eula"].as_bool().unwrap_or(false),
@@ -138,6 +160,21 @@ impl Server {
     pub fn busy(&self) -> bool {
         matches!(self.state.as_str(), "preparing" | "starting" | "running")
     }
+}
+
+/// The accounts the launcher knows, by name, and which one the game is played with.
+pub fn parse_accounts(v: &Value) -> Vec<(String, bool)> {
+    v["accounts"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| Some((x["name"].as_str().filter(|n| !n.is_empty())?.to_string(), x["inUse"].as_bool().unwrap_or(false)))).collect())
+        .unwrap_or_default()
+}
+
+/// The end of a folder's path as the page says it: its last two parts after an ellipsis, the whole path when it has no
+/// more (`...\servers\Test server`).
+pub fn folder_tail(dir: &str) -> String {
+    let parts: Vec<&str> = dir.split(['\\', '/']).filter(|p| !p.is_empty()).collect();
+    if parts.len() > 2 { format!("\u{2026}\\{}", parts[parts.len() - 2..].join("\\")) } else { dir.to_string() }
 }
 
 /// `Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(days, 'day')`.
@@ -229,6 +266,22 @@ mod tests {
         // x.25 and x.75 round up, as toFixed does.
         assert_eq!(about(&profile(1, 4500, Open::Menu), 0), "today \u{b7} 1.3 h played");
         assert_eq!(about(&profile(1, 29, Open::Menu), 0), "today");
+    }
+
+    #[test]
+    fn a_folder_is_said_by_its_last_two_parts() {
+        assert_eq!(folder_tail("C:\\Users\\x\\servers\\Test server"), "\u{2026}\\servers\\Test server");
+        assert_eq!(folder_tail("C:/Code/servers/Test server/"), "\u{2026}\\servers\\Test server");
+        assert_eq!(folder_tail("C:\\Code"), "C:\\Code");
+    }
+
+    #[test]
+    fn what_a_server_was_made_from_is_read_when_given() {
+        let s = Server::parse(&json!({"name": "Test server", "state": "stopped", "madeFrom": {"profile": "exploration", "leftOut": 3, "world": "Tectonic islands", "seed": 48213}}));
+        let made = s.made.unwrap();
+        assert_eq!((s.name.as_str(), made.profile.as_str(), made.left_out, made.world.as_deref(), made.seed), ("Test server", "exploration", 3, Some("Tectonic islands"), Some(48213)));
+        assert!(Server::parse(&json!({"state": "stopped"})).made.is_none());
+        assert_eq!(parse_accounts(&json!({"accounts": [{"name": "A", "inUse": true}, {"name": "B"}, {"inUse": true}]})), [("A".to_string(), true), ("B".to_string(), false)]);
     }
 
     #[test]

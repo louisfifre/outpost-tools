@@ -40,6 +40,16 @@ pub enum Tag {
     SaveServer,
     Folder,
     ServerFolder,
+    /// Accept the Minecraft EULA for the server (the api writes the line; nothing here does).
+    Eula,
+    /// Open a link in the person's browser.
+    OpenLink,
+    Accounts,
+    /// The skin of an account, by its name.
+    Skin(String),
+    AccountUse,
+    AccountAdd,
+    AccountSignOut,
 }
 
 #[derive(Clone, Debug)]

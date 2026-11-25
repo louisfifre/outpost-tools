@@ -72,6 +72,31 @@ pub fn server(state: &str, port: i64) -> Option<String> {
     })
 }
 pub const NO_EULA: &str = "EULA not accepted yet";
+/// The server's page before its first start (board C1). The sentence is said in four pieces, the link between them.
+pub const START: &str = "Start";
+pub const EULA_BEFORE: &str = "To start this server, accept the ";
+pub const EULA_LINK: &str = "Minecraft EULA";
+pub const EULA_URL: &str = "https://aka.ms/MinecraftEULA";
+pub const EULA_AFTER: &str = ". ";
+pub const EULA_WRITES: &str = "It writes eula=true in its eula.txt.";
+pub const ACCEPT: &str = "Accept";
+pub const MADE_FROM: &str = "Made from";
+pub const MADE_PROFILE: &str = "Profile";
+pub const MADE_WORLD: &str = "World";
+pub const MADE_FOLDER: &str = "Folder";
+pub const NO_WORLD: &str = "No world project";
+/// What the server leaves out of its profile's mods; none for a profile whose mods all run on a server.
+pub fn left_out(n: i64) -> Option<String> {
+    match n {
+        n if n <= 0 => None,
+        1 => Some("1 mod not needed on a server".into()),
+        n => Some(format!("{n} mods not needed on a server")),
+    }
+}
+/// The world project's name and its seed.
+pub fn world_seed(world: &str, seed: i64) -> String {
+    format!("{world} \u{b7} seed {seed}")
+}
 pub const VIEW_DISTANCE: &str = "View distance (chunks)";
 pub const SIMULATION_DISTANCE: &str = "Simulation distance";
 pub const MAX_PLAYERS: &str = "Players at most";
