@@ -31,11 +31,15 @@ pub struct Server {
     pub name: String,
     pub profile: String,
     pub world_project: Option<String>,
+    // The world project's seed, written when the server is made (None: read from server.properties once it exists).
+    pub seed: Option<i64>,
+    // How many of the profile's mods a server leaves out, counted when the server was made (None: not known).
+    pub left_out: Option<u32>,
 }
 
 impl Server {
     fn to_json(&self) -> Value {
-        json!({ "name": self.name, "profile": self.profile, "worldProject": self.world_project })
+        json!({ "name": self.name, "profile": self.profile, "worldProject": self.world_project, "seed": self.seed, "leftOut": self.left_out })
     }
 
     /// Ok(None) when the folder has no Outpost Tools file (not a server); Err when it has one that cannot be read.
@@ -48,7 +52,14 @@ impl Server {
         let meta: Value =
             serde_json::from_slice(super::key_value::strip_bom(&bytes)).map_err(|e| format!("{META_FILE} is not valid: {e}"))?;
         let field = |key: &str| meta[key].as_str().map(String::from).ok_or_else(|| format!("{META_FILE} has no {key}"));
-        Ok(Some(Server { dir: dir.to_path_buf(), name: field("name")?, profile: field("profile")?, world_project: field("worldProject").ok() }))
+        Ok(Some(Server {
+            dir: dir.to_path_buf(),
+            name: field("name")?,
+            profile: field("profile")?,
+            world_project: field("worldProject").ok(),
+            seed: meta["seed"].as_i64(),
+            left_out: meta["leftOut"].as_u64().and_then(|n| u32::try_from(n).ok()),
+        }))
     }
 
     pub fn write(&self) -> io::Result<()> {
@@ -181,6 +192,7 @@ pub struct NewServer<'a> {
     pub name: &'a str,
     pub profile: &'a str,
     pub world_project: Option<&'a str>,
+    pub seed: Option<i64>,
 }
 
 pub struct Created {
@@ -221,6 +233,8 @@ fn build_in(staging: &Path, servers_dir: &Path, name: &str, new: &NewServer, mod
         name: name.to_string(),
         profile: new.profile.to_string(),
         world_project: new.world_project.map(String::from),
+        seed: new.seed,
+        left_out: u32::try_from(selection.left_out.len()).ok(),
     };
     server.write()?;
     let base = folder_name(name);
@@ -289,6 +303,23 @@ pub fn eula_text_accepts(text: &str) -> bool {
 
 pub fn eula_accepted(server_dir: &Path) -> bool {
     fs::read_to_string(eula_file(server_dir)).is_ok_and(|t| eula_text_accepts(&t))
+}
+
+// Writes the accepting line in the server's eula.txt: the one place that does, run only on the user's press of
+// Accept. A eula.txt the game wrote keeps its other lines (its comment); only its `eula=` line turns true.
+pub fn accept_eula(server_dir: &Path) -> io::Result<()> {
+    let file = eula_file(server_dir);
+    let old = match fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    let mut lines: Vec<String> = old.lines().map(String::from).collect();
+    match lines.iter_mut().find(|l| l.trim_start().starts_with("eula=")) {
+        Some(line) => *line = eula_text().into(),
+        None => lines.push(eula_text().into()),
+    }
+    fs::write(&file, lines.join("\r\n") + "\r\n")
 }
 
 // ---- server.properties ----
@@ -366,7 +397,9 @@ pub struct LaunchCommand {
 pub fn launch_command(java: &Path, server_dir: &Path, memory_mb: u32, java_args: &[String]) -> LaunchCommand {
     let mut args = vec![format!("-Xmx{memory_mb}M")];
     args.extend(java_args.iter().cloned());
-    args.extend(["-jar".into(), LAUNCHER_JAR.into(), "nogui".into()]);
+    // The jar by its whole path: a java process is told to be this server's by that path in its command line
+    // (`process_marker`), since several servers run the same jar name.
+    args.extend(["-jar".into(), server_dir.join(LAUNCHER_JAR).to_string_lossy().into_owned(), "nogui".into()]);
     LaunchCommand { java: java.to_path_buf(), args, dir: server_dir.to_path_buf() }
 }
 
@@ -495,6 +528,28 @@ pub fn stop_server(process: &mut dyn ServerProcess, timeout: Duration, poll: Dur
     Ok(StopOutcome::Killed)
 }
 
+// What a java command line holds when it runs this server: the launcher jar by its whole path (see `launch_command`).
+// Lower case, as Windows compares paths.
+pub fn process_marker(server_dir: &Path) -> String {
+    server_dir.join(LAUNCHER_JAR).to_string_lossy().to_lowercase()
+}
+
+// The players in the game now, from this run's log: each "<name> joined the game" and "<name> left the game". The log
+// is rewritten at each start, so it holds this run only. A chat line (`<name> text`) that ends in those words is not
+// one: it starts with "<".
+pub fn players_online(log: &str) -> u32 {
+    let mut count: i64 = 0;
+    for line in log.lines() {
+        let Some((_, said)) = line.split_once("]: ") else { continue };
+        if said.ends_with(" joined the game") && !said.starts_with('<') {
+            count += 1;
+        } else if said.ends_with(" left the game") && !said.starts_with('<') {
+            count -= 1;
+        }
+    }
+    count.max(0) as u32
+}
+
 // "Done (" is the line Minecraft writes once players can join.
 pub fn log_says_ready(log: &str) -> bool {
     log.contains("Done (")
@@ -581,13 +636,13 @@ mod tests {
         let servers = root.join("servers");
         let table = Table(vec![("sodium", Some((Required, Unsupported))), ("lithium", Some((Optional, Required)))]);
         let mods = [mod_in(&profile, "sodium"), mod_in(&profile, "lithium")];
-        let new = NewServer { name: "Friends: Fall", profile: "Pack", world_project: Some("island") };
+        let new = NewServer { name: "Friends: Fall", profile: "Pack", world_project: Some("island"), seed: Some(48213) };
         let made = create_server(&servers, &new, &mods, &table).unwrap();
         assert_eq!(made.server.dir, servers.join("Friends- Fall"));
         assert!(made.server.dir.join("mods").join("lithium.jar").is_file());
         assert!(!made.server.dir.join("mods").join("sodium.jar").exists());
         // The same name again gets a folder of its own.
-        let again = create_server(&servers, &NewServer { name: "Friends: Fall", profile: "Pack", world_project: None }, &[], &table).unwrap();
+        let again = create_server(&servers, &NewServer { name: "Friends: Fall", profile: "Pack", world_project: None, seed: None }, &[], &table).unwrap();
         assert_eq!(again.server.dir, servers.join("Friends- Fall-2"));
         // A folder with no Outpost Tools file is not a server.
         fs::create_dir(servers.join("stray")).unwrap();
@@ -598,7 +653,7 @@ mod tests {
         assert_eq!(listed[0].name, "Friends: Fall");
         assert_eq!(listed[0].world_project.as_deref(), Some("island"));
         assert_eq!(listed[1].world_project, None);
-        assert!(create_server(&servers, &NewServer { name: "  ", profile: "p", world_project: None }, &[], &table).is_err());
+        assert!(create_server(&servers, &NewServer { name: "  ", profile: "p", world_project: None, seed: None }, &[], &table).is_err());
         // Making a server writes no eula.txt: only the user's Accept does.
         assert!(!eula_file(&made.server.dir).exists());
         let _ = fs::remove_dir_all(profile);
@@ -612,7 +667,7 @@ mod tests {
         let table = Table(vec![]);
         // A mod whose file is not there: the copy fails after the folders were made.
         let missing = ProfileMod { name: "gone".into(), file: root.join("gone.jar") };
-        let new = NewServer { name: "Doomed", profile: "Pack", world_project: None };
+        let new = NewServer { name: "Doomed", profile: "Pack", world_project: None, seed: None };
         assert!(create_server(&servers, &new, &[missing], &table).is_err());
         assert_eq!(fs::read_dir(&servers).unwrap().count(), 0);
         let _ = fs::remove_dir_all(root);
@@ -623,7 +678,7 @@ mod tests {
         let root = temp_dir("broken");
         let servers = root.join("servers");
         let table = Table(vec![]);
-        let good = create_server(&servers, &NewServer { name: "Good", profile: "Pack", world_project: None }, &[], &table).unwrap();
+        let good = create_server(&servers, &NewServer { name: "Good", profile: "Pack", world_project: None, seed: None }, &[], &table).unwrap();
         fs::create_dir_all(servers.join("Bad")).unwrap();
         fs::write(servers.join("Bad").join(META_FILE), "{ not json").unwrap();
         fs::create_dir_all(servers.join("NoName")).unwrap();
@@ -709,7 +764,7 @@ mod tests {
     #[test]
     fn the_launch_command_is_java_with_the_launcher_jar() {
         let c = launch_command(Path::new("java.exe"), Path::new("srv"), 4096, &["-XX:+UseZGC".to_string()]);
-        assert_eq!(c.args, ["-Xmx4096M", "-XX:+UseZGC", "-jar", LAUNCHER_JAR, "nogui"]);
+        assert_eq!(c.args, ["-Xmx4096M", "-XX:+UseZGC", "-jar", &Path::new("srv").join(LAUNCHER_JAR).to_string_lossy(), "nogui"]);
     }
 
     // A process that ends `after` polls after "stop" (never when None).

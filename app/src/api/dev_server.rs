@@ -196,7 +196,7 @@ impl Api {
 
 // The server's settings the page sent are ones the server can take. Its properties are checked only when sent, and
 // then server.properties must exist (`props_exist`): dev-server.ps1 writes it on the first start.
-fn settings_valid(body: &Value, machine_mb: u64, props_exist: bool) -> bool {
+pub(super) fn settings_valid(body: &Value, machine_mb: u64, props_exist: bool) -> bool {
     let memory = as_int(&body["memoryMb"]);
     let java_args = squeeze(body["javaArgs"].as_str().unwrap_or_default());
     if !memory.is_some_and(|m| m >= 1024 && m <= machine_mb as i64) || java_args.len() > 2000 {
