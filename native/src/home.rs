@@ -98,6 +98,7 @@ pub struct HomeIds {
     pub server_rows: Vec<RowIds>,
     pub new_profile: Id,
     pub new_server: Id,
+    pub choose_folder: Id,
     pub s_memory: Id,
     pub s_java: Id,
     pub s_view: Id,
@@ -134,6 +135,7 @@ impl Default for HomeIds {
             server_rows: Vec::new(),
             new_profile: o,
             new_server: o,
+            choose_folder: o,
             s_memory: o,
             s_java: o,
             s_view: o,
@@ -216,6 +218,8 @@ pub(crate) enum Want {
     ServerStop,
     ServerSave,
     ServerFolder,
+    /// Choose the folder the servers live in.
+    ChooseFolder,
     Mods(pages::add_mod::Ask),
     /// Accept the Minecraft EULA: the api writes it, on the person's press.
     Eula,
@@ -261,6 +265,11 @@ pub struct LauncherHome {
     stop_asked: f64,
     /// Why the last stop failed, while the server still runs.
     stop_refused: Option<String>,
+    /// A stop is asked and its answer has not come: a server that stops takes the time it needs to save.
+    stop_pending: bool,
+    /// Why the last start was refused, while the server has not started: kept in place of the note a server with no
+    /// settings yet says, which is what a refusal before the first start would otherwise be hidden by.
+    start_refused: Option<String>,
     /// The api's reason for its last 503, while it may still be shown.
     unavailable: Option<String>,
     filled_for: Option<String>,
@@ -306,6 +315,8 @@ impl LauncherHome {
             stopping: false,
             stop_asked: 0.0,
             stop_refused: None,
+            stop_pending: false,
+            start_refused: None,
             unavailable: None,
             filled_for: None,
             status: String::new(),
@@ -455,6 +466,7 @@ impl LauncherHome {
         self.server = None;
         self.stopping = false;
         self.stop_refused = None;
+        self.start_refused = None;
         self.filled_for = None;
         self.server_note.clear();
         self.next_server = self.now;
@@ -555,7 +567,7 @@ impl LauncherHome {
                     self.stop_refused = None;
                 }
                 // A stop that was taken but left the server running does not hold the button for ever.
-                if self.stopping && server.state == "running" && self.now - self.stop_asked >= STOP_WAIT {
+                if self.stopping && !self.stop_pending && server.state == "running" && self.now - self.stop_asked >= STOP_WAIT {
                     self.stopping = false;
                 }
                 let key = format!("{} {}", server.state, server.props.is_some());
@@ -602,13 +614,20 @@ impl LauncherHome {
             }
             // `startServer`.
             Tag::ServerStart => {
-                if !ok {
-                    self.say_server(&said(&d));
+                if ok {
+                    self.start_refused = None;
+                } else {
+                    let why = said(&d);
+                    self.say_server(&why);
+                    self.start_refused = Some(why);
                 }
                 self.load_server();
             }
             // `stopServer`, with the server's own reason (the page says only that it failed).
             Tag::ServerStop => {
+                self.stop_pending = false;
+                // The wait for a server that is still running counts from the answer.
+                self.stop_asked = self.now;
                 if !ok {
                     self.stopping = false;
                     let why = said(&d);
@@ -632,6 +651,18 @@ impl LauncherHome {
                 }
             },
             Tag::Mods(ref ask) => pages::add_mod::done(self, ask.clone(), &d),
+            // The servers folder was chosen (or the dialog closed with none): the list is read again from where it is now.
+            Tag::ServersFolder => {
+                if !ok {
+                    let why = if matches!(d.status, 409 | 422) { said(&d) } else { self.failure(&d) };
+                    self.say_server(&why);
+                } else {
+                    // A server of the old folder is no longer one: the page asks about none in particular.
+                    self.select("");
+                    self.say_server("");
+                }
+                self.load_server();
+            }
             Tag::ServerFolder => {
                 if !ok {
                     let why = self.failure(&d);
@@ -721,7 +752,9 @@ impl LauncherHome {
                 self.say_server(text::SERVER_LOCKED);
             }
         } else if server.props.is_none() {
-            self.say_server(text::FIRST_START);
+            if self.start_refused.as_deref() != Some(self.server_note.as_str()) {
+                self.say_server(text::FIRST_START);
+            }
         } else if self.server_note == text::SERVER_LOCKED || self.server_note == text::FIRST_START {
             self.say_server("");
         }
@@ -936,11 +969,14 @@ impl LauncherHome {
         let lit = ui.theme().tint();
         let lines = self.server_lines();
         let mut new = (Id::ROOT, false);
+        let mut choose = (Id::ROOT, false);
         self.ids.server_rows.clear();
         let section = ui.section(
             "servers",
             text::SERVER_GROUP,
             |ui| {
+                let r = ui.action("chooseFolder", text::CHOOSE_FOLDER, ActionLook::Underlined);
+                choose = (r.id, r.clicked);
                 let r = ui.action("new", text::NEW_SERVER, ActionLook::Underlined);
                 new = (r.id, r.clicked);
             },
@@ -991,6 +1027,10 @@ impl LauncherHome {
         );
         self.ids.server_header = section;
         self.ids.new_server = new.0;
+        self.ids.choose_folder = choose.0;
+        if choose.1 {
+            self.wants.push(Want::ChooseFolder);
+        }
         self.server_note_under(ui);
     }
 
@@ -1162,11 +1202,14 @@ impl Home for LauncherHome {
                 Want::ServerStop => {
                     self.stopping = true;
                     self.stop_asked = self.now;
+                    self.stop_pending = true;
                     self.stop_refused = None;
                     self.send_server(Tag::ServerStop, "POST", "/api/server/stop", None);
                 }
                 Want::ServerSave => self.save_server(),
                 Want::ServerFolder => self.send_server(Tag::ServerFolder, "POST", "/api/server/folder", None),
+                // Not a server's own request: the servers folder is one for all of them.
+                Want::ChooseFolder => self.send(Tag::ServersFolder, "POST", "/api/servers/folder", None),
                 Want::Mods(ask) => pages::add_mod::act(self, ask),
                 Want::Eula => self.send_server(Tag::Eula, "POST", "/api/server/eula", None),
                 Want::OpenLink(url) => self.send(Tag::OpenLink, "POST", "/api/open-link", Some(json!({ "url": url }))),
