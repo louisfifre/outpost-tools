@@ -66,9 +66,9 @@ pub fn fixture() -> FakeApi {
         json!({
             "machineMb": 32768, "account": "PlayerOne", "locked": false,
             "profiles": [
-                {"id": "atelier", "name": "Atelier", "memoryMb": 6144, "javaArgs": "-XX:+UseZGC", "gameDir": "C:\\Games\\atelier",
+                {"id": "atelier", "name": "Atelier", "memoryMb": 6144, "javaArgs": "-XX:+UseZGC", "gameDir": "C:\\Code\\atelier",
                  "lastPlayed": 0, "playedSeconds": 0, "running": false, "worlds": [], "open": {"kind": "menu", "target": ""}},
-                {"id": "exploration", "name": "Exploration", "memoryMb": 6144, "javaArgs": "-XX:+UseZGC", "gameDir": "C:\\Games\\exploration",
+                {"id": "exploration", "name": "Exploration", "memoryMb": 6144, "javaArgs": "-XX:+UseZGC", "gameDir": "C:\\Code\\exploration",
                  "lastPlayed": FIXED_NOW_MS - 86_400_000, "playedSeconds": 6120, "running": false, "worlds": ["New World"],
                  "open": {"kind": "world", "target": "New World"}}
             ]
@@ -77,7 +77,7 @@ pub fn fixture() -> FakeApi {
     api.set_get(
         "/api/server",
         json!({
-            "dir": "C:\\Games\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "-XX:+UseZGC",
+            "dir": "C:\\Code\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "-XX:+UseZGC",
             "props": {"motd": "Exploration (dev)", "whitelist": true, "viewDistance": 12, "simulationDistance": 8, "maxPlayers": 20, "port": 25565}
         }),
     );
