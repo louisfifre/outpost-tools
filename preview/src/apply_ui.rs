@@ -1,12 +1,12 @@
-//! The Apply block under the settings, and the line that opens them: the two choices that put every value back (to the
-//! pack's, to Tectonic's own; each is pressed while the form is there, both when the pack is Tectonic's own). Then the place line that opens the
-//! list of places above itself (`places.rs`, the kit's menu with multiple selectors, ending on "Choose a folder…"),
-//! Apply (the only control that writes), what the last apply said, what to do when no game was found or a folder was
-//! refused, and the warning about seams. The shell only records the press (`Want::Apply`); the application
-//! writes (`apply.rs`).
+//! What Apply is made of. The first line of the settings, "Back to" and its two choices that put every value back (to
+//! the pack's, to Tectonic's own; each is pressed while the form is there, both when the pack is Tectonic's own). Then,
+//! opened above the bottom row by the Apply action: the place line that opens the list of places above itself
+//! (`places.rs`, the kit's menu with multiple selectors, ending on "Choose a folder…"), Apply (the only control that
+//! writes), what the last apply said, what to do when no game was found or a folder was refused, and the warning
+//! about seams. The shell only records the press (`Want::Apply`); the application writes (`apply.rs`).
 
-use mere_layout::{Edges, Margin, Side, Style};
-use mere_ui::tokens::{GAP, GAP_WIDE};
+use mere_layout::{Margin, Side, Style};
+use mere_ui::tokens::GAP;
 use mere_ui::{ActionLook, ActionOpts, MenuOpts, SelectionRow, Selector, TabLook, TabOpts, TextLook, Tone, Trigger, Ui, choice_style};
 
 use crate::apply::{Notice, Refusal, Report, Running, Snapshot};
@@ -66,6 +66,21 @@ pub fn report_words(r: &Report) -> (String, Vec<String>) {
     (quiet.join(" "), warn)
 }
 
+/// The ids this module builds are Id::ROOT until it builds them: a frame that does not open the choices leaves them so.
+pub fn forget(ids: &mut ShellIds) {
+    ids.apply = mere_ui::Id::ROOT;
+    ids.apply_note = mere_ui::Id::ROOT;
+    ids.apply_text.clear();
+    ids.place_line = mere_ui::Id::ROOT;
+    ids.place_list = mere_ui::Id::ROOT;
+    ids.place_rows.clear();
+    ids.place_action = mere_ui::Id::ROOT;
+    ids.place_note = "";
+    ids.place_text.clear();
+    ids.generate_go = mere_ui::Id::ROOT;
+    ids.details = mere_ui::Id::ROOT;
+}
+
 /// The first line of the settings: "Back to" as plain text, and the two choices at the far right, which read as actions.
 pub fn back_line(ui: &mut Ui, values: &mut [f64; 43], baseline: &[f64; 43], ids: &mut ShellIds) {
     ids.profiles = ui.node("profiles", Style::default(), |ui| {
@@ -89,8 +104,8 @@ pub fn back_line(ui: &mut Ui, values: &mut [f64; 43], baseline: &[f64; 43], ids:
     });
 }
 
-/// The fields of the state it reads and writes, one by one: it is built inside the settings fold, which holds another
-/// of the state's fields.
+/// The fields of the state it reads and writes, one by one: it is built in the shell's bottom block, which holds
+/// other fields of the state.
 pub struct Apply<'a> {
     pub values: &'a [f64; 43],
     pub baseline: &'a [f64; 43],
@@ -102,17 +117,9 @@ pub struct Apply<'a> {
     pub want: &'a mut Option<Want>,
 }
 
-pub fn apply_block(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
-    ids.apply = mere_ui::Id::ROOT;
-    ids.apply_note = mere_ui::Id::ROOT;
-    ids.apply_text.clear();
-    ids.place_line = mere_ui::Id::ROOT;
-    ids.place_list = mere_ui::Id::ROOT;
-    ids.place_rows.clear();
-    ids.place_action = mere_ui::Id::ROOT;
-    ids.place_note = "";
-    ids.place_text.clear();
-    let style = Style { column: true, shrink: 0.0, pad: Edges::new(GAP_WIDE, 0.0, 0.0, 0.0), gap: mere_base::Vec2::new(0.0, GAP), ..Style::default() };
+/// What Apply needs, opened above the two actions: where to write, the button that writes, and what is to be said.
+pub fn apply_choices(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
+    let style = Style { column: true, shrink: 0.0, gap: mere_base::Vec2::new(0.0, GAP), ..Style::default() };
     ui.node("applyBlock", style, |ui| {
         let working = *s.notice == Notice::Working;
         let ticked: Vec<&Place> = s.places.iter().filter(|p| p.ticked).collect();

@@ -359,6 +359,16 @@ impl Rig {
         self.click(at);
     }
 
+    /// Generate as a person does it: the button of the bottom row opens its choices, the one inside them asks.
+    pub fn generate(&mut self) {
+        if self.app.state().action != Some(preview::Action::Generate) {
+            let open = self.app.ids().generate;
+            self.click_on(open);
+        }
+        let go = self.app.ids().generate_go;
+        self.click_on(go);
+    }
+
     /// Moves the pointer away from everything, so that nothing is hovered.
     pub fn park(&mut self) {
         self.app.event(Event::PointerMoved { pos: Vec2::new(2.0, 2.0) });

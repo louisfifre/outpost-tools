@@ -80,8 +80,7 @@ fn p3_a_run_under_way_does_not_keep_the_window_drawing() {
     state.seed = "p3-seed".to_string();
     let mut rig = Rig::new(&world, state, Some(runs(&root, &[("MERE_STUB", "hold")])));
     rig.park();
-    let generate = rig.app.ids().generate;
-    rig.click_on(generate);
+    rig.generate();
     assert!(rig.app.running(), "the click started the generator");
     rig.park();
 

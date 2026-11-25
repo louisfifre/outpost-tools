@@ -107,6 +107,13 @@ pub enum Want {
     Close,
 }
 
+/// The action of the panel's bottom row whose choices are open above the row.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Action {
+    Generate,
+    Apply,
+}
+
 /// The launcher's two tools (lines 228-236): the Home and the world preview. One is on at a time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -171,6 +178,8 @@ pub struct PreviewState {
     pub apply: crate::apply::Notice,
     /// The pressed detail: an index in `text::DETAILS`.
     pub detail: usize,
+    /// The action of the bottom row that is open: its choices are above the row until it is pressed again or Escape.
+    pub action: Option<Action>,
     pub settings_y: f32,
     /// The filter above the settings: on, only the groups related to the pressed view are listed (iew_filter).
     /// It stays on when the view changes.
@@ -287,6 +296,7 @@ impl Default for PreviewState {
             folder_refused: false,
             apply: Default::default(),
             detail: 2,
+            action: None,
             settings_y: 0.0,
             view_only: false,
             settings_list: None,
@@ -377,7 +387,7 @@ pub struct ShellIds {
     pub select: Id,
     /// `#areaHint`, built only past the widest fine area.
     pub area_hint: Id,
-    /// The two choices beside Apply that put every value back, then each of them: the pack's, Tectonic's own.
+    /// The line "Back to" and its two choices that put every value back, then each of them: the pack's, Tectonic's own.
     pub profiles: Id,
     pub back_pack: Id,
     pub original: Id,
@@ -415,6 +425,10 @@ pub struct ShellIds {
     pub place_text: String,
     /// The Apply button and the words under it (Id::ROOT when not built), and what they say, a line per sentence.
     pub apply: Id,
+    /// The two actions at the bottom of the panel, `generate` and `apply_open`, each open its choices above the row;
+    /// the buttons that confirm, `generate_go` and `apply`, exist only while their choices are open (Id::ROOT else).
+    pub apply_open: Id,
+    pub generate_go: Id,
     pub apply_note: Id,
     pub apply_text: String,
     pub run: Id,
@@ -556,6 +570,8 @@ impl Default for ShellIds {
             filter_mark: o,
             reset: o,
             apply: o,
+            apply_open: o,
+            generate_go: o,
             apply_note: o,
             apply_text: String::new(),
             place_line: o,
@@ -806,7 +822,6 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, stacked: b
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
         s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, stacked);
-        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 
@@ -992,19 +1007,26 @@ fn keep_help(ids: &mut ShellIds, help: Option<mere_ui::HelpResp>, open: &mut Opt
     }
 }
 
-/// Escape closes the open help, after an open menu and a focused field have had theirs (they take it first). True
+/// Escape closes the open help, then the open choices of the bottom row, after an open menu and a focused field have had theirs (they take it first). True
 /// when it did, and the event goes no further.
 pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool {
     let escape = matches!(e, mere_base::Event::Key { key: mere_base::Key::Escape, .. });
-    if escape && s.help.is_some() && !ui.menu_open() && ui.focused().is_none() {
-        s.help = None;
-        return true;
+    if escape && !ui.menu_open() && ui.focused().is_none() {
+        if s.help.is_some() {
+            s.help = None;
+            return true;
+        }
+        // Then the choices above the bottom row.
+        if s.action.is_some() {
+            s.action = None;
+            return true;
+        }
     }
     false
 }
 
 /// What `#status` says (`showButton`, lines 799-802, and `tick`, 2610-2615): the clock while a run is followed, else
-/// the trouble, or what was said. Nothing when the map shows these settings: the Generate button is disabled then.
+/// the trouble, or what was said. Nothing when the map shows these settings: the Generate that confirms is disabled.
 fn status_words(s: &PreviewState) -> String {
     if let Some(f) = &s.follow {
         let elapsed = duration(f.seconds);
@@ -1029,8 +1051,10 @@ fn made_shows_form(s: &PreviewState) -> bool {
     s.made.as_ref().is_some_and(|m| m.same_as(&s.seed, s.samples, DETAIL_BLOCKS[s.detail], &s.values))
 }
 
-/// `#run` (line 192): a hairline, the status, the details and the generate button with the stop square beside it.
+/// `#run` (line 192): a hairline, the status, and the two actions side by side, Generate and Apply. Pressing one opens,
+/// above the row, what that action needs (the details for Generate, the places for Apply) and the button that confirms.
 fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
+    crate::apply_ui::forget(ids);
     let style = Style { column: true, margin: Margin { top: Side::Auto, ..Margin::default() }, shrink: 0.0, ..Style::default() };
     ids.run = ui.node("run", style, |ui| {
         ui.rule(Rule::Section, Edges::default());
@@ -1043,36 +1067,34 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
                 let words = ids.status_text.clone();
                 ids.status = ui.node("status", Style::default(), |ui| ui.paragraph(&words, TextLook::status(tone)));
             }
-            ids.details = ui.node("details", details_style(), |ui| {
-                for (i, word) in text::DETAILS.iter().enumerate() {
-                    // The wait this machine took for this detail on this area, under its name (showDetails, 819-830).
-                    let wait = s.pace.about(s.samples, DETAIL_BLOCKS[i]).map(duration).unwrap_or_default();
-                    // The sixteen-block map of a wide area is out of reach (line 823).
-                    let disabled = DETAIL_BLOCKS[i] == 16 && s.samples > AREA_FINE_MAX;
-                    let r = ui.detail_tab(&format!("d{i}"), word, &wait, TabOpts { pressed: i == s.detail, disabled });
-                    ui.title(r.id, if disabled { text::SPAN_COARSE } else { text::DETAIL_HINT });
-                    if r.clicked {
-                        s.detail = i;
-                    }
-                }
-            });
             let same = made_shows_form(s);
             let busy = s.follow.as_ref().map(|f| (f.ask.same_as(&s.seed, s.samples, DETAIL_BLOCKS[s.detail], &s.values), f.share(), f.stopping));
-            ui.node("go", Style { gap: Vec2::new(6.0, 0.0), ..Style::default() }, |ui| {
-                // While a run is under way the button says so; once a setting moved it starts the new run in its
-                // place (lines 789-798). The shell only records the press: the application acts on it.
-                let (word, look, disabled) = match busy {
-                    Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
-                    Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
-                    // Disabled: the map already shows these settings (line 467).
-                    None => (text::GENERATE, ActionLook::Primary, same),
-                };
-                ids.generate_text = word.to_string();
-                let r = ui.action_with("generate", word, look, ActionOpts { disabled, grow: 1.0 });
-                ids.generate = r.id;
-                if r.clicked {
-                    s.want = Some(Want::Generate);
+            match s.action {
+                Some(Action::Generate) => generate_choices(ui, s, ids, same, busy),
+                Some(Action::Apply) => {
+                    let a = crate::apply_ui::Apply { values: &s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want };
+                    crate::apply_ui::apply_choices(ui, a, ids);
                 }
+                None => {}
+            }
+            // Two halves, each as wide as the other whatever its word (the stop square, while it is there, takes its own).
+            let half = Style { grow: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
+            ui.node("go", Style { gap: Vec2::new(6.0, 0.0), ..Style::default() }, |ui| {
+                ui.node("generateHalf", half, |ui| {
+                    // While a run is under way the button says so. It only opens the choices: the button that starts the
+                    // run is inside them.
+                    let (word, look, disabled) = match busy {
+                        Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
+                        Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
+                        None => (text::GENERATE, ActionLook::Primary, false),
+                    };
+                    ids.generate_text = word.to_string();
+                    let r = ui.action_with("generate", word, look, ActionOpts { disabled, grow: 1.0 });
+                    ids.generate = r.id;
+                    if r.clicked {
+                        s.action = if s.action == Some(Action::Generate) { None } else { Some(Action::Generate) };
+                    }
+                });
                 if let Some((_, _, stopping)) = busy {
                     let r = ui.stop_action("stopRun", stopping);
                     ids.stop = r.id;
@@ -1081,10 +1103,46 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
                         s.want = Some(Want::Stop);
                     }
                 }
+                ui.node("applyHalf", half, |ui| {
+                    let r = ui.action_with("applyOpen", text::APPLY, ActionLook::Primary, ActionOpts { disabled: false, grow: 1.0 });
+                    ids.apply_open = r.id;
+                    if r.clicked {
+                        s.action = if s.action == Some(Action::Apply) { None } else { Some(Action::Apply) };
+                    }
+                });
             });
         });
     });
 }
+
+/// What Generate needs: the detail of the map, and the button that starts the run. The shell only records the press:
+/// the application acts on it. A setting moved during a run starts the new run in its place (lines 789-798).
+fn generate_choices(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, same: bool, busy: Option<(bool, f32, bool)>) {
+    ids.details = ui.node("details", details_style(), |ui| {
+        for (i, word) in text::DETAILS.iter().enumerate() {
+            // The wait this machine took for this detail on this area, under its name (showDetails, 819-830).
+            let wait = s.pace.about(s.samples, DETAIL_BLOCKS[i]).map(duration).unwrap_or_default();
+            // The sixteen-block map of a wide area is out of reach (line 823).
+            let disabled = DETAIL_BLOCKS[i] == 16 && s.samples > AREA_FINE_MAX;
+            let r = ui.detail_tab(&format!("d{i}"), word, &wait, TabOpts { pressed: i == s.detail, disabled });
+            ui.title(r.id, if disabled { text::SPAN_COARSE } else { text::DETAIL_HINT });
+            if r.clicked {
+                s.detail = i;
+            }
+        }
+    });
+    // Disabled: the map already shows these settings (line 467), or the run under way is this one.
+    let disabled = busy.map_or(same, |(this, _, stopping)| this || stopping);
+    ui.node("generateGo", Style::default(), |ui| {
+        let r = ui.action_with("generateGo", text::GENERATE, ActionLook::Primary, ActionOpts { disabled, grow: 1.0 });
+        ids.generate_go = r.id;
+        if r.clicked && !disabled {
+            s.want = Some(Want::Generate);
+            s.action = None;
+        }
+    });
+}
+
 /// The middle column: the stage holds the map's square and the strip under it (line 226).
 fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, frame_size: (f32, f32), column_w: f32, world: Option<&World>, shown: Option<&Shown>) {
     // The square's side in the 2D and 3D views; the section's frame is the column's width by the height left.

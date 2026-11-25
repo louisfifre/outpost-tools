@@ -15,7 +15,7 @@ use mere_win32::{Renderer, SystemLauncher};
 use preview::apply::{Host, Notice, Proc, Refusal, Running, Snapshot};
 use preview::places::{Game, Kind, Sources};
 use preview::settings::{Kind as SetKind, SETTINGS, pack_values};
-use preview::{PreviewApp, PreviewState, text};
+use preview::{Action, PreviewApp, PreviewState, text};
 
 use common::{H, Rig, W};
 
@@ -120,7 +120,9 @@ fn open(o: Open) -> Rig {
         runs.pack = Some(o.root.join("pack"));
     }
     let world = if o.world { common::world() } else { None };
-    let state = PreviewState::for_world(world.as_ref());
+    let mut state = PreviewState::for_world(world.as_ref());
+    // The choices of Apply are open above the bottom row, where these tests look for the place line and the button.
+    state.action = Some(Action::Apply);
     let mut app = PreviewApp::new(theme, true, Vec2::new(w as f32, h as f32), state, world).with_runs(runs).with_apply_host(Arc::new(Machine(o.procs)));
     if let Some(s) = o.sources {
         app = app.with_places(s);
@@ -308,7 +310,7 @@ fn open_prod(snapshot: &Path, source: &Path) -> Rig {
     let mut runs = common::runs(snapshot, &[]);
     runs.pack = Some(snapshot.join("pack"));
     runs.apply_pack = Some(source.join("pack"));
-    let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState::default(), None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
+    let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState { action: Some(Action::Apply), ..PreviewState::default() }, None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
     app.start(&mut r);
     app.event(Event::Resized { width_px: W, height_px: H, scale: 1.0 });
     app.frame(&mut r, 0.0);
