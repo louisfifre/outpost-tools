@@ -3,6 +3,8 @@
 // link opened in the browser, the accounts Prism keeps, and an account's skin. One hook, `screens_route`, answers
 // before api.rs's own routes and passes every request that is not its own on (`Ok(None)`).
 //
+// Starting and stopping a server of the folder is server_run.rs's; the choice of the folder is made here.
+//
 // The dev server stays what dev_server.rs makes of it: a request with no `id`, or with the id "dev", is its own. The
 // servers of the servers folder are named by their folder, which is their id.
 //
@@ -85,13 +87,24 @@ pub fn state_in(processes: &[Proc], dir: &Path) -> &'static str {
     }
 }
 
+/// Where a server stands once the servers this program started itself are counted: those it holds a handle on
+/// (`known`, with the time each was started) are starting until the log says players can join; any other is read from
+/// the processes.
+pub fn state_of(known: &[(PathBuf, SystemTime)], processes: &[Proc], dir: &Path) -> &'static str {
+    match known.iter().find(|(d, _)| d == dir) {
+        Some((_, since)) if servers::is_ready(dir, *since) => "running",
+        Some(_) => "starting",
+        None => state_in(processes, dir),
+    }
+}
+
 fn players_in(dir: &Path) -> u32 {
     fs::read_to_string(dir.join("logs").join("latest.log")).map(|log| servers::players_online(&log)).unwrap_or(0)
 }
 
 /// How the game was set up for a server: memory and Java's arguments, kept in `launch.json` of its folder as the dev
 /// server keeps them.
-fn read_launch(dir: &Path) -> (i64, String) {
+pub(super) fn read_launch(dir: &Path) -> (i64, String) {
     let saved: Value = fs::read(dir.join("launch.json")).ok().and_then(|b| serde_json::from_slice(strip_bom(&b)).ok()).unwrap_or(Value::Null);
     (as_int(&saved["memoryMb"]).unwrap_or(6144), saved["javaArgs"].as_str().map(String::from).unwrap_or_else(|| "-XX:+UseZGC".into()))
 }
@@ -119,9 +132,9 @@ fn port_of(dir: &Path) -> u16 {
 }
 
 /// One server of the folder as Home's line and the server's page read it.
-pub fn server_json(server: &Server, processes: &[Proc]) -> Value {
+pub fn server_json(server: &Server, known: &[(PathBuf, SystemTime)], processes: &[Proc]) -> Value {
     let id = server.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let state = state_in(processes, &server.dir);
+    let state = state_of(known, processes, &server.dir);
     let (memory, java_args) = read_launch(&server.dir);
     json!({
         "id": id,
@@ -139,13 +152,14 @@ pub fn server_json(server: &Server, processes: &[Proc]) -> Value {
 }
 
 /// Home's servers: those of the servers folder by their folder's order, then the dev server's line when the pack's
-/// folders are known (`dev`). A folder whose Outpost Tools file cannot be read is listed in `broken`, with why.
-pub fn servers_json(folder: &Path, processes: &[Proc], dev: Option<Value>) -> Value {
+/// folders are known (`dev`). A folder whose Outpost Tools file cannot be read is listed in `broken`, with why. `folder`
+/// is the servers folder itself, for the page to say where servers live.
+pub fn servers_json(folder: &Path, known: &[(PathBuf, SystemTime)], processes: &[Proc], dev: Option<Value>) -> Value {
     let list = servers::list_servers(folder);
-    let mut lines: Vec<Value> = list.servers.iter().map(|s| server_json(s, processes)).collect();
+    let mut lines: Vec<Value> = list.servers.iter().map(|s| server_json(s, known, processes)).collect();
     lines.extend(dev);
     let broken: Vec<Value> = list.errors.iter().map(|(dir, why)| json!({ "folder": dir.to_string_lossy(), "why": why })).collect();
-    json!({ "servers": lines, "broken": broken })
+    json!({ "servers": lines, "broken": broken, "folder": folder.to_string_lossy() })
 }
 
 // ---- accounts ----
@@ -267,9 +281,11 @@ impl Api {
         Ok(json!({ "id": DEV, "name": "", "state": state, "eula": info["eula"], "players": players, "port": port }))
     }
 
-    fn processes(&self) -> Vec<Proc> {
+    /// What the servers of the folder stand on: those this program started and still holds, and the processes.
+    pub(super) fn standing(&self) -> (Vec<(PathBuf, SystemTime)>, Vec<Proc>) {
         let mut live = self.live();
-        system::processes(&mut live.system)
+        let known = super::server_run::known_runs(&mut live);
+        (known, system::processes(&mut live.system))
     }
 
     fn servers_list(&self) -> Result<Reply, Failure> {
@@ -277,7 +293,7 @@ impl Api {
             Ok(line) => Some(line),
             Err(Failure::Unavailable(why)) => {
                 // Without the pack's folders there is no dev server to list: only its absence, unless nothing else is there.
-                let others = servers_json(&self.servers_dir(), &[], None);
+                let others = servers_json(&self.servers_dir(), &[], &[], None);
                 if others["servers"].as_array().is_some_and(|l| l.is_empty()) && others["broken"].as_array().is_some_and(|l| l.is_empty()) {
                     return Err(Failure::Unavailable(why));
                 }
@@ -285,12 +301,16 @@ impl Api {
             }
             Err(other) => return Err(other),
         };
-        Ok(Reply::json(200, servers_json(&self.servers_dir(), &self.processes(), dev)))
+        let (known, processes) = self.standing();
+        Ok(Reply::json(200, servers_json(&self.servers_dir(), &known, &processes, dev)))
     }
 
     fn server_detail(&self, id: &str) -> Reply {
         match self.folder_server(id) {
-            Some(server) => Reply::json(200, server_json(&server, &self.processes())),
+            Some(server) => {
+                let (known, processes) = self.standing();
+                Reply::json(200, server_json(&server, &known, &processes))
+            }
             None => Reply::empty(404),
         }
     }
@@ -312,6 +332,25 @@ impl Api {
         match fs::create_dir_all(&data).and_then(|()| fs::write(data.join(ACCOUNT_FILE), name)) {
             Ok(()) => Reply::empty(200),
             Err(e) => Reply::error(500, e.to_string()),
+        }
+    }
+
+    /// Asks the person for the servers folder and keeps the answer where `servers_folder` reads it. Nothing is chosen
+    /// while a server of the present folder runs: it would vanish from Home with its process still going.
+    fn choose_servers_folder(&self) -> Reply {
+        let folder = self.servers_dir();
+        let (known, processes) = self.standing();
+        if servers::list_servers(&folder).servers.iter().any(|s| state_of(&known, &processes, &s.dir) != "stopped") {
+            return Reply::error(409, "A server is running: stop it before choosing another servers folder.");
+        }
+        let Some(chosen) = super::mods::outside_of(&self.repo).pick_folder() else { return Reply::empty(200) };
+        if !chosen.is_dir() {
+            return Reply::error(422, "That is not a folder.");
+        }
+        let data = self.data_dir();
+        match fs::create_dir_all(&data).and_then(|()| fs::write(data.join(SERVERS_FOLDER_FILE), chosen.to_string_lossy().as_bytes())) {
+            Ok(()) => Reply::json(200, json!({ "folder": chosen.to_string_lossy() })),
+            Err(e) => Reply::error(500, format!("The choice could not be kept: {e}")),
         }
     }
 
@@ -338,7 +377,8 @@ impl Api {
         if !super::dev_server::settings_valid(body, self.machine_mb, props_exist) {
             return Ok(Reply::empty(400));
         }
-        if state_in(&self.processes(), dir) != "stopped" {
+        let (known, processes) = self.standing();
+        if state_of(&known, &processes, dir) != "stopped" {
             return Ok(Reply::empty(409));
         }
         let launch = json!({ "memoryMb": as_int(&body["memoryMb"]), "javaArgs": super::squeeze(body["javaArgs"].as_str().unwrap_or_default()) });
@@ -379,7 +419,7 @@ impl Api {
         let id = parsed["id"].as_str().unwrap_or_default();
         let folder_request = matches!(path, "/api/server/start" | "/api/server/stop" | "/api/server/folder" | "/api/server/settings");
         let mine = match path {
-            "/api/server/eula" | "/api/open-link" | "/api/accounts/use" | "/api/accounts/add" | "/api/accounts/sign-out" => true,
+            "/api/server/eula" | "/api/servers/folder" | "/api/open-link" | "/api/accounts/use" | "/api/accounts/add" | "/api/accounts/sign-out" => true,
             _ => folder_request && !id.is_empty() && id != DEV,
         };
         if !mine {
@@ -391,6 +431,7 @@ impl Api {
         }
         Ok(Some(match path {
             "/api/server/eula" => self.accept_eula(id)?,
+            "/api/servers/folder" => self.choose_servers_folder(),
             // The same opening as the mods page's (api/mods.rs): web addresses only, through `Outside`.
             "/api/open-link" => self.mods_post("/api/open-url", &parsed)?,
             "/api/accounts/use" => self.use_account(parsed["name"].as_str().unwrap_or_default()),
@@ -404,7 +445,8 @@ impl Api {
                         Reply::empty(200)
                     }
                     "/api/server/settings" => self.folder_settings(&server, &parsed)?,
-                    _ => not_built("Starting and stopping a server made by Outpost Tools is not built yet."),
+                    "/api/server/start" => self.folder_start(&server)?,
+                    _ => self.folder_stop(&server),
                 }
             }
         }))
@@ -415,7 +457,10 @@ impl Api {
 mod tests {
     use super::*;
     use crate::api::skin::FetchError;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, Ordering},
+    };
 
     fn temp_dir(name: &str) -> PathBuf {
         static N: AtomicU32 = AtomicU32::new(0);
@@ -461,7 +506,7 @@ mod tests {
     fn the_server_says_what_it_was_made_from_before_its_first_start() {
         let folder = temp_dir("made");
         let server = made_server(&folder, "Test server", Some(3));
-        let json = server_json(&server, &[]);
+        let json = server_json(&server, &[], &[]);
         assert_eq!(json["id"], "Test server");
         assert_eq!(json["name"], "Test server");
         assert_eq!(json["madeFrom"], json!({ "profile": "exploration", "world": "Tectonic islands", "seed": 48213, "leftOut": 3 }));
@@ -475,7 +520,7 @@ mod tests {
         // Once the game wrote the properties, a seed that was not kept is read from there.
         fs::write(servers::props_file(&bare.dir), "level-seed=77\nserver-port=25570\n").unwrap();
         assert_eq!(made_from(&bare)["seed"], 77);
-        assert_eq!(server_json(&bare, &[])["port"], 25570);
+        assert_eq!(server_json(&bare, &[], &[])["port"], 25570);
         let _ = fs::remove_dir_all(folder);
     }
 
@@ -498,7 +543,7 @@ mod tests {
         assert_eq!(state_in(&procs, &one.dir), "running");
         // The same process does not make another server's folder run.
         assert_eq!(state_in(&procs, &two.dir), "stopped");
-        let list = servers_json(&folder, &procs, Some(json!({ "id": "dev", "name": "", "state": "stopped" })));
+        let list = servers_json(&folder, &[], &procs, Some(json!({ "id": "dev", "name": "", "state": "stopped" })));
         let lines = list["servers"].as_array().unwrap();
         assert_eq!(lines.iter().map(|l| l["id"].as_str().unwrap()).collect::<Vec<_>>(), ["Friday world", "Test server", "dev"]);
         assert_eq!((lines[0]["state"].as_str(), lines[0]["players"].as_u64(), lines[0]["port"].as_u64()), (Some("running"), Some(2), Some(25565)));
@@ -512,7 +557,7 @@ mod tests {
         made_server(&folder, "Good", None);
         fs::create_dir_all(folder.join("Bad")).unwrap();
         fs::write(folder.join("Bad").join(servers::META_FILE), "{ no").unwrap();
-        let list = servers_json(&folder, &[], None);
+        let list = servers_json(&folder, &[], &[], None);
         assert_eq!(list["servers"].as_array().unwrap().len(), 1);
         assert_eq!(list["broken"].as_array().unwrap().len(), 1);
         assert!(list["broken"][0]["why"].as_str().unwrap().contains("not valid"));
@@ -610,9 +655,215 @@ mod tests {
         let body: Value = serde_json::from_slice(&reply.body).unwrap();
         assert_eq!((body["name"].as_str(), body["madeFrom"]["leftOut"].as_u64(), body["eula"].as_bool()), (Some("Test server"), Some(3), Some(false)));
         assert_eq!(get("/api/server?id=Nope").status, 404);
-        // Starting one is not built: it says so instead of doing nothing.
-        let start = api.handle("POST", "/api/server/start", Some("native://test"), br#"{"id":"Test server"}"#);
-        assert_eq!(start.status, 501);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    // A server process that records what it is told, and ends on "stop" when `ends_on_stop`.
+    struct Probe {
+        lines: Arc<Mutex<Vec<String>>>,
+        killed: Arc<Mutex<bool>>,
+        ends_on_stop: bool,
+        stopped: bool,
+    }
+    impl servers::ServerProcess for Probe {
+        fn send_line(&mut self, line: &str) -> std::io::Result<()> {
+            self.lines.lock().unwrap().push(line.into());
+            self.stopped = line == "stop";
+            Ok(())
+        }
+        fn has_exited(&mut self) -> std::io::Result<bool> {
+            Ok(*self.killed.lock().unwrap() || (self.ends_on_stop && self.stopped))
+        }
+        fn kill(&mut self) -> std::io::Result<()> {
+            *self.killed.lock().unwrap() = true;
+            Ok(())
+        }
+    }
+
+    // Starts nothing: remembers each command and hands out a Probe.
+    #[derive(Default)]
+    struct ProbeSpawner {
+        commands: Mutex<Vec<servers::LaunchCommand>>,
+        lines: Arc<Mutex<Vec<String>>>,
+        killed: Arc<Mutex<bool>>,
+        ends_on_stop: bool,
+    }
+    impl servers::Spawner for Arc<ProbeSpawner> {
+        fn spawn(&self, c: &servers::LaunchCommand) -> std::io::Result<Box<dyn servers::ServerProcess>> {
+            self.commands.lock().unwrap().push(servers::LaunchCommand { java: c.java.clone(), args: c.args.clone(), dir: c.dir.clone() });
+            Ok(Box::new(Probe { lines: self.lines.clone(), killed: self.killed.clone(), ends_on_stop: self.ends_on_stop, stopped: false }))
+        }
+    }
+
+    fn api_running(repo: &Path, spawner: &Arc<ProbeSpawner>, java: Option<PathBuf>) -> Api {
+        use crate::api::Runner;
+        api_over(repo).with_runner(Runner {
+            spawner: Arc::new(spawner.clone()),
+            java: Arc::new(move |_| java.clone()),
+            stop_timeout: Duration::from_millis(60),
+            poll: Duration::from_millis(5),
+        })
+    }
+
+    fn ask(api: &Api, path: &str, id: &str) -> (u16, Value) {
+        let reply = api.handle("POST", path, Some("native://test"), json!({ "id": id }).to_string().as_bytes());
+        (reply.status, serde_json::from_slice(&reply.body).unwrap_or(Value::Null))
+    }
+
+    fn state_of_one(api: &Api, id: &str) -> (String, Option<u64>) {
+        let reply = api.handle("GET", &format!("/api/server?id={id}"), None, b"");
+        let body: Value = serde_json::from_slice(&reply.body).unwrap();
+        (body["state"].as_str().unwrap().to_string(), body["players"].as_u64())
+    }
+
+    // A port nothing listens on, so a test never meets a real server of the PC.
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind(("0.0.0.0", 0)).unwrap().local_addr().unwrap().port()
+    }
+
+    // A server of the folder with all it needs to start, but its EULA (and `java.exe`, a file the test names).
+    fn ready_server(repo: &Path, name: &str) -> Server {
+        let one = made_server(&repo.join("run").join("app").join("servers"), name, None);
+        fs::write(repo.join("java.exe"), b"").unwrap();
+        fs::write(one.dir.join(servers::LAUNCHER_JAR), b"").unwrap();
+        fs::write(servers::props_file(&one.dir), format!("server-port={}\n", free_port())).unwrap();
+        one
+    }
+
+    #[test]
+    fn a_server_starts_with_its_java_folder_and_memory_and_stops_after_it_saves() {
+        let repo = temp_dir("run");
+        let one = made_server(&repo.join("run").join("app").join("servers"), "One", None);
+        let java = repo.join("java.exe");
+        let spawner = Arc::new(ProbeSpawner { ends_on_stop: true, ..ProbeSpawner::default() });
+        let api = api_running(&repo, &spawner, Some(java.clone()));
+        // Another page may not start anything.
+        assert_eq!(api.handle("POST", "/api/server/start", Some("https://evil.example"), br#"{"id":"One"}"#).status, 403);
+        assert_eq!(ask(&api, "/api/server/start", "Nope").0, 404);
+        // Nothing starts before the EULA is accepted, and the refusal says so.
+        let (status, body) = ask(&api, "/api/server/start", "One");
+        assert_eq!(status, 412);
+        assert!(body["error"].as_str().unwrap().contains("EULA"));
+        assert!(!servers::eula_file(&one.dir).exists(), "a refused start writes no eula.txt");
+        assert_eq!(ask(&api, "/api/server/eula", "One").0, 200);
+        // Then what is still missing: the Java, the launcher file.
+        let no_java = api_running(&repo, &spawner, None);
+        assert_eq!(ask(&no_java, "/api/server/start", "One").0, 412);
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 412, "no java.exe file on disk");
+        fs::write(&java, b"").unwrap();
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 422);
+        fs::write(one.dir.join(servers::LAUNCHER_JAR), b"").unwrap();
+        fs::write(servers::props_file(&one.dir), format!("server-port={}\n", free_port())).unwrap();
+        fs::write(one.dir.join("launch.json"), r#"{ "memoryMb": 2048, "javaArgs": "-XX:+UseZGC -Dsample=1" }"#).unwrap();
+        assert!(spawner.commands.lock().unwrap().is_empty(), "every refusal came before a process");
+
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 200);
+        {
+            let commands = spawner.commands.lock().unwrap();
+            let c = &commands[0];
+            assert_eq!((&c.java, &c.dir), (&java, &one.dir));
+            assert_eq!(c.args[..3], ["-Xmx2048M", "-XX:+UseZGC", "-Dsample=1"]);
+            assert!(c.args.ends_with(&["-jar".into(), one.dir.join(servers::LAUNCHER_JAR).to_string_lossy().into_owned(), "nogui".into()]));
+        }
+        // It is starting until its log says players can join, then running with the players the log counts.
+        assert_eq!(state_of_one(&api, "One"), ("starting".into(), None));
+        fs::create_dir_all(one.dir.join("logs")).unwrap();
+        let log = "[12:00:01] [Server thread/INFO]: Done (3.1s)!\n[12:00:09] [Server thread/INFO]: Ann joined the game\n[12:00:10] [Server thread/INFO]: Bo joined the game\n";
+        fs::write(one.dir.join("logs").join("latest.log"), log).unwrap();
+        assert_eq!(state_of_one(&api, "One"), ("running".into(), Some(2)));
+        // One start at a time, and settings wait for the stop.
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 409);
+        let settings = json!({ "id": "One", "memoryMb": 2048, "javaArgs": "" });
+        assert_eq!(api.handle("POST", "/api/server/settings", Some("native://test"), settings.to_string().as_bytes()).status, 409);
+
+        let (status, body) = ask(&api, "/api/server/stop", "One");
+        assert_eq!((status, body["outcome"].as_str()), (200, Some("saved")));
+        assert_eq!(*spawner.lines.lock().unwrap(), ["stop"]);
+        assert!(!*spawner.killed.lock().unwrap());
+        assert_eq!(state_of_one(&api, "One").0, "stopped");
+        assert_eq!(ask(&api, "/api/server/stop", "One").0, 409);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn a_server_that_does_not_end_after_stop_is_killed() {
+        let repo = temp_dir("kill");
+        let one = ready_server(&repo, "One");
+        servers::accept_eula(&one.dir).unwrap();
+        let spawner = Arc::new(ProbeSpawner::default());
+        let api = api_running(&repo, &spawner, Some(repo.join("java.exe")));
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 200);
+        let (status, body) = ask(&api, "/api/server/stop", "One");
+        assert_eq!((status, body["outcome"].as_str()), (200, Some("killed")));
+        assert_eq!(*spawner.lines.lock().unwrap(), ["stop"]);
+        assert!(*spawner.killed.lock().unwrap());
+        assert_eq!(state_of_one(&api, "One").0, "stopped");
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn a_server_that_ended_by_itself_can_start_again() {
+        let repo = temp_dir("ended");
+        let one = ready_server(&repo, "One");
+        servers::accept_eula(&one.dir).unwrap();
+        let spawner = Arc::new(ProbeSpawner::default());
+        let api = api_running(&repo, &spawner, Some(repo.join("java.exe")));
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 200);
+        // Its process ended (a crash, or "stop" typed elsewhere): none is held for it any more.
+        *spawner.killed.lock().unwrap() = true;
+        assert_eq!(state_of_one(&api, "One").0, "stopped");
+        *spawner.killed.lock().unwrap() = false;
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 200);
+        assert_eq!(spawner.commands.lock().unwrap().len(), 2);
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn the_servers_folder_is_chosen_in_a_dialog_and_kept_where_it_is_read() {
+        use crate::api::mods::{self, canned::Canned};
+        let repo = temp_dir("choose");
+        let data = repo.join("run").join("app");
+        let elsewhere = temp_dir("elsewhere");
+        made_server(&elsewhere, "Friday", None);
+        let canned = Arc::new(Canned::default());
+        mods::install(&repo, canned.clone());
+        let api = api_over(&repo);
+        let choose = |origin: &str| api.handle("POST", "/api/servers/folder", Some(origin), b"{}");
+        assert_eq!(choose("https://evil.example").status, 403);
+        // A dialog closed with no choice changes nothing.
+        assert_eq!(choose("native://test").status, 200);
+        assert!(!data.join(SERVERS_FOLDER_FILE).exists());
+        // A choice that is not a folder is refused.
+        *canned.folder.lock().unwrap() = Some(elsewhere.join("no-such-folder"));
+        assert_eq!(choose("native://test").status, 422);
+        assert!(!data.join(SERVERS_FOLDER_FILE).exists());
+        *canned.folder.lock().unwrap() = Some(elsewhere.clone());
+        let reply = choose("native://test");
+        assert_eq!(reply.status, 200);
+        assert_eq!(serde_json::from_slice::<Value>(&reply.body).unwrap()["folder"], elsewhere.to_string_lossy().as_ref());
+        assert_eq!(servers_folder(&data), elsewhere);
+        let listed = servers_json(&servers_folder(&data), &[], &[], None);
+        assert_eq!((listed["servers"][0]["id"].as_str(), listed["folder"].as_str()), (Some("Friday"), Some(elsewhere.to_string_lossy().as_ref())));
+        // The server of the new folder is the one asked by id.
+        assert_eq!(api.handle("GET", "/api/server?id=Friday", None, b"").status, 200);
+        let _ = fs::remove_dir_all(repo);
+        let _ = fs::remove_dir_all(elsewhere);
+    }
+
+    #[test]
+    fn no_other_folder_is_chosen_while_a_server_of_this_one_runs() {
+        use crate::api::mods::{self, canned::Canned};
+        let repo = temp_dir("choose-busy");
+        let one = ready_server(&repo, "One");
+        servers::accept_eula(&one.dir).unwrap();
+        let canned = Arc::new(Canned::default());
+        *canned.folder.lock().unwrap() = Some(repo.clone());
+        mods::install(&repo, canned);
+        let spawner = Arc::new(ProbeSpawner::default());
+        let api = api_running(&repo, &spawner, Some(repo.join("java.exe")));
+        assert_eq!(ask(&api, "/api/server/start", "One").0, 200);
+        assert_eq!(api.handle("POST", "/api/servers/folder", Some("native://test"), b"{}").status, 409);
+        assert!(!repo.join("run").join("app").join(SERVERS_FOLDER_FILE).exists());
         let _ = fs::remove_dir_all(repo);
     }
 
