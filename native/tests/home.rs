@@ -247,14 +247,14 @@ fn h10_server_fields_and_locks() {
     let r = rig.rect(rig.home().ids().server_settings);
     assert!(rig.app.list().cmds.iter().any(|c| matches!(c, mere_base::Cmd::Fill { rect, color } if *color == rig.theme.fill && (rect.x - r.x).abs() < 0.01 && (rect.w - mere_ui::tokens::ICON_SQUARE).abs() < 0.01)), "drawn in reverse");
     // No props: the first start has not happened.
-    rig.api.set_get("/api/server", json!({"dir": "C:\\Games\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
+    rig.api.set_get("/api/server", json!({"dir": "C:\\Code\\server", "state": "stopped", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
     rig.wait(3.0);
     assert_eq!(rig.home().notes().1, "Distances, players, port and line appear after the first start.");
     let view = rig.home().ids().s_view;
     rig.click(view);
     assert_eq!(rig.app.ui().focused(), None);
     // Starting: the memory is locked too.
-    rig.api.set_get("/api/server", json!({"dir": "C:\\Games\\server", "state": "starting", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
+    rig.api.set_get("/api/server", json!({"dir": "C:\\Code\\server", "state": "starting", "eula": true, "memoryMb": 6144, "javaArgs": "", "props": null}));
     rig.wait(3.0);
     assert_eq!(rig.home().notes().1, "The server is running: settings can change once it is stopped.");
     let mem = rig.home().ids().s_memory;

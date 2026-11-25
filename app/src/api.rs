@@ -9,6 +9,7 @@
 mod dev_server;
 mod key_value;
 mod preview;
+mod prism_portable;
 mod profiles;
 
 use std::{

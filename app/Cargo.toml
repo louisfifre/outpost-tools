@@ -31,6 +31,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Time",
     "Win32_UI_WindowsAndMessaging",
 ] }
+ureq = "3"
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [profile.release]
 opt-level = "s"
