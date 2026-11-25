@@ -457,6 +457,9 @@ pub fn log_says_ready(log: &str) -> bool {
 // is the last run's.
 pub fn is_ready(server_dir: &Path, since: SystemTime) -> bool {
     let log = server_dir.join("logs").join("latest.log");
+    // A file's write time can read slightly earlier than a clock reading taken just before the write
+    // (coarse timestamps on Windows), so a short margin keeps this run's log from being taken for an old one.
+    let since = since.checked_sub(Duration::from_secs(2)).unwrap_or(since);
     fs::metadata(&log).and_then(|m| m.modified()).is_ok_and(|t| t >= since)
         && fs::read_to_string(&log).is_ok_and(|text| log_says_ready(&text))
 }
