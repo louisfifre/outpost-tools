@@ -1046,11 +1046,14 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
     crate::apply_ui::forget(ids);
     let style = Style { column: true, margin: Margin { top: Side::Auto, ..Margin::default() }, shrink: 0.0, ..Style::default() };
     ids.run = ui.node("run", style, |ui| {
-        ui.rule(Rule::Section, Edges::default());
+        // The hairline parts the settings list from the words under it: with no word, only the list's own fade ends it.
+        ids.status_text = status_words(s);
+        if !ids.status_text.is_empty() || crate::apply_ui::has_words(&s.places, &s.values, &s.apply, s.folder_refused) {
+            ui.rule(Rule::Section, Edges::default());
+        }
         let inner = Style { column: true, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() };
         ui.node("runBody", inner, |ui| {
             // `#status:empty { display: none }`: nothing to say, no box.
-            ids.status_text = status_words(s);
             if !ids.status_text.is_empty() {
                 let tone = if s.follow.is_none() && !s.trouble.is_empty() { Tone::Warn } else { Tone::Muted };
                 let words = ids.status_text.clone();
@@ -1063,10 +1066,12 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
             // Two parts side by side. Generate's has the room its whole word wants (whole pixels: a fractional width
             // would smear the 1 px line of its split), Apply's takes what is left (the stop square, while it is there,
             // takes its own room).
+            // Both lists take the whole row, as the last frame laid it out.
+            let row = ui.rect(ui.peek_key("go"));
             let generate_part = Style { basis: Dim::Px(if busy.is_some_and(|b| b.0) { RUNNING_PART_W } else { GENERATE_PART_W }), grow: 0.0, min_w: Dim::Px(0.0), ..Style::default() };
             let apply_part = Style { grow: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
             ui.node("go", Style { gap: Vec2::new(6.0, 0.0), ..Style::default() }, |ui| {
-                ui.node("generateHalf", generate_part, |ui| generate_split(ui, s, ids, same, busy));
+                ui.node("generateHalf", generate_part, |ui| generate_split(ui, s, ids, same, busy, row));
                 if let Some((_, _, stopping)) = busy {
                     let r = ui.stop_action("stopRun", stopping);
                     ids.stop = r.id;
@@ -1076,7 +1081,7 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
                     }
                 }
                 ui.node("applyHalf", apply_part, |ui| {
-                    let a = crate::apply_ui::Apply { values: &s.values, places: &mut s.places, open: &mut s.places_open, notice: &s.apply, want: &mut s.want };
+                    let a = crate::apply_ui::Apply { values: &s.values, places: &mut s.places, open: &mut s.places_open, notice: &s.apply, want: &mut s.want, row };
                     crate::apply_ui::apply_split(ui, a, ids);
                 });
             });
@@ -1089,7 +1094,7 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
 /// says so. The word is disabled when the map already shows these settings (line 467), or the run under way is this
 /// one; a setting moved during a run starts the new run in its place (lines 789-798). The shell only records the
 /// press: the application acts on it.
-fn generate_split(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, same: bool, busy: Option<(bool, f32, bool)>) {
+fn generate_split(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, same: bool, busy: Option<(bool, f32, bool)>, row: Option<mere_base::Rect>) {
     let (word, look, stopping) = match busy {
         Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
         Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
@@ -1097,7 +1102,7 @@ fn generate_split(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, same: b
     };
     let word_disabled = busy.map_or(same, |(this, _, stopping)| this || stopping);
     ids.generate_text = word.to_string();
-    let opts = SplitOpts { word_disabled, chevron_disabled: stopping, up: true };
+    let opts = SplitOpts { word_disabled, chevron_disabled: stopping, up: true, list_over: row };
     let mut open = s.details_open;
     let mut picked = None;
     let r = ui.split_action("generate", word, look, &mut open, opts, |ui| {

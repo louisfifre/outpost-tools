@@ -628,7 +628,6 @@ pub fn and_list(names: &[&str]) -> String {
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
-pub const APPLY_SEAMS: &str = "On a world that already exists, new values leave visible seams between old and new chunks. They take full effect on a new world.";
 pub const NO_GAME_FOUND: &str = "No installed game was found. Choose the folder of your game, the one that holds the mods folder.";
 /// In amber, after a folder chosen in the list was refused.
 pub const NOT_A_GAME: &str = "That folder has no mods folder, so it is not a game. Choose the folder that holds the mods folder.";

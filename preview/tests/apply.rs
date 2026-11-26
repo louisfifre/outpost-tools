@@ -429,10 +429,11 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(std::fs::read_to_string(root.join("places.json")).unwrap().contains("minecraft-exploration"), "the tick is kept");
     rig.park();
     rig.shot("apply3_one_rest.png");
-    // 2: the list open above the split action, exactly as wide, its first row focused.
+    // 2: the list open above the split action, as wide as the whole bottom row (Generate's part and Apply's), its first
+    // row focused.
     open_list(&mut rig);
-    let (word, line, list) = (rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
-    assert_eq!((list.x, list.w), (word.x, line.x + line.w - word.x), "the list is the whole button's width");
+    let (generate, word, line, list) = (rig.rect(rig.app.ids().generate), rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
+    assert_eq!((list.x, list.w), (generate.x, line.x + line.w - generate.x), "the list is the whole row's width, not Apply's");
     assert!(list.y + list.h <= word.y, "the list hangs above the button");
     assert_eq!(rig.app.ids().place_rows.len(), 1);
     assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_rows[0]), "the first row has the focus");
@@ -446,7 +447,7 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(rig.app.applying() || matches!(rig.app.state().apply, Notice::Done(_)), "Enter applied");
     rig.until(20, "the write to end", |r| !r.app.applying());
     key(&mut rig, Key::Escape);
-    // 3: just after. One sentence; Apply is dim until a value changes; the seams sentence gave way.
+    // 3: just after. One sentence; Apply is dim until a value changes.
     let written = std::fs::read_to_string(file_of(&game)).unwrap();
     assert!(written.contains("\"vertical_scale\": 1.75,") && written.contains("\"erosion_scale\": 0.15,"));
     assert_eq!(rig.app.ids().apply_text, "Saved for Exploration. Restart the game to use it. Only land nobody has visited yet will change.");

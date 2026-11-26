@@ -6,6 +6,7 @@
 
 use mere_base::{Button, Event, Key, Mods, Rect, Vec2};
 use mere_ui::{Id, Theme, Ui};
+use preview::places::{Kind, Place};
 use preview::run::Ask;
 use preview::settings::pack_values;
 use preview::shell::Want;
@@ -93,6 +94,58 @@ fn b1_each_chevron_opens_its_choices_above_the_row_and_the_words_do_nothing_but_
     let l = r.rect(r.ids.place_list);
     assert!(l.y + l.h <= r.rect(r.ids.apply).y + 0.01, "the places are above the row");
     assert_eq!((r.ids.details, r.s.want), (Id::ROOT, None));
+    // Both lists are as wide as the row, Generate's part and Apply's together, so that no choice is cut.
+    let (g, end) = (r.rect(r.ids.generate), r.rect(r.ids.place_line));
+    let row = (g.x, end.x + end.w - g.x);
+    assert_eq!((l.x, l.w), row, "the places take the whole row");
+    r.escape();
+    r.click(r.ids.generate_more);
+    let d = r.rect(r.ids.details);
+    assert_eq!((d.x, d.w), row, "so do the details");
+}
+
+/// A game found, ticked, whose file already holds the pack's values: nothing to say about Apply.
+fn game() -> Place {
+    Place {
+        key: "exploration".into(),
+        kind: Kind::Game,
+        name: "Exploration".into(),
+        short: "Exploration".into(),
+        how: "Official launcher".into(),
+        path: "games/exploration".into(),
+        dir: "games/exploration".into(),
+        snapshot: None,
+        ticked: true,
+        held: vec![Some(pack_values())],
+    }
+}
+
+/// Whether the run block starts with its hairline, read from the laid-out tree.
+fn has_hairline(ui: &Ui) -> bool {
+    let dump = ui.dump();
+    let mut lines = dump.lines();
+    while let Some(l) = lines.next() {
+        if l.trim_start().starts_with("run ") {
+            return lines.next().is_some_and(|n| n.trim_start().starts_with("rule "));
+        }
+    }
+    panic!("no run block");
+}
+
+#[test]
+fn b7_the_hairline_over_the_bottom_words_shows_only_with_words_and_the_seams_sentence_is_gone() {
+    // No game found: its sentence is there, with the hairline.
+    let r = Rig::new(PreviewState::default());
+    assert_eq!(r.ids.place_note, text::NO_GAME_FOUND, "\"No installed game was found\" stays");
+    assert!(has_hairline(&r.ui));
+    // A game found and nothing to say: no hairline, no sentence.
+    let r = Rig::new(PreviewState { places: vec![game()], ..PreviewState::default() });
+    assert_eq!((r.ids.place_note, r.ids.status_text.as_str(), r.ids.apply_text.as_str()), ("", "", ""));
+    assert!(!has_hairline(&r.ui), "no words, no hairline");
+    // A status brings it back.
+    let r = Rig::new(PreviewState { places: vec![game()], said: "Something to say.".into(), ..PreviewState::default() });
+    assert_eq!(r.ids.status_text, "Something to say.");
+    assert!(has_hairline(&r.ui));
 }
 
 #[test]
@@ -175,7 +228,9 @@ fn b6_pictures() {
     let (w, h) = (1400u32, 940u32);
     let shots = [
         ("bottom_closed", PreviewState::default()),
-                ("bottom_generate", PreviewState { details_open: true, ..PreviewState::default() }),
+        ("bottom_generate", PreviewState { details_open: true, ..PreviewState::default() }),
+        ("bottom_no_text", PreviewState { places: vec![game()], ..PreviewState::default() }),
+        ("bottom_no_text_places", PreviewState { places: vec![game()], places_open: true, ..PreviewState::default() }),
         ("bottom_places", PreviewState { places_open: true, ..PreviewState::default() }),
         ("bottom_folded", PreviewState { settings_open: false, ..PreviewState::default() }),
     ];

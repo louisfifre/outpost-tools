@@ -2,9 +2,10 @@
 //! the pack's, to Tectonic's own; each is pressed while the form is there, both when the pack is Tectonic's own). Then,
 //! the Apply split action at the bottom row (its word is the only control that writes; its chevron opens the list of
 //! places, `places.rs`, the kit's menu with multiple selectors, ending on "Choose a folder…"), and above the row what
-//! the last apply said, what to do when no game was found or a folder was refused, and the warning about seams. The shell only records the press (`Want::Apply`);
+//! the last apply said, and what to do when no game was found or a folder was refused. The shell only records the press (`Want::Apply`);
 //! the application writes (`apply.rs`).
 
+use mere_base::Rect;
 use mere_layout::{Margin, Side, Style};
 use mere_ui::tokens::GAP;
 use mere_ui::{ActionLook, ActionOpts, SelectionRow, Selector, SplitOpts, TextLook, Tone, Ui, choice_style};
@@ -160,6 +161,8 @@ pub struct Apply<'a> {
     pub open: &'a mut bool,
     pub notice: &'a Notice,
     pub want: &'a mut Option<Want>,
+    /// The bottom row as the last frame laid it out: the list of places is as wide as the row, not as the button.
+    pub row: Option<Rect>,
 }
 
 /// Apply as a split action: its word writes (disabled while no place is ticked that lacks the form, or a write is under
@@ -172,7 +175,7 @@ pub fn apply_split(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
     let mut rows = Vec::new();
     let (mut action, mut choose) = (mere_ui::Id::ROOT, false);
     let places = &mut *s.places;
-    let opts = SplitOpts { word_disabled: !enabled, chevron_disabled: false, up: true };
+    let opts = SplitOpts { word_disabled: !enabled, chevron_disabled: false, up: true, list_over: s.row };
     let r = ui.split_action("apply", text::APPLY, ActionLook::Primary, s.open, opts, |ui| {
         // The games, then the repository's places, then the action: three groups, each parted from the one before
         // by its own separator. A group with no place is left out.
@@ -218,10 +221,10 @@ pub fn apply_split(ui: &mut Ui, s: Apply, ids: &mut ShellIds) {
 }
 
 /// What the row's Apply has to say, above the row, only when there is something: what the last apply said (it stays
-/// until the panel closes), what to do when no game was found or a folder was refused, and the warning about seams.
+/// until the panel closes), what to do when no game was found or a folder was refused.
 pub fn apply_words(ui: &mut Ui, places: &[Place], values: &[f64; 43], notice: &Notice, refused: bool, ids: &mut ShellIds) {
     let Facts { working, behind, .. } = facts(places, values, notice);
-    let said = notice_block(ui, notice, values, ids);
+    notice_block(ui, notice, values, ids);
     if behind && !working {
         ui.paragraph(text::APPLY_BEHIND, TextLook::small(Tone::Muted));
     }
@@ -233,8 +236,11 @@ pub fn apply_words(ui: &mut Ui, places: &[Place], values: &[f64; 43], notice: &N
         ui.paragraph(text::NO_GAME_FOUND, TextLook::small(Tone::Muted));
         ids.place_note = text::NO_GAME_FOUND;
     }
-    // Said at rest: the sentence after an Apply says what changes in a world in its place.
-    if !matches!(notice, Notice::Done(_)) || !said {
-        ui.paragraph(text::APPLY_SEAMS, TextLook::small(Tone::Muted));
-    }
+}
+
+/// Whether `apply_words` has something to say: the shell draws its hairline only then.
+pub fn has_words(places: &[Place], values: &[f64; 43], notice: &Notice, refused: bool) -> bool {
+    let Facts { working, behind, .. } = facts(places, values, notice);
+    let (quiet, warn) = said_words(notice, values);
+    !quiet.is_empty() || !warn.is_empty() || (behind && !working) || refused || !places.iter().any(|p| p.kind == Kind::Game)
 }
