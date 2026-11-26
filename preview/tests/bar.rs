@@ -238,8 +238,6 @@ fn b4_the_buttons_and_the_title_are_requests() {
     let mut state = PreviewState::for_world(Some(&world));
     state.detail = 2;
     state.reduce_motion = true;
-    // Generate's choices are open, with the button that asks.
-    state.action = Some(preview::Action::Generate);
     let runs = common::runs(&root, &[("MERE_STUB", "hold")]);
     let theme = Theme::dark();
     let mut r = Renderer::offscreen(1400, 940, 1.0).unwrap();
@@ -251,7 +249,7 @@ fn b4_the_buttons_and_the_title_are_requests() {
     // A changed setting enables Generate.
     app.state_mut().values[0] += 0.01;
     app.frame(&mut r, 0.0);
-    let generate = app.ui().rect(app.ids().generate_go).unwrap();
+    let generate = app.ui().rect(app.ids().generate).unwrap();
     let at = centre(generate);
     app.event(Event::PointerMoved { pos: at });
     app.event(Event::PointerDown { pos: at, button: Button::Left, clicks: 1 });

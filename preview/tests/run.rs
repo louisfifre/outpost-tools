@@ -67,7 +67,8 @@ fn r1_a_run_under_way_and_its_stop() {
 
     let s = rig.rect(ids.stop);
     assert_eq!((s.w, s.h), (34.0, 34.0));
-    assert!((s.x - (g.x + g.w + 6.0)).abs() < 0.01, "6 px right of the button");
+    let more = rig.rect(ids.generate_more);
+    assert!((s.x - (more.x + more.w + 6.0)).abs() < 0.01, "6 px right of the button");
     assert_eq!(rig.px(&rgba, s.x + 17.0, s.y), rgb(t.edge), "the stop's frame");
     assert_eq!(rig.px(&rgba, s.x + 17.0, s.y + 17.0), rgb(t.muted), "the stop's small square");
 
@@ -119,12 +120,9 @@ fn r1_a_run_under_way_and_its_stop() {
     assert!(gone_within(grandchild, 10), "the server the generator started was ended with it");
     assert_eq!(rig.app.world().unwrap().made.as_ref().unwrap().seed, "cap-1", "the world is still the one from before");
     assert_eq!(rig.app.state().seed, "r1-seed", "the form keeps what was typed");
-    // The row's Generate only opens the choices; the button inside them is the one that asks.
-    let open = rig.app.ids().generate;
-    rig.click_on(open);
     let rgba = rig.rgba();
     let ids = rig.app.ids().clone();
-    let g = rig.rect(ids.generate_go);
+    let g = rig.rect(ids.generate);
     assert_eq!(rig.px(&rgba, g.x + g.w / 2.0, g.y), rgb(t.text), "Generate is enabled again: the map is not this form's");
     assert_eq!(ids.stop, mere_ui::Id::ROOT, "the stop square is gone");
     assert!(!ids.steps_items.is_empty() && ids.steps_items.iter().all(|i| i.starts_with('\u{2713}')), "{:?}", ids.steps_items);
@@ -150,11 +148,9 @@ fn r2_a_finished_run_becomes_the_map() {
     assert!(rig.app.state().trouble.is_empty());
     let ids = rig.app.ids().clone();
     assert_eq!(ids.status_text, said);
-    let open = ids.generate;
-    rig.click_on(open);
     let ids = rig.app.ids().clone();
     let rgba = rig.rgba();
-    let g = rig.rect(ids.generate_go);
+    let g = rig.rect(ids.generate);
     assert_eq!(rig.px(&rgba, g.x + g.w / 2.0, g.y), rgb(t.edge), "Generate is disabled: the map shows these settings");
 
     // The pace learned from it: 1.5 s of work, the rest of the run is the game's.

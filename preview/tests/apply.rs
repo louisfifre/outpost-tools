@@ -15,7 +15,7 @@ use mere_win32::{Renderer, SystemLauncher};
 use preview::apply::{Host, Notice, Proc, Refusal, Running, Snapshot};
 use preview::places::{Game, Kind, Sources};
 use preview::settings::{Kind as SetKind, SETTINGS, pack_values};
-use preview::{Action, PreviewApp, PreviewState, text};
+use preview::{PreviewApp, PreviewState, text};
 
 use common::{H, Rig, W};
 
@@ -120,9 +120,7 @@ fn open(o: Open) -> Rig {
         runs.pack = Some(o.root.join("pack"));
     }
     let world = if o.world { common::world() } else { None };
-    let mut state = PreviewState::for_world(world.as_ref());
-    // The choices of Apply are open above the bottom row, where these tests look for the place line and the button.
-    state.action = Some(Action::Apply);
+    let state = PreviewState::for_world(world.as_ref());
     let mut app = PreviewApp::new(theme, true, Vec2::new(w as f32, h as f32), state, world).with_runs(runs).with_apply_host(Arc::new(Machine(o.procs)));
     if let Some(s) = o.sources {
         app = app.with_places(s);
@@ -310,7 +308,7 @@ fn open_prod(snapshot: &Path, source: &Path) -> Rig {
     let mut runs = common::runs(snapshot, &[]);
     runs.pack = Some(snapshot.join("pack"));
     runs.apply_pack = Some(source.join("pack"));
-    let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState { action: Some(Action::Apply), ..PreviewState::default() }, None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
+    let mut app = PreviewApp::new(theme, true, Vec2::new(W as f32, H as f32), PreviewState::default(), None).with_runs(runs).with_apply_host(Arc::new(Machine(vec![])));
     app.start(&mut r);
     app.event(Event::Resized { width_px: W, height_px: H, scale: 1.0 });
     app.frame(&mut r, 0.0);
@@ -431,11 +429,11 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(std::fs::read_to_string(root.join("places.json")).unwrap().contains("minecraft-exploration"), "the tick is kept");
     rig.park();
     rig.shot("apply3_one_rest.png");
-    // 2: the list open above the line, exactly as wide, its first row focused.
+    // 2: the list open above the split action, exactly as wide, its first row focused.
     open_list(&mut rig);
-    let (line, list) = (rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
-    assert_eq!((list.x, list.w), (line.x, line.w), "the list is the line's width");
-    assert!(list.y + list.h <= line.y, "the list hangs above the line");
+    let (word, line, list) = (rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
+    assert_eq!((list.x, list.w), (word.x, line.x + line.w - word.x), "the list is the whole button's width");
+    assert!(list.y + list.h <= word.y, "the list hangs above the button");
     assert_eq!(rig.app.ids().place_rows.len(), 1);
     assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_rows[0]), "the first row has the focus");
     assert_ne!(rig.app.ids().place_action, Id::ROOT, "\"Choose a folder\u{2026}\" stays with a single game");
@@ -662,8 +660,7 @@ fn b10_the_small_window_holds_the_line_and_apply() {
     moved(&mut rig);
     tick(&mut rig, &[1]);
     let (line, apply, left) = (rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().left));
-    assert!(line.x >= left.x && line.x + line.w <= left.x + left.w + 0.01, "the line holds in the panel: {line:?} in {left:?}");
-    assert_eq!((apply.x, apply.w), (line.x, line.w), "Apply is as wide as the line");
+    assert!(apply.x >= left.x && line.x + line.w <= left.x + left.w + 0.01, "Apply's two parts hold in the panel: {line:?} in {left:?}");
     rest(&mut rig, Vec2::new(400.0, 450.0));
     let rgba = rig.rgba();
     let path = common::tmp().join("apply3_small.png");

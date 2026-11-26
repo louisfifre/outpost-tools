@@ -1,5 +1,5 @@
-//! The settings panel's bottom row: Generate and Apply side by side, each opening above the row only what it needs
-//! (the details and a confirming Generate; the places and a confirming Apply), closed by a second press or Escape. And
+//! The settings panel's bottom row: Generate and Apply side by side, each a split action whose word acts and whose
+//! chevron opens above the row what it needs (the details; the places), closed by a pick or Escape. And
 //! the settings' own head: the section folds, "Back to" is the first line of its body with its two choices at the
 //! far right, and the status no longer says that the map shows the settings. Built as the application builds it,
 //! with events fed to the `Ui` between frames.
@@ -9,7 +9,7 @@ use mere_ui::{Id, Theme, Ui};
 use preview::run::Ask;
 use preview::settings::pack_values;
 use preview::shell::Want;
-use preview::{Action, PreviewState, ShellIds, build, text};
+use preview::{PreviewState, ShellIds, build, text};
 
 const SIZE: Vec2 = Vec2::new(1400.0, 940.0);
 
@@ -71,79 +71,74 @@ impl Rig {
 }
 
 #[test]
-fn b1_a_press_opens_what_the_action_needs_above_the_row_and_a_second_one_closes_it() {
+fn b1_each_chevron_opens_its_choices_above_the_row_and_the_words_do_nothing_but_act() {
     let mut r = Rig::new(PreviewState::default());
-    assert_eq!(r.s.action, None);
     let row = r.rect(r.ids.generate);
-    assert_eq!(r.rect(r.ids.apply_open).y, row.y, "side by side");
-    assert_eq!((r.ids.details, r.ids.generate_go, r.ids.apply, r.ids.place_line), (Id::ROOT, Id::ROOT, Id::ROOT, Id::ROOT), "nothing open");
+    assert_eq!(r.rect(r.ids.apply).y, row.y, "side by side");
+    assert_eq!((r.ids.details, r.ids.place_list), (Id::ROOT, Id::ROOT), "nothing open");
 
-    r.click(r.ids.generate);
-    assert_eq!(r.s.action, Some(Action::Generate));
-    assert!(r.rect(r.ids.details).y + r.rect(r.ids.details).h <= r.rect(r.ids.generate_go).y, "the details, then the button");
-    assert!(r.rect(r.ids.generate_go).y + r.rect(r.ids.generate_go).h <= r.rect(r.ids.generate).y, "above the row");
-    assert_eq!((r.ids.apply, r.ids.place_line), (Id::ROOT, Id::ROOT), "none of Apply's");
+    r.click(r.ids.generate_more);
+    assert!(r.s.details_open);
+    let (d, g) = (r.rect(r.ids.details), r.rect(r.ids.generate));
+    assert!(d.y + d.h <= g.y + 0.01, "the details are above the row");
     assert_eq!(r.s.want, None, "opening starts nothing");
+    assert_eq!(r.ids.place_list, Id::ROOT, "none of Apply's");
 
-    r.click(r.ids.generate);
-    assert_eq!(r.s.action, None, "pressed again, it closes");
-    assert_eq!((r.ids.details, r.ids.generate_go), (Id::ROOT, Id::ROOT));
-
-    r.click(r.ids.apply_open);
-    assert_eq!(r.s.action, Some(Action::Apply));
-    assert!(r.rect(r.ids.place_line).y + r.rect(r.ids.place_line).h <= r.rect(r.ids.apply).y, "the place line, then Apply");
-    assert!(r.rect(r.ids.apply).y + r.rect(r.ids.apply).h <= r.rect(r.ids.apply_open).y, "above the row");
-    assert_eq!((r.ids.details, r.ids.generate_go), (Id::ROOT, Id::ROOT), "none of Generate's");
-    assert_eq!(r.s.want, None);
-
-    // The other action's press swaps what is open.
-    r.click(r.ids.generate);
-    assert_eq!(r.s.action, Some(Action::Generate));
-    assert_eq!(r.ids.apply, Id::ROOT);
+    // A press on the other chevron is a press outside the open list: it closes it and reaches nothing else; the next
+    // one opens the places.
+    r.click(r.ids.place_line);
+    assert!(!r.s.details_open && !r.s.places_open);
+    r.click(r.ids.place_line);
+    assert!(r.s.places_open);
+    let l = r.rect(r.ids.place_list);
+    assert!(l.y + l.h <= r.rect(r.ids.apply).y + 0.01, "the places are above the row");
+    assert_eq!((r.ids.details, r.s.want), (Id::ROOT, None));
 }
 
 #[test]
 fn b2_escape_closes_them() {
     let mut r = Rig::new(PreviewState::default());
-    r.click(r.ids.generate);
-    assert_eq!(r.s.action, Some(Action::Generate));
+    r.click(r.ids.generate_more);
+    assert!(r.s.details_open);
     r.escape();
-    assert_eq!(r.s.action, None);
+    assert!(!r.s.details_open);
     assert_eq!(r.ids.details, Id::ROOT);
-    r.click(r.ids.apply_open);
+    r.click(r.ids.place_line);
+    assert!(r.s.places_open);
     r.escape();
-    assert_eq!(r.s.action, None);
+    assert!(!r.s.places_open);
 }
 
 #[test]
-fn b3_generate_takes_the_detail_chosen_and_the_confirming_button_starts_the_run() {
+fn b3_generate_takes_the_detail_chosen_and_the_word_starts_the_run() {
     let mut r = Rig::new(PreviewState::default());
-    r.click(r.ids.generate);
+    r.click(r.ids.generate_more);
     assert_eq!(r.s.detail, 2);
-    // Detail tabs are the `d0`.. keys of the details node: press the first (64 blocks), then confirm.
+    // The first row of the list is 64 blocks: a press chooses it and closes the list, starting nothing.
     let d = r.rect(r.ids.details);
-    r.click_at(Vec2::new(d.x + 20.0, d.y + d.h / 2.0));
+    r.click_at(Vec2::new(d.x + 40.0, d.y + 20.0));
     assert_eq!(r.s.detail, 0, "64 blocks");
-    assert_eq!(r.s.action, Some(Action::Generate), "choosing a detail leaves it open");
-    r.click(r.ids.generate_go);
+    assert!(!r.s.details_open, "choosing closes the list");
+    assert_eq!(r.s.want, None, "choosing starts nothing");
+    r.click(r.ids.generate);
     assert_eq!(r.s.want, Some(Want::Generate));
-    assert_eq!(r.s.action, None, "it closes once it asked");
 }
 
 #[test]
-fn b4_the_confirming_generate_is_off_while_the_map_shows_the_form_and_the_status_says_nothing_of_it() {
+fn b4_the_word_of_generate_is_off_while_the_map_shows_the_form_and_the_status_says_nothing_of_it() {
     let s = PreviewState::default();
     let ask = Ask { seed: s.seed.clone(), samples: s.samples, detail: 16, values: pack_values() };
-    let mut r = Rig::new(PreviewState { made: Some(ask), action: Some(Action::Generate), ..s });
+    let mut r = Rig::new(PreviewState { made: Some(ask), ..s });
     assert_eq!(r.ids.status_text, "", "no sentence for a map that is up to date");
     assert_eq!(r.ids.status, Id::ROOT);
-    r.click(r.ids.generate_go);
+    r.click(r.ids.generate);
     assert_eq!(r.s.want, None, "disabled: the map shows these settings");
-    assert_ne!(r.ids.generate, Id::ROOT, "the row's Generate stays enabled: it opens the choices");
-    // A detail moved away from the map's makes a new run to ask for.
+    // Its chevron stays enabled: a detail moved away from the map's makes a new run to ask for.
+    r.click(r.ids.generate_more);
+    assert!(r.s.details_open);
     let d = r.rect(r.ids.details);
-    r.click_at(Vec2::new(d.x + 20.0, d.y + d.h / 2.0));
-    r.click(r.ids.generate_go);
+    r.click_at(Vec2::new(d.x + 40.0, d.y + 20.0));
+    r.click(r.ids.generate);
     assert_eq!(r.s.want, Some(Want::Generate));
 }
 
@@ -164,15 +159,15 @@ fn b5_the_settings_fold_and_back_to_is_the_first_line_of_its_body_with_its_choic
     assert!(!r.s.settings_open, "the head's press folds the section");
     assert_eq!(r.ids.profiles, Id::ROOT, "the body is gone, Back to with it");
     assert_ne!(r.ids.generate, Id::ROOT);
-    assert_ne!(r.ids.apply_open, Id::ROOT);
+    assert_ne!(r.ids.apply, Id::ROOT);
     r.click(r.ids.settings_head);
     assert!(r.s.settings_open);
     assert_ne!(r.ids.profiles, Id::ROOT);
     let _ = text::BACK_TO;
 }
 
-/// Pictures of the panel: at rest, with Generate open, with the settings folded. Apply's open is in tests/apply.rs
-/// (`a3_pictures_of_the_block`), where its places are.
+/// Pictures of the panel: at rest, with each list open and with the settings folded. The lists open are in tests/apply.rs
+/// (`a3_pictures_of_the_block`) and below.
 #[test]
 fn b6_pictures() {
     use mere_base::Gfx;
@@ -180,7 +175,8 @@ fn b6_pictures() {
     let (w, h) = (1400u32, 940u32);
     let shots = [
         ("bottom_closed", PreviewState::default()),
-        ("bottom_generate", PreviewState { action: Some(Action::Generate), ..PreviewState::default() }),
+                ("bottom_generate", PreviewState { details_open: true, ..PreviewState::default() }),
+        ("bottom_places", PreviewState { places_open: true, ..PreviewState::default() }),
         ("bottom_folded", PreviewState { settings_open: false, ..PreviewState::default() }),
     ];
     for (name, state) in shots {

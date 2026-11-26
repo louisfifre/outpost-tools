@@ -359,14 +359,10 @@ impl Rig {
         self.click(at);
     }
 
-    /// Generate as a person does it: the button of the bottom row opens its choices, the one inside them asks.
+    /// Generate as a person does it: a press on the word of the split action.
     pub fn generate(&mut self) {
-        if self.app.state().action != Some(preview::Action::Generate) {
-            let open = self.app.ids().generate;
-            self.click_on(open);
-        }
-        let go = self.app.ids().generate_go;
-        self.click_on(go);
+        let word = self.app.ids().generate;
+        self.click_on(word);
     }
 
     /// Moves the pointer away from everything, so that nothing is hovered.
