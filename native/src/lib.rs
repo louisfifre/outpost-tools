@@ -1,4 +1,4 @@
-//! The native launcher: the world preview's window (`preview::PreviewApp`) with the launcher's Home given to it,
+//! Outpost Tools, the native form: the world preview's window (`preview::PreviewApp`) with the launcher's Home given to it,
 //! talking to the same api as the page's launcher, in process.
 
 pub mod bridge;
@@ -6,6 +6,8 @@ pub mod fake;
 pub mod home;
 pub mod icons;
 pub mod model;
+pub mod pages;
+pub mod skin_view;
 pub mod text;
 
 use mere_base::Vec2;

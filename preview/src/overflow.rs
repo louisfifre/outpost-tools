@@ -4,18 +4,18 @@
 //! word, another account name or one more view moves them by itself.
 //!
 //! The bar is a grid of three cells. In the preview tool the left cell holds the settings panel's button and the
-//! right cell the figures panel's button and the window's buttons; in Home the left cell holds the brand and the
-//! right one the window's buttons. While the bar is centred the side cells are equal, `(width - tools) / 2`, so
-//! the tools stay in the middle, and each side has to hold what its cell holds. The bar gives way in this order,
-//! taking the first step that fits:
+//! right cell the account, the figures panel's button and the window's buttons; in Home the left cell holds the
+//! brand and the right one the account and the window's buttons. While the bar is centred the side cells are equal,
+//! `(width - tools) / 2`, so the tools stay in the middle, and each side has to hold what its cell holds. The bar
+//! gives way in this order, taking the first step that fits:
 //!
-//! 1. in Home, the account name (cut with an ellipsis down to a short stub, then gone whole), then the word
-//!    the brand's name if that buys room;
-//! 2. in the preview tool, the views that are greyed (they need the 16-block detail) move into "More", then the
+//! 1. the account name (cut with an ellipsis down to a short stub, then gone whole);
+//! 2. in Home, the word the brand's name if that buys room;
+//! 3. in the preview tool, the views that are greyed (they need the 16-block detail) move into "More", then the
 //!    other views, one at a time from the strip's end, the pressed one staying;
-//! 3. in the preview tool, when even that bar cannot be centred, the tools stop being centred and sit left after
+//! 4. in the preview tool, when even that bar cannot be centred, the tools stop being centred and sit left after
 //!    the settings button;
-//! 4. then 2D and 3D move into "More" with the views.
+//! 5. then 2D and 3D move into "More" with the views.
 //!
 //! The two tools keep their names, always.
 
@@ -53,6 +53,8 @@ const SEP: f32 = 12.0;
 /// The chevron of the "More" tab, and the space before it.
 const CHEVRON: f32 = 8.0;
 const CHEVRON_GAP: f32 = GAP;
+/// What the account's button holds besides its name: the face, the chevron and the gaps between the three.
+pub const ACCOUNT_MARK: f32 = 16.0 + GAP + GAP + CHEVRON;
 /// An account cut shorter than this many letters (and the ellipsis) is not worth showing: it goes whole.
 pub const ACCOUNT_STUB: usize = 3;
 
@@ -91,7 +93,7 @@ pub const NARROW_BAR: f32 = LEFT_NEED + TOOLS_GAP + NARROW_STRIP + RIGHT_NEED;
 /// What the bar shows, as worked out for one width.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Form {
-    /// The account name is shown (cut with an ellipsis if need be). Home only.
+    /// The account name is shown (cut with an ellipsis if need be), before the window's buttons.
     pub account: bool,
     /// The brand's name (OUTPOST TOOLS) is shown. Home only.
     pub word: bool,
@@ -122,21 +124,31 @@ pub struct Inputs<'a> {
     /// The window's width.
     pub width: f32,
     pub account: Option<&'a str>,
+    /// What the account's button holds besides its name (`ACCOUNT_MARK`), or 0 for a name alone.
+    pub account_mark: f32,
     /// The preview tool is the one on show: its views take room in the strip, and its panel buttons are on the
     /// bar's ends instead of the brand.
     pub preview_open: bool,
     /// The pressed view, which always stays in the strip.
     pub pressed: usize,
-    /// Which of the six views are greyed.
+    /// Which of the views are greyed.
     pub disabled: [bool; VIEW_COUNT],
-    /// 2D and 3D after the views (not built in the section).
-    pub shapes: bool,
 }
 
 /// The map views and the section.
 pub const VIEW_COUNT: usize = crate::paint::MAP_VIEWS + 1;
 
-/// The word of view `i` (the five views, then the section).
+/// The first view of the strip's last group, the structures then the section, which a gap sets apart from the maps.
+pub const END_GROUP: usize = crate::paint::View::Structures as usize;
+
+/// Whether a gap comes before view `v` in the strip: `v` is the first tab of the last group, and tabs of the
+/// maps' group are before it.
+pub fn gap_before(form: &Form, v: usize) -> bool {
+    let shown = |k: usize| !form.more.contains(&k);
+    v >= END_GROUP && shown(v) && (END_GROUP..v).all(|k| !shown(k)) && (0..END_GROUP).any(shown)
+}
+
+/// The word of view `i` (the six views, then the section).
 pub fn view_word(i: usize) -> &'static str {
     if i < text::VIEWS.len() { text::VIEWS[i] } else { text::SECTION }
 }
@@ -163,11 +175,11 @@ pub fn strip_width(i: &Inputs, form: &Form) -> f32 {
         // The options' box pads its tabs by 1 px on the left, which the first tab's pull takes back, and by the
         // gap that keeps them off the tool.
         w += 1.0 + TOOL_VIEWS_GAP;
-        w += (0..VIEW_COUNT).filter(|v| !form.more.contains(v)).map(|v| tab_step(view_word(v))).sum::<f32>();
+        w += (0..VIEW_COUNT).filter(|v| !form.more.contains(v)).map(|v| tab_step(view_word(v)) + if gap_before(form, v) { SEP } else { 0.0 }).sum::<f32>();
         if form.has_more() {
             w += more_step();
         }
-        if i.shapes && !form.shapes_in_more {
+        if !form.shapes_in_more {
             w += SEP + text::SHAPES.iter().map(|s| tab_step(s)).sum::<f32>();
         }
     }
@@ -186,20 +198,27 @@ pub fn account_stub_width(account: &str) -> f32 {
 }
 
 /// What the brand needs in its cell for a form (Home).
-pub fn brand_need(i: &Inputs, form: &Form) -> f32 {
+pub fn brand_need(form: &Form) -> f32 {
     let mut w = BRAND_PAD + CUBE;
     if form.word {
         w += BRAND_GAP + brand_look().width(&text::BAR_TITLE.to_uppercase());
     }
-    if let (true, Some(a)) = (form.account, i.account) {
-        w += BRAND_GAP + account_stub_width(a);
-    }
     w
+}
+
+/// What the account takes in the right cell for a form: its narrowest showing and the gap that keeps it off its
+/// neighbour.
+pub fn account_need(i: &Inputs, form: &Form) -> f32 {
+    match (form.account, i.account) {
+        (true, Some(a)) => TOGGLE_GAP + account_stub_width(a) + i.account_mark,
+        _ => 0.0,
+    }
 }
 
 /// What the left and the right cell hold at least, in a form.
 pub fn sides(i: &Inputs, form: &Form) -> (f32, f32) {
-    if i.preview_open { (LEFT_NEED, RIGHT_NEED) } else { (brand_need(i, form), ENDS_W) }
+    let account = account_need(i, form);
+    if i.preview_open { (LEFT_NEED, RIGHT_NEED + account) } else { (brand_need(form), ENDS_W + account) }
 }
 
 /// Whether the form fits: centred, each side cell `(width - strip) / 2` holds what it must; otherwise the left
@@ -218,7 +237,7 @@ pub fn fits(i: &Inputs, form: &Form) -> bool {
 pub fn plan(i: &Inputs) -> Form {
     let mut steps: Vec<Form> = Vec::new();
     if !i.preview_open {
-        // Home: the brand gives way, and nothing else is in the bar to move.
+        // Home: the account gives way, then the brand, and nothing else is in the bar to move.
         steps.push(Form::default());
         if i.account.is_some() {
             steps.push(Form { account: false, ..Form::default() });
@@ -234,8 +253,11 @@ pub fn plan(i: &Inputs) -> Form {
             m.sort_unstable();
             m
         };
-        // The brand is not in the bar of this tool: its parts are off.
+        // The brand is not in the bar of this tool: its word is off. The account gives way before any view does.
         let base = Form { account: false, word: false, ..Form::default() };
+        if i.account.is_some() {
+            steps.push(Form { account: true, ..base.clone() });
+        }
         steps.push(Form { more: Vec::new(), ..base.clone() });
         if !greyed.is_empty() {
             steps.push(Form { more: held(0), ..base.clone() });
@@ -246,9 +268,7 @@ pub fn plan(i: &Inputs) -> Form {
         // The tools stop being centred, then the shapes join the views in "More".
         let all = held(from_end.len());
         steps.push(Form { more: all.clone(), centred: false, ..base.clone() });
-        if i.shapes {
-            steps.push(Form { more: all, centred: false, shapes_in_more: true, ..base });
-        }
+        steps.push(Form { more: all, centred: false, shapes_in_more: true, ..base });
     }
     let last = steps.len() - 1;
     let mut chosen = steps.into_iter().enumerate().find(|(n, f)| *n == last || fits(i, f)).map(|(_, f)| f).unwrap_or_default();

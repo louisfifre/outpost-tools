@@ -35,8 +35,7 @@ fn r1_a_run_under_way_and_its_stop() {
     std::fs::write(root.join("pace.json"), r#"{"fixed":10,"work":{"16":{"span":256,"seconds":40}}}"#).unwrap();
     let mut rig = start(&world, &root, &[("MERE_STUB", "hold")], "r1-seed");
     assert_eq!(rig.app.state().pace.about(256, 16), Some(50), "the detail tab's wait is read from the pace file");
-    let ids = rig.app.ids().clone();
-    rig.click_on(ids.generate);
+    rig.generate();
     assert!(rig.app.running(), "the click started the generator");
 
     rig.until(30, "the map pass at 40 % and the server's pid", |r| {
@@ -68,7 +67,8 @@ fn r1_a_run_under_way_and_its_stop() {
 
     let s = rig.rect(ids.stop);
     assert_eq!((s.w, s.h), (34.0, 34.0));
-    assert!((s.x - (g.x + g.w + 6.0)).abs() < 0.01, "6 px right of the button");
+    let more = rig.rect(ids.generate_more);
+    assert!((s.x - (more.x + more.w + 6.0)).abs() < 0.01, "6 px right of the button");
     assert_eq!(rig.px(&rgba, s.x + 17.0, s.y), rgb(t.edge), "the stop's frame");
     assert_eq!(rig.px(&rgba, s.x + 17.0, s.y + 17.0), rgb(t.muted), "the stop's small square");
 
@@ -135,8 +135,7 @@ fn r2_a_finished_run_becomes_the_map() {
     let root = root("runs-r2");
     let from = preview::world::data_dir();
     let mut rig = start(&world, &root, &[("MERE_STUB", "finish"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))], "r2-seed");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     assert!(rig.app.running());
     rig.until(60, "the run to end", |r| !r.app.running());
     rig.park();
@@ -149,6 +148,7 @@ fn r2_a_finished_run_becomes_the_map() {
     assert!(rig.app.state().trouble.is_empty());
     let ids = rig.app.ids().clone();
     assert_eq!(ids.status_text, said);
+    let ids = rig.app.ids().clone();
     let rgba = rig.rgba();
     let g = rig.rect(ids.generate);
     assert_eq!(rig.px(&rgba, g.x + g.w / 2.0, g.y), rgb(t.edge), "Generate is disabled: the map shows these settings");
@@ -175,8 +175,7 @@ fn r3_a_failed_run_says_so_in_the_warning_colour() {
     let Some(world) = world() else { return };
     let root = root("runs-r3");
     let mut rig = start(&world, &root, &[("MERE_STUB", "fail")], "r3-seed");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(30, "the run to end", |r| !r.app.running());
     rig.park();
     assert_eq!(rig.app.state().trouble, text::FAILED);
@@ -201,8 +200,7 @@ fn r4_a_refused_seed_starts_nothing() {
     let Some(world) = world() else { return };
     let root = root("runs-r4");
     let mut rig = start(&world, &root, &[("MERE_STUB", "hold")], "a/b");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.park();
     assert_eq!(rig.app.state().trouble, text::REFUSED);
     assert_eq!(rig.app.ids().status_text, text::REFUSED);
@@ -216,8 +214,7 @@ fn r5_a_moved_setting_queues_the_next_run() {
     let Some(world) = world() else { return };
     let root = root("runs-r5");
     let mut rig = start(&world, &root, &[("MERE_STUB", "hold")], "r5-seed");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     assert!(rig.app.running());
     let (first_run, first_ask) = (rig.app.run_id().unwrap(), rig.app.state().follow.as_ref().unwrap().ask.clone());
 
@@ -225,8 +222,7 @@ fn r5_a_moved_setting_queues_the_next_run() {
     rig.app.state_mut().values[0] += 0.01;
     rig.park();
     assert_eq!(rig.app.ids().generate_text, text::GENERATE);
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(30, "the next run to start by itself", |r| {
         r.app.running() && r.app.run_id() != Some(first_run) && r.app.state().follow.as_ref().is_some_and(|f| f.ask.values[0] != first_ask.values[0])
     });
@@ -242,8 +238,7 @@ fn r6_quitting_stops_the_run_under_way() {
     let Some(world) = world() else { return };
     let root = root("runs-r6");
     let mut rig = start(&world, &root, &[("MERE_STUB", "hold")], "r6-seed");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(30, "the server's pid", |_| pid_of(&root).is_some());
     let grandchild = pid_of(&root).unwrap();
     assert!(alive(grandchild));
@@ -292,8 +287,7 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     let out = root.join("out");
     let mut rig = start(&world, &root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))], "r8-seed");
     let figures_before = rig.app.ids().figures_text.clone();
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     assert!(rig.app.running());
     let drawn = |r: &Rig| r.app.state().follow.as_ref().map(|f| f.drawn);
 
@@ -305,11 +299,11 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert!(shows(&rig, &rgba, &paint(&sketch, View::Height, true, &BTreeSet::new()), sketch.samples), "the stage shows the sketch, not veiled");
     assert!(rig.app.ids().status_text.ends_with(text::SKETCH_READABLE), "{}", rig.app.ids().status_text);
     assert_eq!(rig.app.ids().figures_text, figures_before, "the figures stay those of the map before");
-    assert_eq!(note_on(&mut rig, 7), text::STRUCTURES_PENDING);
-    assert_eq!(note_on(&mut rig, 8), text::SECTION_PENDING);
-    assert_eq!(note_on(&mut rig, 5), "");
-    assert_eq!(click_view(&mut rig, 7), 5, "Structures is greyed while the run has none");
-    assert_eq!(click_view(&mut rig, 8), 5, "Section is greyed while the run has none");
+    assert_eq!(note_on(&mut rig, 5), text::STRUCTURES_PENDING);
+    assert_eq!(note_on(&mut rig, 6), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 0), "");
+    assert_eq!(click_view(&mut rig, 5), 0, "Structures is greyed while the run has none");
+    assert_eq!(click_view(&mut rig, 6), 0, "Section is greyed while the run has none");
 
     // The map is there while the cuts, the ores and the structures are still being made (its partial map, between,
     // is r10's).
@@ -323,12 +317,12 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     assert!(rig.app.running(), "the run goes on");
     assert!(!rig.app.ids().status_text.contains(text::SKETCH_READABLE), "a map is no sketch");
     assert_eq!(rig.app.ids().steps_items.last().map(String::as_str), Some(format!("{} {}", text::NOW_MARK, text::STEP_EXTRAS).as_str()));
-    assert_eq!(note_on(&mut rig, 8), text::SECTION_PENDING);
-    assert_eq!(note_on(&mut rig, 7), text::STRUCTURES_PENDING);
+    assert_eq!(note_on(&mut rig, 6), text::SECTION_PENDING);
+    assert_eq!(note_on(&mut rig, 5), text::STRUCTURES_PENDING);
     rig.shot("run_map_ready_structures.png");
-    assert_eq!(note_on(&mut rig, 5), "");
-    assert_eq!(click_view(&mut rig, 7), 5, "Structures is still greyed beside the run's map");
-    assert_eq!(click_view(&mut rig, 8), 5);
+    assert_eq!(note_on(&mut rig, 0), "");
+    assert_eq!(click_view(&mut rig, 5), 0, "Structures is still greyed beside the run's map");
+    assert_eq!(click_view(&mut rig, 6), 0);
 
     // The run's end: everything is there, the structures and the cuts included.
     std::fs::write(out.join("go-end"), "").unwrap();
@@ -337,12 +331,12 @@ fn r8_the_stage_shows_the_sketch_then_the_map_then_everything() {
     let rgba = rig.shot("run_finished.png");
     assert!(shows(&rig, &rgba, &paint(&map, View::Height, true, &BTreeSet::new()), map.samples));
     assert_eq!(rig.app.world().unwrap().made.as_ref().unwrap().seed, "r8-seed");
-    assert_eq!(click_view(&mut rig, 7), 7, "Structures can be chosen again");
-    assert_eq!(click_view(&mut rig, 5), 5);
-    assert_eq!(note_on(&mut rig, 7), "");
+    assert_eq!(click_view(&mut rig, 5), 5, "Structures can be chosen again");
+    assert_eq!(click_view(&mut rig, 0), 0);
+    assert_eq!(note_on(&mut rig, 5), "");
     rig.shot("run_finished_structures.png");
     assert_eq!(rig.app.painted_view(), Some(View::Structures), "the structures are drawn");
-    assert_eq!(note_on(&mut rig, 8), "");
+    assert_eq!(note_on(&mut rig, 6), "");
     rig.frame();
     assert!(rig.app.shown().is_some(), "the section shows a cut");
 }
@@ -357,8 +351,7 @@ fn r9_a_stopped_run_gives_the_stage_back_to_the_map_before() {
     }
     let root = root("runs-r9");
     let mut rig = start(&world, &root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))], "r9-seed");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(30, "the run's sketch on the stage", |r| r.app.state().follow.as_ref().is_some_and(|f| matches!(f.drawn, Drawn::Sketch(_))));
     let stop = rig.app.ids().stop;
     rig.click_on(stop);
@@ -410,11 +403,10 @@ fn r10_the_map_fills_in_over_the_sketch_during_its_pass() {
     let out = root.join("out");
     let mut state = PreviewState::for_world(Some(&world));
     state.seed = "r10-seed-2".to_string();
-    state.view = 0;
+    state.view = View::Biomes.index();
     let mut rig = Rig::new(&world, state, Some(runs(&root, &[("MERE_STUB", "stages"), ("MERE_STUB_FROM", from.to_str().expect("a UTF-8 path"))])));
     rig.park();
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     assert!(rig.app.running());
     let drawn = |r: &Rig| r.app.state().follow.as_ref().map(|f| f.drawn);
     rig.until(30, "the run's sketch on the stage", |r| matches!(drawn(r), Some(Drawn::Sketch(32))));

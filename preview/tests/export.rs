@@ -34,7 +34,7 @@ fn export_runs(root: &Path) -> Runs {
 fn e1_the_exported_picture_is_the_stage_content() {
     let Some(world) = world() else { return };
     let root = root("export-e1");
-    let state = PreviewState { view: 0, ..PreviewState::for_world(Some(&world)) };
+    let state = PreviewState { view: View::Biomes.index(), ..PreviewState::for_world(Some(&world)) };
     let mut rig = Rig::new(&world, state, Some(export_runs(&root)));
     rig.park();
     let export = rig.app.ids().export;
@@ -45,7 +45,7 @@ fn e1_the_exported_picture_is_the_stage_content() {
     assert!(folder.starts_with(root.join("exports")), "{}", folder.display());
     assert!(folder.file_name().unwrap().to_string_lossy().starts_with("cap-1_"), "{}", folder.display());
     let n = world.samples as u32;
-    for view in [View::Biomes, View::Flat, View::Height, View::Temperature] {
+    for view in [View::Biomes, View::Slope, View::Height, View::Temperature] {
         let png = decoded(&folder.join(format!("{}.png", view.key())));
         assert_eq!((png.width, png.height), (n, n));
         assert!(png.rgba == paint(&world, view, true, &BTreeSet::new()), "{} differs from paint()", view.key());
@@ -95,8 +95,8 @@ fn e1_the_exported_picture_is_the_stage_content() {
 fn e2_a_chosen_biome_does_not_change_the_export() {
     let Some(world) = world() else { return };
     let root = root("export-e2");
-    let mut state = PreviewState { view: 0, ..PreviewState::for_world(Some(&world)) };
-    state.chosen[0].insert("minecraft:badlands".to_string());
+    let mut state = PreviewState { view: View::Biomes.index(), ..PreviewState::for_world(Some(&world)) };
+    state.chosen[View::Biomes.index()].insert("minecraft:badlands".to_string());
     let mut rig = Rig::new(&world, state, Some(export_runs(&root)));
     rig.park();
     let export = rig.app.ids().export;
@@ -167,7 +167,7 @@ fn e4_the_notice_opens_the_folder_and_closes() {
 fn e5_the_data_file_holds_the_settings_and_the_figures() {
     let Some(world) = world() else { return };
     let root = root("export-e5");
-    let mut rig = Rig::new(&world, PreviewState { view: 0, ..PreviewState::for_world(Some(&world)) }, Some(export_runs(&root)));
+    let mut rig = Rig::new(&world, PreviewState { view: View::Biomes.index(), ..PreviewState::for_world(Some(&world)) }, Some(export_runs(&root)));
     rig.park();
     let export = rig.app.ids().export;
     rig.click_on(export);

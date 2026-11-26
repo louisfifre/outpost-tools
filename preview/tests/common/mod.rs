@@ -359,6 +359,12 @@ impl Rig {
         self.click(at);
     }
 
+    /// Generate as a person does it: a press on the word of the split action.
+    pub fn generate(&mut self) {
+        let word = self.app.ids().generate;
+        self.click_on(word);
+    }
+
     /// Moves the pointer away from everything, so that nothing is hovered.
     pub fn park(&mut self) {
         self.app.event(Event::PointerMoved { pos: Vec2::new(2.0, 2.0) });

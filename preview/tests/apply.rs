@@ -429,11 +429,12 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(std::fs::read_to_string(root.join("places.json")).unwrap().contains("minecraft-exploration"), "the tick is kept");
     rig.park();
     rig.shot("apply3_one_rest.png");
-    // 2: the list open above the line, exactly as wide, its first row focused.
+    // 2: the list open above the split action, as wide as the whole bottom row (Generate's part and Apply's), its first
+    // row focused.
     open_list(&mut rig);
-    let (line, list) = (rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
-    assert_eq!((list.x, list.w), (line.x, line.w), "the list is the line's width");
-    assert!(list.y + list.h <= line.y, "the list hangs above the line");
+    let (generate, word, line, list) = (rig.rect(rig.app.ids().generate), rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().place_list));
+    assert_eq!((list.x, list.w), (generate.x, line.x + line.w - generate.x), "the list is the whole row's width, not Apply's");
+    assert!(list.y + list.h <= word.y, "the list hangs above the button");
     assert_eq!(rig.app.ids().place_rows.len(), 1);
     assert_eq!(rig.app.ui().focused(), Some(rig.app.ids().place_rows[0]), "the first row has the focus");
     assert_ne!(rig.app.ids().place_action, Id::ROOT, "\"Choose a folder\u{2026}\" stays with a single game");
@@ -446,7 +447,7 @@ fn b1_to_b3_one_game_found_is_ticked_listed_and_written() {
     assert!(rig.app.applying() || matches!(rig.app.state().apply, Notice::Done(_)), "Enter applied");
     rig.until(20, "the write to end", |r| !r.app.applying());
     key(&mut rig, Key::Escape);
-    // 3: just after. One sentence; Apply is dim until a value changes; the seams sentence gave way.
+    // 3: just after. One sentence; Apply is dim until a value changes.
     let written = std::fs::read_to_string(file_of(&game)).unwrap();
     assert!(written.contains("\"vertical_scale\": 1.75,") && written.contains("\"erosion_scale\": 0.15,"));
     assert_eq!(rig.app.ids().apply_text, "Saved for Exploration. Restart the game to use it. Only land nobody has visited yet will change.");
@@ -660,8 +661,7 @@ fn b10_the_small_window_holds_the_line_and_apply() {
     moved(&mut rig);
     tick(&mut rig, &[1]);
     let (line, apply, left) = (rig.rect(rig.app.ids().place_line), rig.rect(rig.app.ids().apply), rig.rect(rig.app.ids().left));
-    assert!(line.x >= left.x && line.x + line.w <= left.x + left.w + 0.01, "the line holds in the panel: {line:?} in {left:?}");
-    assert_eq!((apply.x, apply.w), (line.x, line.w), "Apply is as wide as the line");
+    assert!(apply.x >= left.x && line.x + line.w <= left.x + left.w + 0.01, "Apply's two parts hold in the panel: {line:?} in {left:?}");
     rest(&mut rig, Vec2::new(400.0, 450.0));
     let rgba = rig.rgba();
     let path = common::tmp().join("apply3_small.png");

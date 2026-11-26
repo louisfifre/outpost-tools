@@ -6,9 +6,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use launcher_native::bridge::Bridge;
-use launcher_native::fake::{FakeApi, fixture};
-use launcher_native::home::{Calendar, LauncherHome};
+use outpost_tools::bridge::{Backend, Bridge};
+use outpost_tools::fake::{FakeApi, fixture};
+use outpost_tools::home::{Calendar, LauncherHome};
 use mere_base::{App, Button, Cmd, Color, Event, Key, Mods, Rect, Vec2};
 use mere_ui::{Id, Theme};
 use mere_win32::Renderer;
@@ -29,7 +29,7 @@ pub fn with_server_profile(api: &FakeApi) {
 
 pub fn api_get(api: &FakeApi, path: &str) -> Value {
     // The fake answers a GET like any backend: ask it.
-    use launcher_native::bridge::Backend;
+    use outpost_tools::bridge::Backend;
     serde_json::from_slice(&api.ask("GET", path, b"").body).unwrap()
 }
 
@@ -62,10 +62,15 @@ impl Rig {
     }
 
     pub fn with_api(api: Arc<FakeApi>, w: u32, h: u32, dark: bool, frames: bool) -> Rig {
+        Rig::with_backend(api.clone(), api, w, h, dark, frames)
+    }
+
+    /// The same over any backend, the real api for one: `api` is then only what the rig's fake-reading helpers see.
+    pub fn with_backend(backend: Arc<dyn Backend>, api: Arc<FakeApi>, w: u32, h: u32, dark: bool, frames: bool) -> Rig {
         let theme = if dark { Theme::dark() } else { Theme::light() };
         let (pw, ph) = preview::min_size_px((w, h));
         let mut r = Renderer::offscreen(pw, ph, 1.0).expect("offscreen renderer");
-        let mut app = launcher_native::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, home_over(api.clone()), true);
+        let mut app = outpost_tools::app(theme, dark, Vec2::new(pw as f32, ph as f32), None::<World>, None, LauncherHome::new(Bridge::inline(backend), Calendar::fixed()), true);
         app.start(&mut r);
         app.event(Event::Resized { width_px: pw, height_px: ph, scale: 1.0 });
         app.event(Event::Window { maximized: false });
@@ -162,6 +167,24 @@ impl Rig {
     }
 }
 
+/// A press on a line of Home, on its name's side: away from its button, which has a press of its own.
+pub fn click_line(rig: &mut Rig, line: Id) {
+    let r = rig.rect(line);
+    rig.click_at(Vec2::new(r.x + 24.0, r.y + r.h / 2.0));
+}
+
+/// Opens the page of the profile `id` by a press on its line.
+pub fn open_profile(rig: &mut Rig, id: &str) {
+    let row = rig.home().ids().rows.iter().find(|r| r.profile == id).expect("the profile is listed").row;
+    click_line(rig, row);
+}
+
+/// Opens the server's page by a press on its line.
+pub fn open_server(rig: &mut Rig) {
+    let row = rig.home().ids().server_row;
+    click_line(rig, row);
+}
+
 pub fn centre(r: Rect) -> Vec2 {
     Vec2::new(r.x + r.w / 2.0, r.y + r.h / 2.0)
 }
@@ -172,4 +195,21 @@ pub fn near(a: f32, b: f32, what: &str) {
 
 pub fn rect_is(r: Rect, x: f32, y: f32, w: f32, h: f32, what: &str) {
     assert!((r.x - x).abs() < 0.01 && (r.y - y).abs() < 0.01 && (r.w - w).abs() < 0.01 && (r.h - h).abs() < 0.01, "{what}: {r:?} != ({x}, {y}, {w}, {h})");
+}
+
+/// The fixture with the board's other two profiles (A1): one a fortnight ago with no mods, and one with a name too long
+/// for its line, played last month.
+pub fn board_api() -> Arc<FakeApi> {
+    let api = Arc::new(fixture());
+    let mut v = api_get(&api, "/api/profiles");
+    let day = 86_400_000i64;
+    for (id, name, days, mods) in [("plain", "Plain 26.3", 14, 0), ("friday", "Friday server pack from L\u{e9}a, with shaders and a minimap", 31, 41)] {
+        v["profiles"].as_array_mut().unwrap().push(json!({
+            "id": id, "name": name, "memoryMb": 4096, "javaArgs": "", "gameDir": format!("C:/Code/{id}"),
+            "lastPlayed": outpost_tools::fake::FIXED_NOW_MS - days * day, "playedSeconds": 0, "running": false, "worlds": [],
+            "open": {"kind": "menu", "target": ""}, "mods": mods, "updates": 0
+        }));
+    }
+    api.set_get("/api/profiles", v);
+    api
 }

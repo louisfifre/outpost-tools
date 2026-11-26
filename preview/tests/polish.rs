@@ -80,8 +80,7 @@ fn p3_a_run_under_way_does_not_keep_the_window_drawing() {
     state.seed = "p3-seed".to_string();
     let mut rig = Rig::new(&world, state, Some(runs(&root, &[("MERE_STUB", "hold")])));
     rig.park();
-    let generate = rig.app.ids().generate;
-    rig.click_on(generate);
+    rig.generate();
     assert!(rig.app.running(), "the click started the generator");
     rig.park();
 
@@ -110,7 +109,7 @@ fn p3_a_run_under_way_does_not_keep_the_window_drawing() {
     assert!(!preview::bar::window_title(rig.app.state()).contains("running"), "the title still says running");
 }
 
-/// The sheet of the 16 icons (the pack's cube is the sixteenth) at 16 DIP, in --muted on the first row and --text on
+/// The sheet of the 15 icons (the pack's cube is the fifteenth) at 16 DIP, in --muted on the first row and --text on
 /// the second, at the three scales a screen has. The icons are fully coloured device pixels where they are crisp.
 #[test]
 fn icon_sheets() {
@@ -119,10 +118,10 @@ fn icon_sheets() {
     let mut crisp: Vec<&mere_ui::Icon> = vec![&i.home, &i.preview, &i.minimize, &i.maximize, &i.restore, &i.close];
     crisp.extend(i.views.iter());
     crisp.extend([&i.play, &i.stop, &i.settings]);
-    assert_eq!(crisp.len() + 1, 16);
+    assert_eq!(crisp.len() + 1, 15);
 
     for (scale, name) in [(1.0f32, "icons_x1.png"), (1.5, "icons_x15.png"), (2.0, "icons_x2.png")] {
-        let (w, h) = (16.0 * 24.0 + 24.0, 2.0 * 24.0 + 24.0);
+        let (w, h) = (15.0 * 24.0 + 24.0, 2.0 * 24.0 + 24.0);
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
         let mut r = Renderer::offscreen(pw, ph, scale).unwrap();
         let mut list = DrawList::default();
@@ -133,7 +132,7 @@ fn icon_sheets() {
                 list.shape(Rect::new(12.0 + n as f32 * 24.0, y, 16.0, 16.0), icon.grid, icon.figures.clone(), color, true);
             }
             for (icon, face) in &i.pack {
-                list.shape(Rect::new(12.0 + 15.0 * 24.0, y, 16.0, 16.0), icon.grid, icon.figures.clone(), *face, false);
+                list.shape(Rect::new(12.0 + 14.0 * 24.0, y, 16.0, 16.0), icon.grid, icon.figures.clone(), *face, false);
             }
         }
         r.begin(t.ground);

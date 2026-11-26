@@ -92,7 +92,7 @@ impl Level {
 pub enum WallColour {
     /// The stage's own ground: the land reads as cut clean, and nothing shows under it.
     Ground,
-    /// The Flat view's steep ground (`colour::steep_colour`), a dark neutral earth that holds on both themes.
+    /// The dark neutral earth (`colour::steep_colour`) that holds on both themes.
     Earth,
 }
 

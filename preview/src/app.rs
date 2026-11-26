@@ -848,7 +848,7 @@ impl PreviewApp {
         let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         let folder = runs.exports().join(run::folder_name(self.state.made.as_ref().map(|m| m.seed.as_str()), secs));
         // A preview stopped at a coarser detail has no level land to give; structures need the marks' rasteriser.
-        let kinds: Vec<View> = [View::Biomes, View::Flat, View::Slope, View::Cliffs, View::Vegetation, View::Height, View::Temperature]
+        let kinds: Vec<View> = [View::Height, View::Slope, View::Biomes, View::Vegetation, View::Temperature]
             .into_iter()
             .filter(|k| !(k.needs_full() && world.coarse()))
             .collect();
@@ -920,6 +920,9 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         if crate::shell::help_escape(&mut self.state, &self.ui, &e) {
             return true;
         }
+        if crate::bar::account_closes(&mut self.state, &self.ui, &self.ids, &e) {
+            return true;
+        }
         self.ui.event(&e)
     }
 
@@ -932,7 +935,9 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
         let at_home = self.state.mode == Mode::Home;
         if let Some(h) = self.home.as_mut() {
             home_wants = h.poll(clock, at_home);
+            self.state.bare = h.bare_bar() && at_home;
             self.state.account = h.account();
+            self.state.account_menu = h.account_menu();
         }
         // Before building, so the frame shows the settled pose.
         let moving = match (&mut self.state.orbit, self.drawn.as_ref().or(self.world.as_ref())) {
@@ -959,6 +964,10 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
             // What Home recorded in this build is acted on now, and the page built again to show it.
             let mut acted = false;
             if let Some(h) = self.home.as_mut() {
+                // What the person asked of the account menu goes to Home first, which acts on it with the rest.
+                if let Some(ask) = self.state.account_ask.take() {
+                    h.account_ask(ask);
+                }
                 if h.act() {
                     home_wants |= h.poll(clock, self.state.mode == Mode::Home);
                     acted = true;
@@ -969,7 +978,9 @@ impl App for PreviewApp {    fn start(&mut self, gfx: &mut dyn Gfx) {
                     home_wants |= h.poll(clock, true);
                     acted = true;
                 }
+                self.state.bare = h.bare_bar() && self.state.mode == Mode::Home;
                 self.state.account = h.account();
+                self.state.account_menu = h.account_menu();
             }
             if !self.ui.want_redraw() && self.state == before && !acted {
                 break;

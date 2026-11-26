@@ -177,26 +177,26 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mere-base"
-version = "0.16.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.16.0#e8c58c8f2e02b3f301043937e0ebafc571c97bd7"
+version = "0.17.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.17.0#cbc71b9d139269e7c79b746c9415b97ef4ceb373"
 
 [[package]]
 name = "mere-layout"
-version = "0.16.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.16.0#e8c58c8f2e02b3f301043937e0ebafc571c97bd7"
+version = "0.17.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.17.0#cbc71b9d139269e7c79b746c9415b97ef4ceb373"
 dependencies = [
  "mere-base",
 ]
 
 [[package]]
 name = "mere-png"
-version = "0.16.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.16.0#e8c58c8f2e02b3f301043937e0ebafc571c97bd7"
+version = "0.17.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.17.0#cbc71b9d139269e7c79b746c9415b97ef4ceb373"
 
 [[package]]
 name = "mere-ui"
-version = "0.16.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.16.0#e8c58c8f2e02b3f301043937e0ebafc571c97bd7"
+version = "0.17.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.17.0#cbc71b9d139269e7c79b746c9415b97ef4ceb373"
 dependencies = [
  "mere-base",
  "mere-layout",
@@ -204,8 +204,8 @@ dependencies = [
 
 [[package]]
 name = "mere-win32"
-version = "0.16.0"
-source = "git+https://github.com/louisfifre/mere-ui?tag=v0.16.0#e8c58c8f2e02b3f301043937e0ebafc571c97bd7"
+version = "0.17.0"
+source = "git+https://github.com/louisfifre/mere-ui?tag=v0.17.0#cbc71b9d139269e7c79b746c9415b97ef4ceb373"
 dependencies = [
  "mere-base",
  "windows",
@@ -235,7 +235,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "preview"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mere-base",
  "mere-layout",

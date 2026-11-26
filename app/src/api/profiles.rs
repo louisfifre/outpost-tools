@@ -49,8 +49,7 @@ impl Api {
             .filter_map(|dir| {
                 let id = dir.file_name().to_string_lossy().to_string();
                 let cfg = Cfg::read(&self.instance_cfg(&id)?);
-                let game = dir.path().join("minecraft");
-                let game_dir = fs::read_link(&game).map(plain_path).unwrap_or(game);
+                let game_dir = game_dir_of(&dir.path());
                 Some((id, cfg, game_dir))
             })
             .collect())
@@ -85,6 +84,8 @@ impl Api {
                 "id": id,
                 "name": cfg.get("name"),
                 "memoryMb": cfg.number("MaxMemAlloc"),
+                // The least memory; null when Prism has none to say, which the page reads as its starting 1 GB.
+                "minMemoryMb": cfg.get("MinMemAlloc").and_then(|v| v.trim().parse::<i64>().ok()),
                 "javaArgs": cfg.get("JvmArgs").unwrap_or_default(),
                 "gameDir": game_dir.to_string_lossy(),
                 // Milliseconds since 1970 and seconds, as Prism counts them; 0 when never played.
@@ -93,26 +94,22 @@ impl Api {
                 "running": state.games.iter().any(|(game, _)| *game == id),
                 "worlds": worlds(&game_dir),
                 "open": open,
+                // The mods on disk (a folder read, no network) and, when a look at Modrinth was made, how many have a newer
+                // version (null before the first look): what Home's line under the profile says.
+                "mods": super::mods::jar_count(&game_dir.join("mods")),
+                "updates": self.updates_seen(&id),
             }));
         }
         // locked: Prism keeps each instance's settings in memory and writes them back while it runs, so a setting
         // saved now would be lost.
         Ok(Reply::json(200, json!({
             "machineMb": self.machine_mb,
+            // What the PC uses now, for the memory bar's hatched end (0 when it cannot be read).
+            "usedMb": used_mb(),
             "account": self.account(),
             "locked": state.running,
             "profiles": profiles,
         })))
-    }
-
-    // Only the player name of the account Prism will use. The file also holds the sign-in tokens: they are never
-    // kept nor sent.
-    fn account(&self) -> Option<String> {
-        let file = self.prism().ok()?.parent()?.join("accounts.json");
-        let value: Value = serde_json::from_slice(&fs::read(file).ok()?).ok()?;
-        let accounts = value["accounts"].as_array()?;
-        let active = accounts.iter().find(|a| a["active"].as_bool() == Some(true)).or(accounts.first())?;
-        active["profile"]["name"].as_str().map(String::from)
     }
 
     pub(super) fn launch(&self, id: &str) -> Result<Reply, Failure> {
@@ -122,7 +119,8 @@ impl Api {
             return Ok(Reply::empty(409));
         }
         // Starting Prism says nothing about the game: the page then asks /api/launch how it goes.
-        system::start(&prism, &["--launch", id]).map_err(|e| e.to_string())?;
+        let account = self.launch_account();
+        system::start(&prism, &super::screens::launch_args(id, account.as_deref())).map_err(|e| e.to_string())?;
         live.launch = Some(Launch { id: id.to_string(), at: Instant::now(), saw_game: false, prepared: None });
         Ok(Reply::empty(200))
     }
@@ -154,6 +152,15 @@ impl Api {
         let Some(memory) = memory.filter(|m| *m >= 1024 && *m <= self.machine_mb as i64) else {
             return Ok(Reply::empty(400));
         };
+        // The least memory is optional (the page of older forms sends none): when given it is at least 1 GB and
+        // never above the most.
+        let least = match body.get("minMemoryMb").filter(|v| !v.is_null()) {
+            None => None,
+            Some(v) => match as_int(v).filter(|m| *m >= 1024 && *m <= memory) {
+                Some(m) => Some(m),
+                None => return Ok(Reply::empty(400)),
+            },
+        };
         if java_args.len() > 2000 || !open_valid {
             return Ok(Reply::empty(400));
         }
@@ -169,7 +176,9 @@ impl Api {
         cfg.set("OverrideMemory", "true");
         cfg.set("MaxMemAlloc", &memory.to_string());
         // The least memory must not exceed the most. A missing key stays missing: Prism has its own default.
-        if cfg.get("MinMemAlloc").and_then(|v| v.parse::<i64>().ok()).is_some_and(|least| least > memory) {
+        if let Some(least) = least {
+            cfg.set("MinMemAlloc", &least.to_string());
+        } else if cfg.get("MinMemAlloc").and_then(|v| v.parse::<i64>().ok()).is_some_and(|least| least > memory) {
             cfg.set("MinMemAlloc", &memory.to_string());
         }
         cfg.set("OverrideJavaArgs", "true");
@@ -180,6 +189,11 @@ impl Api {
         cfg.write(cfg_file).map_err(|e| e.to_string())?;
         Ok(Reply::empty(200))
     }
+}
+
+// Whether Prism runs: while it does, a profile's files are held and its settings would be written over.
+pub(super) fn prism_running(live: &mut Live) -> bool {
+    prism_state(&system::processes(&mut live.system)).running
 }
 
 // Where a launch stands at `now`, from Prism's processes; `has_window` tells whether the game's process shows its
@@ -263,6 +277,17 @@ fn worlds(game_dir: &Path) -> Vec<String> {
         .unwrap_or_default();
     names.sort();
     names
+}
+
+// The game folder of an instance's folder: `minecraft`, a link followed (a profile can share the folder of a pack).
+pub(super) fn game_dir_of(instance: &Path) -> PathBuf {
+    let game = instance.join("minecraft");
+    fs::read_link(&game).map(plain_path).unwrap_or(game)
+}
+
+// What the PC uses of its memory now, in MiB.
+fn used_mb() -> i64 {
+    i64::try_from(super::memory::PcMemory::read().used / (1024 * 1024)).unwrap_or(0)
 }
 
 // A link's target without the \\?\ prefix Windows gives it.

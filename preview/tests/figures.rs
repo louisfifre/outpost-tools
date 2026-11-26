@@ -100,7 +100,7 @@ fn shown_ids(world: &World, view: View) -> Vec<String> {
 #[test]
 fn g1_the_relief_column_has_the_real_figures_and_bands() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 5), None);
+    let mut rig = Rig::new(&world, state_for(&world, View::Height.index()), None);
     rig.park();
     let rgba = rig.shot("figures_1400.png");
     let ids = rig.app.ids().clone();
@@ -136,7 +136,7 @@ fn g1_the_relief_column_has_the_real_figures_and_bands() {
 #[test]
 fn g2_biomes_by_share_then_the_absent_ones_and_the_choice() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 0), None);
+    let mut rig = Rig::new(&world, state_for(&world, View::Biomes.index()), None);
     rig.park();
     let ids = rig.app.ids().clone();
     let l = list_of(&world, View::Biomes);
@@ -153,7 +153,7 @@ fn g2_biomes_by_share_then_the_absent_ones_and_the_choice() {
     let at = l.ids.iter().position(|x| *x == first).unwrap();
     rig.click_on(ids.list_rows[0]);
     rig.park();
-    assert!(rig.app.state().chosen[0].contains(&first) && rig.app.state().chosen[0].len() == 1);
+    assert!(rig.app.state().chosen[View::Biomes.index()].contains(&first) && rig.app.state().chosen[View::Biomes.index()].len() == 1);
     assert_eq!(rig.app.painted_view(), Some(View::Biomes));
     assert_eq!(rig.app.painted_choice(), Some(&BTreeSet::from([first.clone()])), "the map repaints with the choice");
     let ids = rig.app.ids().clone();
@@ -174,7 +174,7 @@ fn g2_biomes_by_share_then_the_absent_ones_and_the_choice() {
     // "Show all" clears the choice.
     rig.click_on(ids.pick_none);
     rig.park();
-    assert!(rig.app.state().chosen[0].is_empty());
+    assert!(rig.app.state().chosen[View::Biomes.index()].is_empty());
     assert_eq!(rig.app.painted_choice(), Some(&BTreeSet::new()));
     assert_eq!(rig.app.ids().pick_text, text::PICK_HINT);
 }
@@ -183,8 +183,8 @@ fn g2_biomes_by_share_then_the_absent_ones_and_the_choice() {
 fn g3_the_light_column() {
     let Some(world) = world() else { return };
     let top: Vec<String> = shown_ids(&world, View::Biomes).into_iter().take(2).collect();
-    let mut state = state_for(&world, 0);
-    state.chosen[0].extend(top.iter().cloned());
+    let mut state = state_for(&world, View::Biomes.index());
+    state.chosen[View::Biomes.index()].extend(top.iter().cloned());
     let mut m = Mini::new(Theme::light(), false, (1400, 940), &world, state, false);
     let rgba = m.shot("figures_light.png");
     let ids = m.app.ids().clone();
@@ -203,7 +203,7 @@ fn g3_the_light_column() {
 #[test]
 fn g4_the_filter_keeps_what_matches_and_what_is_chosen() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 0), None);
+    let mut rig = Rig::new(&world, state_for(&world, View::Biomes.index()), None);
     rig.park();
     let first = rig.app.ids().list_keys[0].clone();
     assert!(!first.contains("savanna"), "the first biome is not a savanna: {first}");
@@ -238,7 +238,7 @@ fn g4_the_filter_keeps_what_matches_and_what_is_chosen() {
 #[test]
 fn g5_structures_come_in_two_parts_with_round_marks() {
     let Some(world) = world() else { return };
-    let mut rig = Rig::new(&world, state_for(&world, 7), None);
+    let mut rig = Rig::new(&world, state_for(&world, View::Structures.index()), None);
     rig.park();
     let ids = rig.app.ids().clone();
     let s = world.structures.as_ref().expect("structures");
@@ -274,7 +274,7 @@ fn g5_structures_come_in_two_parts_with_round_marks() {
 #[test]
 fn g6_a_narrower_window_does_not_shrink_the_goal_figures() {
     let Some(world) = world() else { return };
-    let mut m = Mini::new(Theme::dark(), true, (1000, 940), &world, state_for(&world, 6), false);
+    let mut m = Mini::new(Theme::dark(), true, (1000, 940), &world, state_for(&world, View::Temperature.index()), false);
     m.shot("figures_1000.png");
     // No breakpoint since step 19: the page's wide numbers hold at 1000 px too.
     let cols = preview::PAGE;
@@ -292,7 +292,7 @@ fn g7_the_run_before_gives_the_change_column() {
     let f = world.measured.figures;
     let b1 = before_of(&f);
     std::fs::write(root.join("before.json"), b1.to_json()).unwrap();
-    let mut rig = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
+    let mut rig = Rig::new(&world, state_for(&world, View::Height.index()), Some(runs(&root, &[])));
     rig.park();
     rig.shot("figures_change.png");
     let ids = rig.app.ids().clone();
@@ -329,7 +329,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
     let on_disk = fixtures(&world);
     let file = runs(&root, &[]).history();
     history::save(&file, &on_disk).unwrap();
-    let mut rig = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
+    let mut rig = Rig::new(&world, state_for(&world, View::Height.index()), Some(runs(&root, &[])));
     rig.park();
     let kept = history::load(&file);
     assert_eq!(kept.len(), 4, "the real map is added to the three fixtures");
@@ -364,7 +364,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
     assert_eq!(rig.app.ids().history_probe, text::history_hint(4));
 
     // H3: a second app on the same folder finds the real map last and adds nothing.
-    let second = Rig::new(&world, state_for(&world, 5), Some(runs(&root, &[])));
+    let second = Rig::new(&world, state_for(&world, View::Height.index()), Some(runs(&root, &[])));
     assert_eq!(second.app.state().history.len(), 4);
     assert_eq!(history::load(&file).len(), 4, "the file is unchanged");
 }
@@ -373,7 +373,7 @@ fn h1_h2_h3_the_history_opens_follows_the_pointer_and_dedupes() {
 fn h4_a_finished_run_keeps_the_run_before_and_the_new_map() {
     let Some(world) = world() else { return };
     let root = root("history_h4");
-    let mut state = state_for(&world, 5);
+    let mut state = state_for(&world, View::Height.index());
     state.seed = "h4-seed".to_string();
     // One setting moved before Generate, as a person would.
     state.values[0] += 0.01;
@@ -382,8 +382,7 @@ fn h4_a_finished_run_keeps_the_run_before_and_the_new_map() {
     let mut rig = Rig::new(&world, state, Some(runs(&root, &env)));
     rig.park();
     assert_eq!(history::load(&root.join("history.json")).len(), 1, "the map on screen is kept at the start");
-    let g = rig.app.ids().generate;
-    rig.click_on(g);
+    rig.generate();
     rig.until(60, "the run to end", |r| !r.app.running());
     rig.park();
     rig.shot("history_h4.png");

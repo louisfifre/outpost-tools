@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use launcher_native::LauncherHome;
-use launcher_native::bridge::{Answer, Backend, Bridge, Done, Tag};
-use launcher_native::home::Calendar;
+use outpost_tools::LauncherHome;
+use outpost_tools::bridge::{Answer, Backend, Bridge, Done, Tag};
+use outpost_tools::home::Calendar;
 use preview::Home;
 
 struct Panics;

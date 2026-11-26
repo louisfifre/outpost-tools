@@ -11,6 +11,7 @@ use preview::figures::{Cell, Figures, blocks, figure_cells, percent};
 use preview::history::{self, Entry, FOLLOWED};
 use preview::json::Json;
 use preview::text;
+use preview::paint::View;
 use preview::world::World;
 
 fn data_dir() -> PathBuf {
@@ -135,9 +136,10 @@ fn f2_the_lists_and_the_absent_biomes_are_the_pages() {
     let lists = field(&meta, "lists");
     let samples2 = (world.samples * world.samples) as f64;
     let mut strings = 0;
-    for (i, kind) in ["biomes", "flat", "slope", "cliffs", "vegetation", "height", "temperature", "structures"].into_iter().enumerate() {
+    for view in View::ALL {
+        let kind = view.key();
         let theirs = field(lists, kind);
-        let ours = world.measured.lists[i].as_ref();
+        let ours = world.measured.lists[view.index()].as_ref();
         if matches!(theirs, Json::Null) {
             assert!(ours.is_none(), "{kind}: the page has no list");
             continue;

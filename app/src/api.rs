@@ -7,11 +7,24 @@
 // repository in `repo`.
 
 mod dev_server;
+pub mod instance;
+pub mod java;
+mod java_setup;
 mod key_value;
+mod memory;
+pub mod modrinth;
+pub mod mods;
+pub mod mrpack;
 mod preview;
+mod prism_portable;
 mod profiles;
+mod screens;
+mod server_run;
+pub mod servers;
+pub mod skin;
 
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     process::Child,
@@ -25,6 +38,8 @@ use crate::system;
 use dev_server::ServerLaunch;
 use preview::PREVIEW_URL;
 use profiles::Launch;
+use server_run::Run;
+pub use server_run::Runner;
 
 pub struct Reply {
     pub status: u16,
@@ -91,6 +106,8 @@ struct Config {
 struct Live {
     launch: Option<Launch>,
     server: Option<ServerLaunch>,
+    // The servers of the servers folder this program started (api/server_run.rs).
+    runs: Vec<Run>,
     preview: Option<Child>,
     system: System,
 }
@@ -101,8 +118,14 @@ pub struct Api {
     origin: String,
     config: OnceLock<Config>,
     live: Mutex<Live>,
+    runner: Runner,
     machine_mb: u64,
     log: PathBuf,
+    // How many mods have a newer version, per profile, as the last look at Modrinth found them (mods.rs). Home reads
+    // it with the profiles and never asks the network: a profile not looked at yet has no entry.
+    updates_seen: Mutex<HashMap<String, usize>>,
+    // What the page that adds a mod asked of Modrinth lately, and the order of its searches (api/mods/search.rs).
+    searches: mods::Searches,
 }
 
 impl Api {
@@ -115,10 +138,19 @@ impl Api {
             repo,
             origin,
             config: OnceLock::new(),
-            live: Mutex::new(Live { launch: None, server: None, preview: None, system }),
+            live: Mutex::new(Live { launch: None, server: None, runs: Vec::new(), preview: None, system }),
+            runner: Runner::real(),
             machine_mb,
             log,
+            updates_seen: Mutex::new(HashMap::new()),
+            searches: mods::Searches::default(),
         }
+    }
+
+    /// The same api with what starts a server and its Java put in place of the real ones: for tests and pictures.
+    pub fn with_runner(mut self, runner: Runner) -> Api {
+        self.runner = runner;
+        self
     }
 
     // Why something failed, kept in run\launcher.log: the only trace once the window is gone.
@@ -176,6 +208,10 @@ impl Api {
     }
 
     fn route(&self, method: &str, path: &str, origin: Option<&str>, body: &[u8]) -> Result<Reply, Failure> {
+        // The routes of the native screens (servers, accounts, skin, links) answer first, from api/screens.rs.
+        if let Some(reply) = self.screens_route(method, path, origin, body)? {
+            return Ok(reply);
+        }
         let path = path.split('?').next().unwrap_or(path);
         if method == "GET" {
             return Ok(match path {
@@ -194,7 +230,11 @@ impl Api {
                     let mut live = self.live();
                     Reply::json(200, self.server_info(&mut live)?)
                 }
+                "/api/java" => self.java_state(),
+                "/api/java/found" => self.java_found(),
                 "/api/ping" => Reply::empty(200),
+                // The mods of a profile (api/mods.rs).
+                mods if mods.starts_with("/api/mods/") => self.mods_get(mods)?,
                 "/api/preview" => Reply::json(200, json!({ "available": self.preview_serve().exists(), "url": PREVIEW_URL })),
                 _ => Reply::empty(404),
             });
@@ -213,6 +253,8 @@ impl Api {
                 }
                 Err(unavailable) => return Err(unavailable),
             }),
+            "/api/java/download" => Ok(self.java_download()),
+            "/api/java/stop" => Ok(self.java_stop()),
             "/api/server/start" => self.server_start(),
             "/api/server/stop" => self.server_stop(),
             "/api/server/folder" => {
@@ -222,6 +264,8 @@ impl Api {
                 Ok(Reply::empty(200))
             }
             "/api/server/settings" => self.server_settings(&body),
+            // The mods of a profile, and a page opened in the browser (api/mods.rs).
+            mods if mods.starts_with("/api/mods/") || mods == "/api/open-url" => self.mods_post(mods, &body),
             _ => {
                 let mut parts = path.trim_start_matches("/api/").splitn(2, '/');
                 let (action, id) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));

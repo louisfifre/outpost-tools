@@ -32,6 +32,8 @@ impl Backend for launcher::api::Api {
 pub enum Tag {
     Profiles,
     Server,
+    /// Every server Home lists: the servers folder's and the dev server.
+    Servers,
     Launch,
     Play(String),
     ServerStart,
@@ -39,7 +41,31 @@ pub enum Tag {
     SaveProfile,
     SaveServer,
     Folder,
+    /// A profile's game version, Fabric and mods (its page).
+    Instance(String),
+    /// One of the profile page's actions on a mod, Fabric or all of them: what it was, to say it.
+    ModAction(String),
+    /// A link opened in the browser.
+    OpenUrl,
     ServerFolder,
+    /// A request of the page that adds a mod.
+    Mods(crate::pages::add_mod::Ask),
+    /// Accept the Minecraft EULA for the server (the api writes the line; nothing here does).
+    Eula,
+    /// Open a link in the person's browser.
+    OpenLink,
+    Accounts,
+    /// The skin of an account, by its name.
+    Skin(String),
+    AccountUse,
+    AccountAdd,
+    AccountSignOut,
+    /// The first start's Java step: its state, the start of its download, its stop.
+    Java,
+    /// Whether a Java 25 is on the PC, asked once at the start (files only): none opens the set-up before Home.
+    JavaFound,
+    JavaStart,
+    JavaStop,
 }
 
 #[derive(Clone, Debug)]

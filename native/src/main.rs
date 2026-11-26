@@ -1,6 +1,6 @@
-// launcher-native [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]
+// outpost-tools [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]
 //
-// The native launcher: the world preview's window with the launcher's Home, answered by the same api as the page's
+// Outpost Tools, native: the world preview's window with the launcher's Home, answered by the same api as the page's
 // launcher (app), called in process. Without --shot, opens the window, which draws its own bar and holds
 // the preview's least size. With it, draws one frame offscreen and writes the PNG, from a fake api and a fixed date:
 // a picture never asks the real one and does not depend on the machine.
@@ -10,17 +10,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use launcher::{api::Api, find_repo, system};
-use launcher_native::bridge::Bridge;
-use launcher_native::fake;
-use launcher_native::home::{Calendar, LauncherHome};
-use launcher_native::{ORIGIN, app};
+use outpost_tools::bridge::Bridge;
+use outpost_tools::fake;
+use outpost_tools::home::{Calendar, LauncherHome};
+use outpost_tools::{ORIGIN, app};
 use mere_base::{Vec2, log};
 use mere_ui::{Slide, Theme};
 use preview::world::World;
 use preview::{MIN_SIZE, Mode, text};
 
 fn usage() -> ! {
-    eprintln!("usage: launcher-native [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]");
+    eprintln!("usage: outpost-tools [--repo DIR] [--theme dark|light|system] [--shot out.png --size WxH --tool home|preview --data DIR]");
     std::process::exit(2);
 }
 
@@ -91,11 +91,11 @@ fn picture(path: &str, size: (u32, u32), light: bool, tool: &str, data: Option<P
     }
     app.ui_mut().set_clipboard(Box::new(mere_win32::SystemClipboard));
     let rgba = mere_win32::shot(&mut app, w, h, 1.0).unwrap_or_else(|e| {
-        eprintln!("launcher-native: {e}");
+        eprintln!("outpost-tools: {e}");
         std::process::exit(1);
     });
     if let Err(e) = std::fs::write(path, mere_png::encode(w, h, &rgba)) {
-        eprintln!("launcher-native: {path}: {e}");
+        eprintln!("outpost-tools: {path}: {e}");
         std::process::exit(1);
     }
     mere_base::observe!(Info, "wrote {path}");
@@ -108,14 +108,14 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let api = Arc::new(Api::new(repo.clone(), ORIGIN.into()));
     // A second start is refused: `only_one` raises the running window, whose handle the toolkit keeps in `hwnd.txt`.
     if !system::only_one(&data) {
-        api.write_log("start refused: the launcher already runs");
+        api.write_log("start refused: Outpost Tools already runs");
         return;
     }
     // Holding the lock, whatever `hwnd.txt` says is from a dead session (the toolkit removes it when its window
     // closes, a crash leaves it); handles are recycled, so a later start must not raise it.
     let _ = std::fs::remove_file(data.join("hwnd.txt"));
-    api.write_log("started (native)");
-    // What the toolkit warns of goes to the launcher's log: with no console it is the only trace.
+    api.write_log("Outpost Tools started (native)");
+    // What the toolkit warns of goes to Outpost Tools' log: with no console it is the only trace.
     let sink_api = api.clone();
     log::add_sink(move |r| {
         if r.level >= log::Level::Warn {
@@ -123,7 +123,7 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
         }
     });
 
-    let runs = launcher_native::runs(&api, &repo);
+    let runs = outpost_tools::runs(&api, &repo);
     let (world, unreadable) = load_world(&runs.out());
 
     let dark = match scheme {
@@ -134,7 +134,7 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     let home = LauncherHome::new(Bridge::threads(api.clone()), Calendar::real());
     let theme = if dark { Theme::dark() } else { Theme::light() };
     let (w, h) = preview::min_size_px((1280, 880));
-    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, mere_win32::reduced_motion()).follow_scheme(scheme == "system").with_places(launcher_native::sources(&api));
+    let mut app = app(theme, dark, Vec2::new(w as f32, h as f32), world, Some(runs), home, mere_win32::reduced_motion()).follow_scheme(scheme == "system").with_places(outpost_tools::sources(&api));
     if unreadable {
         app.state_mut().trouble = text::UNREADABLE.to_string();
     }
@@ -152,5 +152,5 @@ fn window(repo: Option<PathBuf>, scheme: &str) {
     if let Err(e) = mere_win32::run_with(preview::text::BAR_TITLE, &mut app, frame) {
         api.write_log(&format!("the window failed: {e}"));
     }
-    api.write_log("stopped: the window was closed");
+    api.write_log("Outpost Tools stopped: the window was closed");
 }

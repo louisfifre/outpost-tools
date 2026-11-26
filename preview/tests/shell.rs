@@ -196,11 +196,16 @@ fn l9_goal_values() {
 }
 #[test]
 fn l10_run_block() {
+    // The two split actions side by side, each a word and a chevron, and nothing open above them.
     let (ui, ids, _) = shell(1400.0, H);
-    let left = r(&ui, ids.left);
-    let d = r(&ui, ids.details);
-    near(d.h, 28.0, "details h");
-    let g = r(&ui, ids.generate);
+    let (g, gm, a, am) = (r(&ui, ids.generate), r(&ui, ids.generate_more), r(&ui, ids.apply), r(&ui, ids.place_line));
     near(g.h, 36.0, "generate h");
-    near(g.w, left.w, "generate w");
+    near(a.h, 36.0, "apply h");
+    near(g.y, a.y, "one row");
+    assert!(gm.x + gm.w - g.x > am.x + am.w - a.x, "Generate, with the longer word, is the wider");
+    let left = r(&ui, ids.left);
+    near(am.x + am.w, left.x + left.w, "the row ends with the panel");
+    near(gm.w, 36.0, "a narrow chevron part");
+    near(a.x, gm.x + gm.w + 6.0, "6 px between the halves");
+    assert_eq!((ids.details, ids.place_list), (Id::ROOT, Id::ROOT), "closed");
 }

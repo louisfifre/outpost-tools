@@ -19,7 +19,7 @@ pub const PROFILES: &str = "Settings";
 /// Line 582.
 pub const PACK: &str = "Pack";
 /// The filter at the top of the settings panel: only the groups that relate to the pressed map. Not the page's.
-/// It names the map, `view` as `PreviewState::view` (0 to 4 the strip's maps, 5 the section).
+/// It names the map, `view` as `PreviewState::view` (0 to 5 the strip's maps, 6 the section).
 pub fn view_only(view: usize) -> String {
     match VIEWS.get(view) {
         Some(name) => format!("Only for the {name} map"),
@@ -33,8 +33,6 @@ pub const VIEW_ONLY_HINT: &str = "Lists only the settings that change what the p
 pub fn shown_of(shown: usize, all: usize) -> String {
     format!("{shown} of {all}")
 }
-/// Line 467.
-pub const UP_TO_DATE: &str = "The map shows these settings.";
 /// Line 464, `detailValue` of 64, 32 and 16.
 pub const DETAILS: [&str; 3] = ["64 blocks", "32 blocks", "16 blocks"];
 /// Line 462.
@@ -46,7 +44,7 @@ pub const FIGURES: &str = "In figures";
 /// Line 492.
 pub const HISTORY: &str = "History";
 /// Line 588.
-pub const VIEWS: [&str; 8] = ["Biomes", "Flat", "Steepness", "Cliffs", "Vegetation", "Relief", "Temperature", "Structures"];
+pub const VIEWS: [&str; 6] = ["Relief", "Steepness", "Biomes", "Vegetation", "Temperature", "Structures"];
 /// Line 619.
 pub const SECTION: &str = "Section";
 /// Line 589.
@@ -236,13 +234,11 @@ pub fn pretty(id: &str) -> String {
 
 /// Line 508: what the list beside the map holds in each view, by `View::index`: its title and the name of its
 /// first column.
-pub const LISTS: [[&str; 2]; 8] = [
-    ["Biomes", "biome"],
-    ["Ground", "ground"],
-    ["Steepness", "ground"],
-    ["Cliffs", "ground"],
-    ["Vegetation", "cover"],
+pub const LISTS: [[&str; 2]; 6] = [
     ["Heights", "height"],
+    ["Steepness", "ground"],
+    ["Biomes", "biome"],
+    ["Vegetation", "cover"],
     ["Temperatures", "climate"],
     ["Structures", "structure"],
 ];
@@ -274,29 +270,24 @@ pub const FILTER: &str = "Filter by name\u{2026}";
 pub const ABSENT: &str = "Not in this area";
 /// Line 600: the structures' two parts, surface first.
 pub const PARTS: [&str; 2] = ["On the surface", "Under the ground"];
-/// Line 648.
-pub const LEGEND_FLAT: [&str; 3] = ["Flat", "Slopes", "Water"];
 /// Line 649.
 pub const LEGEND_TEMPERATURE: [&str; 5] = ["Frozen", "Cold", "Temperate", "Warm", "Scorching"];
-/// The rows of the Steepness, Cliffs and Vegetation lists (the page's `legend`), by `View::index`; the other views
+/// The rows of the Steepness and Vegetation lists (the page's `legend`), by `View::index`; the other views
 /// have none here.
 pub fn legend(view: usize) -> &'static [&'static str] {
     match view {
-        2 => &["Level", "Gentle", "Sloping", "Steep", "Wall", "Water"],
-        3 => &["Flat at the foot of a wall", "Wall", "Flat on top of a wall", "Other land", "Water"],
-        4 => &["Bare", "Open", "Forest", "Dense", "Water"],
+        1 => &["Level", "Gentle", "Sloping", "Steep", "Wall", "Water"],
+        3 => &["Bare", "Open", "Forest", "Dense", "Water"],
         _ => &[],
     }
 }
 /// What each map shows, said on its tab (the page's `viewHints`), by `View::index`; empty for the views the page
 /// gives no hint.
-pub const VIEW_HINTS: [&str; 8] = [
+pub const VIEW_HINTS: [&str; 6] = [
     "",
-    "Where a village could stand on level ground: land whose neighbours are within 2 blocks of height.",
     "How steep the ground is: the biggest height gap to a neighbour point 16 blocks away. Green is level, red is nearly a wall.",
-    "Where a flat area sits beside a steep wall: at its foot, for houses dug into the rock, or on top, for a village looking down. Walls are read on a 16-block grid: a real face may be sheerer.",
-    "How green the land is, read from the biome\u{2019}s name: bare rock, sand or snow; open grass; forest; dense jungle, dark forest or swamp. A modded biome with an unusual name counts as open.",
     "",
+    "How green the land is, read from the biome\u{2019}s name: bare rock, sand or snow; open grass; forest; dense jungle, dark forest or swamp. A modded biome with an unusual name counts as open.",
     "",
     "",
 ];
@@ -524,6 +515,13 @@ pub const MORE_TITLE: &str = "More views";
 /// The tooltips of the bar's two buttons that open and close the side panels (preview tool only), and of the grip
 /// between a panel and the stage. Not the page's: the page has fixed panels.
 pub const SETTINGS_PANEL: &str = "Settings panel";
+/// The account menu of the bar (board A2).
+pub const ACCOUNT_MENU: &str = "Accounts";
+pub const ADD_ACCOUNT: &str = "Add an account";
+pub const IN_USE: &str = "in use";
+pub fn sign_out(name: &str) -> String {
+    format!("Sign out of {name}")
+}
 pub const FIGURES_PANEL: &str = "Figures panel";
 pub const RESIZE_PANEL: &str = "Drag to resize, double-click to reset";
 /// Line 342: where a run of the preview stands, by marker.
@@ -630,7 +628,6 @@ pub fn and_list(names: &[&str]) -> String {
         [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
-pub const APPLY_SEAMS: &str = "On a world that already exists, new values leave visible seams between old and new chunks. They take full effect on a new world.";
 pub const NO_GAME_FOUND: &str = "No installed game was found. Choose the folder of your game, the one that holds the mods folder.";
 /// In amber, after a folder chosen in the list was refused.
 pub const NOT_A_GAME: &str = "That folder has no mods folder, so it is not a game. Choose the folder that holds the mods folder.";

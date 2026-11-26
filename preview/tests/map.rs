@@ -74,18 +74,18 @@ fn near(a: [u8; 3], b: [u8; 3], tolerance: i32) -> bool {
 }
 
 #[test]
-fn m1_the_five_views_and_the_themes() {
+fn m1_the_views_and_the_themes() {
     let Some(world) = load() else { return };
-    take(&world, true, state(0), "map_biomes_light.png");
-    take(&world, true, state(5), "map_relief_light.png");
-    take(&world, false, state(0), "map_biomes.png");
-    take(&world, false, state(1), "map_flat.png");
-    take(&world, false, state(6), "map_temperature.png");
-    let mut s = state(7);
+    take(&world, true, state(View::Biomes.index()), "map_biomes_light.png");
+    take(&world, true, state(View::Height.index()), "map_relief_light.png");
+    take(&world, false, state(View::Biomes.index()), "map_biomes.png");
+    take(&world, false, state(View::Slope.index()), "map_steepness.png");
+    take(&world, false, state(View::Temperature.index()), "map_temperature.png");
+    let mut s = state(View::Structures.index());
     s.chosen[View::Structures.index()] = surface_kinds(&world);
     take(&world, false, s, "map_structures.png");
-    let mut s = state(0);
-    s.chosen[0] = ["minecraft:badlands", "minecraft:savanna"].iter().map(|s| s.to_string()).collect();
+    let mut s = state(View::Biomes.index());
+    s.chosen[View::Biomes.index()] = ["minecraft:badlands", "minecraft:savanna"].iter().map(|s| s.to_string()).collect();
     let shot = take(&world, false, s, "map_biomes_chosen.png");
     // A chosen biome keeps its colours and the rest steps back to grey: some pixel of the frame is a pure grey.
     let greys = (0..shot.side as i32).step_by(7).flat_map(|x| (0..shot.side as i32).step_by(7).map(move |y| (x, y))).filter(|&(x, y)| {
@@ -98,7 +98,7 @@ fn m1_the_five_views_and_the_themes() {
 #[test]
 fn m2_rest_look_shows_each_point_as_its_texel() {
     let Some(world) = load() else { return };
-    let shot_dark = take(&world, false, state(5), "map_relief.png");
+    let shot_dark = take(&world, false, state(View::Height.index()), "map_relief.png");
     let img = paint(&world, View::Height, true, &BTreeSet::new());
     let n = world.samples;
     let side = shot_dark.side;
@@ -153,7 +153,7 @@ fn m2_rest_look_shows_each_point_as_its_texel() {
 #[test]
 fn m3_zoomed_in_every_texel_is_a_hard_block() {
     let Some(world) = load() else { return };
-    let mut s = state(5);
+    let mut s = state(View::Height.index());
     s.look = Look { k: 8.0, x: -2.0, y: -2.0 };
     let shot = take(&world, false, s, "map_relief_zoom8.png");
     let img = paint(&world, View::Height, true, &BTreeSet::new());
@@ -205,7 +205,7 @@ fn m3_zoomed_in_every_texel_is_a_hard_block() {
 fn m4_a_structure_mark_is_a_disc_of_its_colour() {
     let Some(world) = load() else { return };
     let s = world.structures.as_ref().unwrap();
-    let mut st = state(7);
+    let mut st = state(View::Structures.index());
     st.chosen[View::Structures.index()] = surface_kinds(&world);
     let shot = take(&world, false, st, "map_structures_marks.png");
     let side = shot.side as f64;

@@ -1,4 +1,4 @@
-//! The Steepness, Cliffs and Vegetation maps: ported from preview.html's `steepness()` and the `slope`, `cliffs` and
+//! The Steepness and Vegetation maps: ported from preview.html's `steepness()` and the `slope` and
 //! `vegetation` branches of `bands()` (world-preview's page), so that the list and the map give what the page's do.
 //! Each gives, per point, the row of its list; the names and the hovers are `text::LEGEND_*`.
 //!
@@ -10,11 +10,6 @@ use crate::world::World;
 
 /// Where one row of steepness ends and the next starts, in blocks of height between two points 16 apart.
 pub const SLOPE_EDGES: [f64; 4] = [2.0, 5.0, 10.0, 16.0];
-/// A drop of more than this between two points 16 apart is a wall.
-pub const WALL: f64 = 10.0;
-/// How many points away a wall still counts as beside a flat point (32 blocks): the ground right at its foot is
-/// itself tilted, so it is rarely flat by the Flat view's test.
-pub const REACH: isize = 2;
 
 /// The biggest height gap, in blocks, from a land point to the four points around it. A neighbour under water does
 /// not count: a river bed would make every bank a slope.
@@ -32,12 +27,11 @@ pub fn steepness(heights: &[i16], n: usize, sea: f64, i: usize) -> f64 {
     .fold(0.0, f64::max)
 }
 
-/// The row of each point in `view` (Slope, Cliffs or Vegetation), or None for another view.
+/// The row of each point in `view` (Slope or Vegetation), or None for another view.
 pub fn rows(world: &World, view: View) -> Option<Vec<u16>> {
     let total = world.samples * world.samples;
     Some(match view {
         View::Slope => (0..total).map(|i| slope_row(world, i)).collect(),
-        View::Cliffs => (0..total).map(|i| cliff_row(world, i)).collect(),
         View::Vegetation => {
             // The biome's cover read once per biome, not once per point.
             let cover: Vec<u16> = world.biomes.iter().map(|b| cover_of(&b.id)).collect();
@@ -52,7 +46,6 @@ pub fn rows(world: &World, view: View) -> Option<Vec<u16>> {
 pub fn row_at(world: &World, view: View, i: usize) -> Option<u16> {
     Some(match view {
         View::Slope => slope_row(world, i),
-        View::Cliffs => cliff_row(world, i),
         View::Vegetation => vegetation_row(world, i, cover_of(&world.biomes[world.biome_at[i] as usize].id)),
         _ => return None,
     })
@@ -69,37 +62,6 @@ fn slope_row(world: &World, i: usize) -> u16 {
     }
     let gap = steepness(&world.heights, world.samples, world.sea_level, i);
     SLOPE_EDGES.iter().position(|&edge| gap <= edge).unwrap_or(SLOPE_EDGES.len()) as u16
-}
-
-/// Flat at the foot of a wall, wall, flat on top of a wall, other land, water.
-fn cliff_row(world: &World, i: usize) -> u16 {
-    let n = world.samples;
-    let total = n * n;
-    let h = &world.heights;
-    if water(world, i) {
-        return 4;
-    }
-    let flat = world.flat_at[i] == 1;
-    if !flat && steepness(h, n, world.sea_level, i) <= WALL {
-        return 3;
-    }
-    let x = (i % n) as isize;
-    let (mut below, mut above) = (false, false);
-    for dz in -REACH..=REACH {
-        for dx in -REACH..=REACH {
-            let j = i as isize + dz * n as isize + dx;
-            if (dz != 0 || dx != 0) && j >= 0 && (j as usize) < total && x + dx >= 0 && x + dx < n as isize && !water(world, j as usize) {
-                let rise = h[j as usize] as f64 - h[i] as f64;
-                above |= rise >= WALL;
-                below |= -rise >= WALL;
-            }
-        }
-    }
-    if flat {
-        if above { 0 } else if below { 2 } else { 3 }
-    } else {
-        1
-    }
 }
 
 /// Bare, open, forest, dense, water: read from the biome's name (`cover`, the biome's `cover_of`), so a modded
@@ -136,7 +98,7 @@ mod tests {
     use super::*;
     use crate::world::{Biome, World};
 
-    /// `n` a side, sea at 63; `heights` row by row. Flat is what `flat_at` says, so a test picks it by hand.
+    /// `n` a side, sea at 63; `heights` row by row.
     fn world(n: usize, heights: Vec<i16>, flat_at: Vec<u8>, biomes: &[&str], biome_at: Vec<u16>) -> World {
         World {
             seed: String::new(),
@@ -181,27 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn a_flat_point_beside_a_wall_is_at_its_foot_or_on_top() {
-        // 8 x 1 strip of 8 points (a grid of 8 a side, only the middle row matters): low ground at 70, then a
-        // wall up to 100. The flat low points within 2 of the wall are at its foot; the flat high ones on top.
-        let n = 8;
-        let row: Vec<i16> = vec![70, 70, 70, 70, 100, 100, 100, 100];
-        let mut h = Vec::new();
-        for _ in 0..n {
-            h.extend(row.clone());
-        }
-        let flat = vec![1u8; n * n];
-        let w = world(n, h, flat, &["x"], vec![0; n * n]);
-        let at = rows(&w, View::Cliffs).unwrap();
-        let row_at = &at[3 * n..4 * n];
-        // x = 0 is 4 points from the wall: other land is not what flat gives, but it is flat here, so no wall near.
-        assert_eq!(row_at[0], 3, "too far from the wall");
-        assert_eq!(row_at[2], 0, "two points from the wall: at its foot");
-        assert_eq!(row_at[5], 2, "two points past the wall: on top");
-        assert_eq!(row_at[7], 3, "too far from the wall");
-    }
-
-    #[test]
     fn vegetation_reads_the_biome_name_and_water_wins() {
         let ids = ["minecraft:desert", "minecraft:plains", "minecraft:birch_forest", "minecraft:jungle", "minecraft:river", "minecraft:swamp_river"];
         let n = 6;
@@ -229,7 +170,6 @@ pub fn colours(view: View) -> Vec<[u8; 3]> {
             hsl_to_rgb(350.0, 55.0, 30.0),
             flat_sea_colour(),
         ],
-        View::Cliffs => vec![hsl_to_rgb(18.0, 78.0, 55.0), hsl_to_rgb(0.0, 0.0, 28.0), hsl_to_rgb(215.0, 70.0, 62.0), hsl_to_rgb(30.0, 8.0, 62.0), flat_sea_colour()],
         View::Vegetation => vec![hsl_to_rgb(38.0, 28.0, 66.0), hsl_to_rgb(78.0, 52.0, 62.0), hsl_to_rgb(120.0, 45.0, 42.0), hsl_to_rgb(140.0, 60.0, 24.0), flat_sea_colour()],
         _ => Vec::new(),
     }

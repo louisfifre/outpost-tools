@@ -15,8 +15,8 @@ use std::sync::Arc;
 use mere_base::{Cmd, Color, Cursor, DrawList, Orbit, Rect, Vec2, Weight};
 use mere_layout::{Align, Dim, Display, Edges, Insets, Justify, Margin, Position, Side, Style, Track, Tracks};
 use mere_ui::{
-    ActionLook, ActionOpts, FieldLook, FieldOpts, Id, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
-    choice_style, details_style, scroll_style, wrap_lines, GripResp, HelpText, Icon, Part, Rule, StagePlan, ValueRow,
+    ActionLook, FieldLook, FieldOpts, Id, ImmediateRow, ListRow, PartOpts, RowOpts, ScrollOpts, SelectOpts, Slide, SplitOpts, TabLook, TabOpts, TextLook, Theme, Tone, Ui,
+    choice_style, scroll_style, wrap_lines, GripResp, HelpText, Icon, Part, Rule, StagePlan, ValueRow,
 };
 
 use crate::home::Home;
@@ -145,7 +145,7 @@ pub struct PreviewState {
     pub grip: Option<Grip>,
     /// The scroll of each panel as one whole, when the panels are stacked.
     pub panel_y: [f32; 2],
-    /// The strip's pressed view: 0 to 7 are `text::VIEWS`, 8 (`paint::SECTION`) is the section.
+    /// The strip's pressed view: 0 to 5 are `text::VIEWS`, 6 (`paint::SECTION`) is the section.
     pub view: usize,
     pub in3d: bool,
     /// How finely the 3D view draws the land: the pressed one of `text::LEVELS`.
@@ -171,6 +171,8 @@ pub struct PreviewState {
     pub apply: crate::apply::Notice,
     /// The pressed detail: an index in `text::DETAILS`.
     pub detail: usize,
+    /// The list of details is open above Generate's chevron.
+    pub details_open: bool,
     pub settings_y: f32,
     /// The filter above the settings: on, only the groups related to the pressed view are listed (iew_filter).
     /// It stays on when the view changes.
@@ -231,6 +233,14 @@ pub struct PreviewState {
     /// The bar's `#account` (launcher line 84): who plays, said once beside the game's name. None while unknown, and
     /// in the standalone preview, which has no account.
     pub account: Option<String>,
+    /// What the account's menu lists, as Home gave it, and whether it is open. `account_ask` is what the person asked of
+    /// it in the last build, taken by the application once the build is over.
+    pub account_menu: Arc<crate::home::AccountMenu>,
+    pub account_open: bool,
+    pub account_ask: Option<crate::home::AccountAsk>,
+    /// Home shows its first-start set-up (`Home::bare_bar`): the bar keeps only the brand's cube and name and the window's
+    /// buttons, with no tools and no account.
+    pub bare: bool,
     /// The tools' options sliding open and shut (launcher line 124), 1 being open. Kept in step with `mode`: a
     /// state that names a mode without it is put right when the bar is built.
     pub options: Slide,
@@ -279,6 +289,7 @@ impl Default for PreviewState {
             folder_refused: false,
             apply: Default::default(),
             detail: 2,
+            details_open: false,
             settings_y: 0.0,
             view_only: false,
             settings_list: None,
@@ -309,6 +320,10 @@ impl Default for PreviewState {
             preview_seen: true,
             ended: RunEnd::Idle,
             account: None,
+            account_menu: Arc::default(),
+            account_open: false,
+            account_ask: None,
+            bare: false,
             options: Slide::settled(true),
             options_w: 0.0,
             reduce_motion: false,
@@ -328,6 +343,9 @@ pub struct ShellIds {
     /// The bar of the window, its brand, the two tools' buttons (Home, preview) and the window's three buttons.
     pub bar: Id,
     pub brand: Id,
+    /// The account's button and its open menu (Id::ROOT while there is no menu or it is shut).
+    pub account: Id,
+    pub account_list: Id,
     /// The bar's two buttons that open and close the settings and the figures panel (Id::ROOT in Home).
     pub toggles: [Id; 2],
     /// The grips between each panel and the stage (Id::ROOT when stacked or the panel is closed).
@@ -362,7 +380,7 @@ pub struct ShellIds {
     pub select: Id,
     /// `#areaHint`, built only past the widest fine area.
     pub area_hint: Id,
-    /// The two choices beside Apply that put every value back, then each of them: the pack's, Tectonic's own.
+    /// The line "Back to" and its two choices that put every value back, then each of them: the pack's, Tectonic's own.
     pub profiles: Id,
     pub back_pack: Id,
     pub original: Id,
@@ -398,8 +416,11 @@ pub struct ShellIds {
     /// The sentence under Apply about the places: no game found, or the folder chosen refused.
     pub place_note: &'static str,
     pub place_text: String,
-    /// The Apply button and the words under it (Id::ROOT when not built), and what they say, a line per sentence.
+    /// The two actions at the bottom of the panel, `generate` and `apply`: a first press opens the choices above the
+    /// row, a second does the action.
     pub apply: Id,
+    /// The chevron parts of the two actions (`generate` and `apply` are their words); the place line is Apply's.
+    pub generate_more: Id,
     pub apply_note: Id,
     pub apply_text: String,
     pub run: Id,
@@ -497,6 +518,8 @@ impl Default for ShellIds {
             right: o,
             bar: o,
             brand: o,
+            account: o,
+            account_list: o,
             toggles: [o; 2],
             grips: [o; 2],
             plan: Plan { stacked: false, widths: [0.0; 2] },
@@ -539,6 +562,7 @@ impl Default for ShellIds {
             filter_mark: o,
             reset: o,
             apply: o,
+            generate_more: o,
             apply_note: o,
             apply_text: String::new(),
             place_line: o,
@@ -640,7 +664,7 @@ pub fn build_run(ui: &mut Ui, s: &mut PreviewState, size: Vec2, world: Option<&W
     let mut ids = ShellIds::default();
     // A map stopped at a coarser detail cannot give these views (line 2509): the page goes back to the biomes.
     if world.is_some_and(World::coarse) && crate::paint::needs_full(s.view) {
-        s.view = 0;
+        s.view = View::Biomes.index();
     }
 
     // The panels' widths come first: the stage is what they leave. A hand's drag is applied before, so that the
@@ -784,11 +808,11 @@ fn left_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, stacked: b
 
     let r = ui.fold_with("settings", text::PROFILES, &mut s.settings_open, mere_ui::FoldOpts { grow: !stacked, ..Default::default() }, |ui| {
         let mut help = Help { open: &mut s.help };
+        crate::apply_ui::back_line(ui, &mut s.values, &s.baseline, ids);
         // Stacked, the list has no bar of its own: the column's scroll serves the filter and the list alike.
         let gutter = if s.settings_bar && !stacked { mere_ui::GUTTER } else { 0.0 };
         view_only_row(ui, (&mut s.view_only, s.view), gutter, &mut help, ids);
         s.settings_bar = settings_scroll(ui, (s.view_only, s.view), &mut s.settings_list, &mut s.settings_y, (&mut s.values, &s.baseline), &mut help, ids, stacked);
-        crate::apply_ui::apply_block(ui, crate::apply_ui::Apply { values: &mut s.values, baseline: &s.baseline, places: &mut s.places, open: &mut s.places_open, refused: s.folder_refused, notice: &s.apply, want: &mut s.want }, ids);
     });
     ids.settings_head = r.id;
 
@@ -978,7 +1002,7 @@ fn keep_help(ids: &mut ShellIds, help: Option<mere_ui::HelpResp>, open: &mut Opt
 /// when it did, and the event goes no further.
 pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool {
     let escape = matches!(e, mere_base::Event::Key { key: mere_base::Key::Escape, .. });
-    if escape && s.help.is_some() && !ui.menu_open() && ui.focused().is_none() {
+    if escape && !ui.menu_open() && ui.focused().is_none() && s.help.is_some() {
         s.help = None;
         return true;
     }
@@ -986,7 +1010,7 @@ pub fn help_escape(s: &mut PreviewState, ui: &Ui, e: &mere_base::Event) -> bool 
 }
 
 /// What `#status` says (`showButton`, lines 799-802, and `tick`, 2610-2615): the clock while a run is followed, else
-/// the trouble, what was said, or that the map already shows these settings.
+/// the trouble, or what was said.
 fn status_words(s: &PreviewState) -> String {
     if let Some(f) = &s.follow {
         let elapsed = duration(f.seconds);
@@ -1003,7 +1027,7 @@ fn status_words(s: &PreviewState) -> String {
     if !s.said.is_empty() {
         return s.said.clone();
     }
-    if made_shows_form(s) { text::UP_TO_DATE.to_string() } else { String::new() }
+    String::new()
 }
 
 /// `sameAs(shown)`: the map on screen was made from what the form holds.
@@ -1011,50 +1035,43 @@ fn made_shows_form(s: &PreviewState) -> bool {
     s.made.as_ref().is_some_and(|m| m.same_as(&s.seed, s.samples, DETAIL_BLOCKS[s.detail], &s.values))
 }
 
-/// `#run` (line 192): a hairline, the status, the details and the generate button with the stop square beside it.
+/// The room Generate's split action takes: its word "Generate preview", the padding on each side, and the chevron part.
+const GENERATE_PART_W: f32 = 178.0;
+/// The same while the run's word, "Generating…", is the shorter.
+const RUNNING_PART_W: f32 = 142.0;
+
+/// `#run` (line 192): a hairline, the status, what Apply has to say, and the two split actions side by side, Generate and
+/// Apply: the word of each acts, its chevron opens its choices above the row.
 fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
+    crate::apply_ui::forget(ids);
     let style = Style { column: true, margin: Margin { top: Side::Auto, ..Margin::default() }, shrink: 0.0, ..Style::default() };
     ids.run = ui.node("run", style, |ui| {
-        ui.rule(Rule::Section, Edges::default());
+        // The hairline parts the settings list from the words under it: with no word, only the list's own fade ends it.
+        ids.status_text = status_words(s);
+        if !ids.status_text.is_empty() || crate::apply_ui::has_words(&s.places, &s.values, &s.apply, s.folder_refused) {
+            ui.rule(Rule::Section, Edges::default());
+        }
         let inner = Style { column: true, pad: Edges::new(mere_ui::tokens::GAP_WIDE, 0.0, 0.0, 0.0), gap: Vec2::new(0.0, mere_ui::tokens::GAP), ..Style::default() };
         ui.node("runBody", inner, |ui| {
             // `#status:empty { display: none }`: nothing to say, no box.
-            ids.status_text = status_words(s);
             if !ids.status_text.is_empty() {
                 let tone = if s.follow.is_none() && !s.trouble.is_empty() { Tone::Warn } else { Tone::Muted };
                 let words = ids.status_text.clone();
                 ids.status = ui.node("status", Style::default(), |ui| ui.paragraph(&words, TextLook::status(tone)));
             }
-            ids.details = ui.node("details", details_style(), |ui| {
-                for (i, word) in text::DETAILS.iter().enumerate() {
-                    // The wait this machine took for this detail on this area, under its name (showDetails, 819-830).
-                    let wait = s.pace.about(s.samples, DETAIL_BLOCKS[i]).map(duration).unwrap_or_default();
-                    // The sixteen-block map of a wide area is out of reach (line 823).
-                    let disabled = DETAIL_BLOCKS[i] == 16 && s.samples > AREA_FINE_MAX;
-                    let r = ui.detail_tab(&format!("d{i}"), word, &wait, TabOpts { pressed: i == s.detail, disabled });
-                    ui.title(r.id, if disabled { text::SPAN_COARSE } else { text::DETAIL_HINT });
-                    if r.clicked {
-                        s.detail = i;
-                    }
-                }
-            });
             let same = made_shows_form(s);
             let busy = s.follow.as_ref().map(|f| (f.ask.same_as(&s.seed, s.samples, DETAIL_BLOCKS[s.detail], &s.values), f.share(), f.stopping));
+            // Above the row, only what Apply has something to say about.
+            crate::apply_ui::apply_words(ui, &s.places, &s.values, &s.apply, s.folder_refused, ids);
+            // Two parts side by side. Generate's has the room its whole word wants (whole pixels: a fractional width
+            // would smear the 1 px line of its split), Apply's takes what is left (the stop square, while it is there,
+            // takes its own room).
+            // Both lists take the whole row, as the last frame laid it out.
+            let row = ui.rect(ui.peek_key("go"));
+            let generate_part = Style { basis: Dim::Px(if busy.is_some_and(|b| b.0) { RUNNING_PART_W } else { GENERATE_PART_W }), grow: 0.0, min_w: Dim::Px(0.0), ..Style::default() };
+            let apply_part = Style { grow: 1.0, basis: Dim::Px(0.0), min_w: Dim::Px(0.0), ..Style::default() };
             ui.node("go", Style { gap: Vec2::new(6.0, 0.0), ..Style::default() }, |ui| {
-                // While a run is under way the button says so; once a setting moved it starts the new run in its
-                // place (lines 789-798). The shell only records the press: the application acts on it.
-                let (word, look, disabled) = match busy {
-                    Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
-                    Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
-                    // Disabled: the map already shows these settings (line 467).
-                    None => (text::GENERATE, ActionLook::Primary, same),
-                };
-                ids.generate_text = word.to_string();
-                let r = ui.action_with("generate", word, look, ActionOpts { disabled, grow: 1.0 });
-                ids.generate = r.id;
-                if r.clicked {
-                    s.want = Some(Want::Generate);
-                }
+                ui.node("generateHalf", generate_part, |ui| generate_split(ui, s, ids, same, busy, row));
                 if let Some((_, _, stopping)) = busy {
                     let r = ui.stop_action("stopRun", stopping);
                     ids.stop = r.id;
@@ -1063,10 +1080,61 @@ fn run_block(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds) {
                         s.want = Some(Want::Stop);
                     }
                 }
+                ui.node("applyHalf", apply_part, |ui| {
+                    let a = crate::apply_ui::Apply { values: &s.values, places: &mut s.places, open: &mut s.places_open, notice: &s.apply, want: &mut s.want, row };
+                    crate::apply_ui::apply_split(ui, a, ids);
+                });
             });
         });
     });
 }
+
+/// Generate as a split action: its word starts the run at the detail chosen, and its chevron opens the details (64, 32,
+/// 16 blocks, the chosen one marked, each with the wait this machine took for it). While a run is under way the word
+/// says so. The word is disabled when the map already shows these settings (line 467), or the run under way is this
+/// one; a setting moved during a run starts the new run in its place (lines 789-798). The shell only records the
+/// press: the application acts on it.
+fn generate_split(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, same: bool, busy: Option<(bool, f32, bool)>, row: Option<mere_base::Rect>) {
+    let (word, look, stopping) = match busy {
+        Some((true, share, stopping)) => (text::GENERATING, ActionLook::Running { share }, stopping),
+        Some((false, _, stopping)) => (text::GENERATE, ActionLook::Primary, stopping),
+        None => (text::GENERATE, ActionLook::Primary, false),
+    };
+    let word_disabled = busy.map_or(same, |(this, _, stopping)| this || stopping);
+    ids.generate_text = word.to_string();
+    let opts = SplitOpts { word_disabled, chevron_disabled: stopping, up: true, list_over: row };
+    let mut open = s.details_open;
+    let mut picked = None;
+    let r = ui.split_action("generate", word, look, &mut open, opts, |ui| {
+        ui.group("details", |ui| {
+            for (i, name) in text::DETAILS.iter().enumerate() {
+                // The wait this machine took for this detail on this area, under its name (showDetails, 819-830).
+                let wait = s.pace.about(s.samples, DETAIL_BLOCKS[i]).map(duration).unwrap_or_default();
+                // The sixteen-block map of a wide area is out of reach (line 823).
+                let disabled = DETAIL_BLOCKS[i] == 16 && s.samples > AREA_FINE_MAX;
+                let row = ImmediateRow { label: name, detail: &wait, detail_tail: "", selected: i == s.detail, disabled };
+                let o = ui.immediate_row(&format!("d{i}"), row);
+                ui.title(o.id, if disabled { text::SPAN_COARSE } else { text::DETAIL_HINT });
+                if o.clicked {
+                    picked = Some(i);
+                }
+            }
+        });
+    });
+    if let Some(i) = picked {
+        s.detail = i;
+        open = false;
+    }
+    s.details_open = open;
+    let w = r.word.expect("a split has its word");
+    ids.generate = w.id;
+    ids.generate_more = r.line.id;
+    ids.details = r.list.unwrap_or(Id::ROOT);
+    if w.clicked && !word_disabled {
+        s.want = Some(Want::Generate);
+    }
+}
+
 /// The middle column: the stage holds the map's square and the strip under it (line 226).
 fn middle_column(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, t: &Theme, frame_size: (f32, f32), column_w: f32, world: Option<&World>, shown: Option<&Shown>) {
     // The square's side in the 2D and 3D views; the section's frame is the column's width by the height left.
@@ -1599,10 +1667,10 @@ fn ore_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option
     }
 }
 
-/// The list beside the map in the five map views (`showList` and `showChoice`, lines 1639-1758): its title, the
+/// The list beside the map in the six map views (`showList` and `showChoice`, lines 1639-1758): its title, the
 /// filter, what the choice weighs, the legend and the rows.
 fn view_list(ui: &mut Ui, s: &mut PreviewState, ids: &mut ShellIds, world: Option<&World>, stacked: bool) {
-    let view = View::from_index(s.view).expect("the map views are 0 to 4");
+    let view = View::from_index(s.view).expect("the map views are 0 to 5");
     let counted = view == View::Structures;
     let list: Option<&List> = world.and_then(|w| w.measured.lists[view.index()].as_ref());
     // Before any list was shown the page's markup holds the filter and the legend with no column name.

@@ -5,6 +5,33 @@
 pub const NO_ACCOUNT: &str = "No account: sign in once in Prism";
 /// `profilesGroup`.
 pub const PROFILES_GROUP: &str = "Profiles";
+/// The action at the head of the profiles, and of the servers (board A1).
+pub const NEW_PROFILE: &str = "New profile";
+pub const NEW_SERVER: &str = "New server";
+/// The title of the page that adds a mod to a profile (board B4).
+pub fn add_mod_title(profile: &str) -> String {
+    format!("Add a mod to {profile}")
+}
+/// The search field, the file action and the words of a result line (board B4).
+pub const SEARCH_MODRINTH: &str = "Search Modrinth";
+pub const ADD_A_FILE: &str = "Add a file";
+pub const ADD: &str = "Add";
+pub const ADDING: &str = "Adding\u{2026}";
+pub const UPDATE: &str = "Update";
+pub const UPDATING: &str = "Updating\u{2026}";
+pub const ADDED: &str = "Added";
+pub const OPEN_ON_MODRINTH: &str = "Open on Modrinth";
+pub const NO_MODS: &str = "No mod matches.";
+/// The version a mod would be updated to: an arrow and the version.
+pub fn new_version(version: &str) -> String {
+    format!("\u{2192} {version}")
+}
+/// Under the line of a mod that was added: what came with it.
+pub fn came_with(dependency: &str, by: &str) -> String {
+    format!("{dependency} came with it: {by} needs it.")
+}
+/// The word of the Play action on a profile's page, after its icon.
+pub const PLAY: &str = "Play";
 /// `play`.
 pub fn play(name: &str) -> String {
     format!("Play {name}")
@@ -48,7 +75,7 @@ pub fn launch(state: &str, seconds: i64) -> Option<String> {
     })
 }
 /// `joinsServer`, `opensWorld`, `playedHours`, `playedMinutes` and `neverPlayed` are in model.rs (`about`).
-pub const SERVER_GROUP: &str = "Server";
+pub const SERVER_GROUP: &str = "Servers";
 pub const SERVER_NAME: &str = "Dev server";
 pub const START_SERVER: &str = "Start the server";
 pub const STOP_SERVER: &str = "Stop the server";
@@ -58,13 +85,51 @@ pub fn server(state: &str, port: i64) -> Option<String> {
         "stopped" => format!("stopped \u{b7} joins at localhost:{port}"),
         "preparing" => "Syncing the mods\u{2026} its window shows each step".into(),
         "starting" => "Starting the world\u{2026}".into(),
-        "running" => format!("Running \u{b7} localhost:{port}"),
+        "running" => format!("running \u{b7} localhost:{port}"),
         "failed" => "The start failed. Its window says why.".into(),
         "stopping" => "Saving and stopping\u{2026}".into(),
         _ => return None,
     })
 }
+/// How many play on a server now.
+pub fn players(n: i64) -> String {
+    if n == 1 { "1 player".into() } else { format!("{n} players") }
+}
+/// A server's line on Home (board A1): `server`'s sentence, with the players when it runs and the profile it was made
+/// from when it is stopped.
+pub fn server_line(state: &str, port: i64, players_now: Option<i64>, made_from: Option<&str>) -> Option<String> {
+    match (state, players_now, made_from) {
+        ("running", Some(n), _) => Some(format!("running \u{b7} {} \u{b7} localhost:{port}", players(n))),
+        ("stopped", _, Some(profile)) => Some(format!("stopped \u{b7} made from {profile}")),
+        _ => server(state, port),
+    }
+}
 pub const NO_EULA: &str = "EULA not accepted yet";
+/// The server's page before its first start (board C1). The sentence is said in four pieces, the link between them.
+pub const START: &str = "Start";
+pub const EULA_BEFORE: &str = "To start this server, accept the ";
+pub const EULA_LINK: &str = "Minecraft EULA";
+pub const EULA_URL: &str = "https://aka.ms/MinecraftEULA";
+pub const EULA_AFTER: &str = ". ";
+pub const EULA_WRITES: &str = "It writes eula=true in its eula.txt.";
+pub const ACCEPT: &str = "Accept";
+pub const MADE_FROM: &str = "Made from";
+pub const MADE_PROFILE: &str = "Profile";
+pub const MADE_WORLD: &str = "World";
+pub const MADE_FOLDER: &str = "Folder";
+pub const NO_WORLD: &str = "No world project";
+/// What the server leaves out of its profile's mods; none for a profile whose mods all run on a server.
+pub fn left_out(n: i64) -> Option<String> {
+    match n {
+        n if n <= 0 => None,
+        1 => Some("1 mod not needed on a server".into()),
+        n => Some(format!("{n} mods not needed on a server")),
+    }
+}
+/// The world project's name and its seed.
+pub fn world_seed(world: &str, seed: i64) -> String {
+    format!("{world} \u{b7} seed {seed}")
+}
 pub const VIEW_DISTANCE: &str = "View distance (chunks)";
 pub const SIMULATION_DISTANCE: &str = "Simulation distance";
 pub const MAX_PLAYERS: &str = "Players at most";
@@ -76,3 +141,74 @@ pub const OFF: &str = "off";
 pub const FIRST_START: &str = "Distances, players, port and line appear after the first start.";
 pub const SERVER_LOCKED: &str = "The server is running: settings can change once it is stopped.";
 pub const SERVER_SETTINGS: &str = "Settings of the server";
+// The profile page (boards B1 to B3).
+pub const GAME_SECTION: &str = "Game";
+pub fn mods_section(count: usize) -> String {
+    format!("Mods \u{b7} {count}")
+}
+pub const GAME_VERSION: &str = "Game version";
+pub const FABRIC: &str = "Fabric";
+pub const NOT_INSTALLED: &str = "not installed";
+pub const INSTALL: &str = "Install";
+pub fn update_all(count: usize) -> String {
+    format!("Update all ({count})")
+}
+pub const ADD_A_MOD: &str = "Add a mod";
+pub const UNDO: &str = "Undo";
+pub fn removed(name: &str) -> String {
+    format!("{name} removed.")
+}
+pub fn remove_mod(name: &str) -> String {
+    format!("Remove {name}")
+}
+pub fn open_on_modrinth(name: &str) -> String {
+    format!("Open {name} on Modrinth")
+}
+/// The arrow before a newer version.
+pub fn newer(version: &str) -> String {
+    format!("\u{2192} {version}")
+}
+/// A memory amount the way the user reads it: gigabytes with one decimal at most ("2", "2.5"); the api's MB are whole
+/// half gigabytes or anything a Prism file holds.
+pub fn gb(mb: i64) -> String {
+    let tenths = (mb as f64 / 1024.0 * 10.0).round() as i64;
+    if tenths % 10 == 0 { format!("{}", tenths / 10) } else { format!("{}.{}", tenths / 10, tenths % 10) }
+}
+/// The minimum's word: "min 2 GB", "min 2" when the room is short (`unit` false), the bare "2" (`words` false).
+pub fn memory_min(mb: i64, unit: bool, words: bool) -> String {
+    match (words, unit) {
+        (false, _) => gb(mb),
+        (true, true) => format!("min {} GB", gb(mb)),
+        (true, false) => format!("min {}", gb(mb)),
+    }
+}
+pub fn memory_max(mb: i64, words: bool) -> String {
+    if words { format!("max {} GB", gb(mb)) } else { gb(mb) }
+}
+pub const USED_BY_PC: &str = "used by the PC";
+pub fn memory_total(gb: i64) -> String {
+    format!("{gb} GB")
+}
+pub const USED_TIP: &str = "Used now by Windows and the open programs";
+/// The first start's guide (boards E1 and E2): its three steps, then the Java step's sentences.
+pub const SETUP_STEPS: [&str; 3] = ["Java", "Prism", "Sign in"];
+pub const JAVA_NEEDED: &str = "Outpost Tools needs Java 25 to run the game.";
+pub fn java_download(mb: Option<u64>) -> String {
+    match mb {
+        Some(mb) => format!("Download Java 25 \u{b7} {mb} MB"),
+        None => "Download Java 25".into(),
+    }
+}
+pub const JAVA_FROM: &str = "from Adoptium, into Outpost Tools' folder";
+pub const JAVA_LATER: &str = "Later";
+pub const JAVA_DOWNLOADING: &str = "Downloading Java 25.";
+pub fn java_progress(done_mb: u64, size_mb: u64) -> String {
+    format!("{done_mb} of {size_mb} MB")
+}
+pub const JAVA_CHECKING: &str = "Checking the download";
+pub const JAVA_UNPACKING: &str = "Unpacking Java 25";
+pub const JAVA_STOP: &str = "Stop";
+pub const JAVA_NOTHING_KEPT: &str = "Nothing is kept.";
+pub fn java_ready(version: &str) -> String {
+    format!("Java {version} is ready.")
+}

@@ -138,13 +138,13 @@ fn b1_the_bar_keeps_its_form_at_every_width() {
     let (_, ui14, ids14) = picture(Theme::dark(), Vec2::new(1400.0, 940.0));
     let reference = sizes(&ids14, &ui14);
     let tab_reference = tab_sizes(&ids14, &ui14);
-    assert_eq!(ids14.tabs.len(), 11, "nine views, 2D and 3D, always as words");
+    assert_eq!(ids14.tabs.len(), 9, "seven views, 2D and 3D, always as words");
     near(rect_of(&ui14, ids14.bar).h, 40.0, "bar height");
     let mut w = preview::MIN_SIZE.0;
     while w <= 1920.0 {
         let (_, ui, ids) = picture(Theme::dark(), Vec2::new(w, 940.0));
         assert_eq!(sizes(&ids, &ui), reference, "the parts' sizes at {w}");
-        let kept: Vec<(f32, f32)> = (0..11).filter(|i| !ids.form.more.contains(i) && !(*i >= 9 && ids.form.shapes_in_more)).map(|i| tab_reference[i]).collect();
+        let kept: Vec<(f32, f32)> = (0..9).filter(|i| !ids.form.more.contains(i) && !(*i >= 7 && ids.form.shapes_in_more)).map(|i| tab_reference[i]).collect();
         assert_eq!(tab_sizes(&ids, &ui), kept, "the tabs' sizes at {w}");
         let (lead, strip, trail) = (rect_of(&ui, ids.toggles[0]), rect_of(&ui, ids.strip), rect_of(&ui, ids.toggles[1]));
         if ids.form.centred {
@@ -291,8 +291,8 @@ fn b5_the_tool_switch_keeps_the_previews_state() {
     let mut rig = Rig::standard(&world);
     // Something to keep: another view, a closer look, the 3D camera.
     let tabs = rig.app.ids().tabs.clone();
-    rig.click_on(tabs[6]);
-    rig.click_on(tabs[10]);
+    rig.click_on(tabs[4]);
+    rig.click_on(tabs[8]);
     {
         let s = rig.app.state_mut();
         s.look.k = 4.0;
@@ -300,7 +300,7 @@ fn b5_the_tool_switch_keeps_the_previews_state() {
     }
     rig.frame();
     let before = rig.app.state().clone();
-    assert!(before.orbit.is_some() && before.in3d && before.view == 6);
+    assert!(before.orbit.is_some() && before.in3d && before.view == 4);
     let (home, preview) = (rig.app.ids().tools[0], rig.app.ids().tools[1]);
     rig.click_on(home);
     assert_eq!(rig.app.state().mode, Mode::Home);
@@ -481,7 +481,7 @@ fn t1_a_tooltip_comes_after_its_delay_and_goes_with_the_pointer() {
 
     // A view tab carries its label as its title: the picture kept in docs/shots.
     rig.app.set_clock(Some(20.0));
-    let tab = centre(rig.rect(rig.app.ids().tabs[5]));
+    let tab = centre(rig.rect(rig.app.ids().tabs[0]));
     rig.hover(tab);
     rig.app.set_clock(Some(20.6));
     rig.frame();
@@ -593,37 +593,51 @@ fn a3_the_options_slide_shut_and_are_inert() {
     assert_eq!(rig.app.ids().options, Id::ROOT, "gone when shut");
 }
 
-/// A4: in Home the account sits 10 px after the name, muted; a long one is cut before the tools. The preview tool has
-/// no brand, so no account: its left end is the settings panel's button.
+/// A4: the account sits at the right of the bar, before the window's buttons, in Home and in the preview tool, muted; a
+/// long one is cut before the tools. The brand keeps the cube and the name only.
 #[test]
-fn a4_the_account_follows_the_name() {
-    for w in [1000, 1920] {
-        let rig = slide_rig(Mode::Home, true, Some("PlayerOne"), w, 1.0);
-        let shown: Vec<(String, Vec2)> = rig.app.list().cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { text, at, .. } = c { text.starts_with("Player").then(|| (text.clone(), *at)) } else { None }).collect();
-        assert_eq!(shown.len(), 1, "Home {w}");
-        let (text, at) = &shown[0];
-        // The brand's padding (12), the cube (16) and two gaps (10 each), then the brand's name, whatever it says.
-        let after_name = 48.0 + preview::overflow::brand_look().width(&preview::text::BAR_TITLE.to_uppercase());
-        assert!((at.x - after_name).abs() < 0.5, "Home {w}: {} for {after_name}", at.x);
-        let brand = rig.rect(rig.app.ids().brand);
-        assert!((at.y + 9.0 - (brand.y + brand.h / 2.0)).abs() < 3.0, "on the bar's centre line");
-        assert_eq!(text, "PlayerOne", "whole whenever the free space left of the tools holds it: always in Home, {w}");
-        let strip = rig.rect(rig.app.ids().strip);
-        assert!(at.x + text.chars().count() as f32 * 7.2 <= strip.x + 0.01, "Home {w}: runs into the tools");
-    }
-    for w in [1000, 1400, 1920] {
-        let rig = slide_rig(Mode::Preview, true, Some("PlayerOne"), w, 1.0);
-        let shown = rig.app.list().cmds.iter().filter(|c| matches!(c, mere_base::Cmd::Text { text, .. } if text.starts_with("Player"))).count();
-        assert_eq!(shown, 0, "the preview tool shows no account at {w}");
-        assert_eq!(rig.app.ids().brand, Id::ROOT);
+fn a4_the_account_sits_before_the_window_buttons() {
+    for mode in [Mode::Home, Mode::Preview] {
+        // The preview tool's views take the room first, so its account is whole from a wider window.
+        for w in if mode == Mode::Home { [1000, 1400, 1920] } else { [1500, 1700, 1920] } {
+            let mut rig = slide_rig(mode, true, Some("PlayerOne"), w, 1.0);
+            let shown: Vec<(String, Vec2)> = rig.app.list().cmds.iter().filter_map(|c| if let mere_base::Cmd::Text { text, at, .. } = c { text.starts_with("Player").then(|| (text.clone(), *at)) } else { None }).collect();
+            assert_eq!(shown.len(), 1, "{mode:?} {w}");
+            let (text, at) = &shown[0];
+            assert_eq!(text, "PlayerOne", "whole whenever the free space beside the tools holds it: {mode:?} {w}");
+            let ends = rig.rect(rig.app.ids().ends[0]);
+            let right = at.x + text.chars().count() as f32 * 7.2;
+            // In the preview tool the figures panel's button is between the account and the window's buttons, right beside Minimise.
+            let next = if mode == Mode::Preview {
+                let toggle = rig.rect(rig.app.ids().toggles[1]);
+                assert!(toggle.x < ends.x && ends.x - (toggle.x + toggle.w) < 12.0, "{w}: the panel's button is right beside Minimise");
+                toggle
+            } else {
+                ends
+            };
+            assert!(right < next.x && next.x - right < 60.0, "{mode:?} {w}: the name ends {right} and what follows starts {}", next.x);
+            let strip = rig.rect(rig.app.ids().strip);
+            assert!(at.x >= strip.x + strip.w, "{mode:?} {w}: after the tools");
+            if mode == Mode::Home {
+                let brand = rig.rect(rig.app.ids().brand);
+                assert!(at.x > brand.x + brand.w, "Home {w}: the brand holds no account");
+                assert!((at.y + 9.0 - (brand.y + brand.h / 2.0)).abs() < 3.0, "on the bar's centre line");
+            } else {
+                assert_eq!(rig.app.ids().brand, Id::ROOT);
+            }
+            if w == 1920 {
+                rig.write(&format!("bar_account_{}_{w}.png", if mode == Mode::Home { "home" } else { "preview" }));
+            }
+        }
     }
     let long = "A".repeat(40);
     let rig = slide_rig(Mode::Home, true, Some(&long), 600, 1.0);
     let cut = rig.app.list().cmds.iter().find_map(|c| if let mere_base::Cmd::Text { text, at, .. } = c { (text.ends_with('\u{2026}') && text.starts_with("AAA")).then(|| (text.clone(), *at)) } else { None });
-    let (text, at) = cut.expect("a 40 char account does not fit before the tools at 600 and ends in an ellipsis");
-    let right = at.x + text.chars().count() as f32 * 7.2;
+    let (text, at) = cut.expect("a 40 char account does not fit beside the tools at 600 and ends in an ellipsis");
     let strip = rig.rect(rig.app.ids().strip);
-    assert!(right <= strip.x + 0.01, "{right} runs into the strip at {}", strip.x);
+    assert!(at.x >= strip.x + strip.w - 0.01, "{} runs into the strip, which ends at {}", at.x, strip.x + strip.w);
+    let ends = rig.rect(rig.app.ids().ends[0]);
+    assert!(at.x + text.chars().count() as f32 * 7.2 <= ends.x + 0.01, "runs into the window's buttons");
 }
 /// The picture of the half-open tabs.
 #[test]
